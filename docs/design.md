@@ -465,7 +465,9 @@ Members:
 
 即使没有 Provider Adapter，系统也必须可以完整工作。
 
-### 5.4 Provider Registry（未来）
+### 5.4 Provider Registry
+
+Phase 2 起以**种子目录**形态落地（迁移 `0006_provider_catalog` 预置常见 Provider 及其常见套餐，仅元数据，不绑定任何账号）；目录读公开（见 [§6.1](#61-安全模型) 公开端点），用户自建条目经 Generic Provider 并存。
 
 ```text
 Provider Registry
@@ -521,7 +523,7 @@ Provider 侧凭据按上文只存 Metadata；平台自身账号（用于管理�
 | 会话令牌 | 32 字节 `crypto/rand` 随机数 → base64url 不透明字符串，经 `Authorization: Bearer <token>` 传递 |
 | 服务端存储 | `sessions` 表只存 **SHA-256(token)** 与 `expires_at`；令牌本身不落库，数据库泄露也无法直接冒用 |
 | TTL | 30 天；过期或不存在 → `401 {"error":{"code":"unauthorized",...}}` |
-| 公开端点 | 仅 `GET /healthz`、`POST /api/v1/auth/register`、`POST /api/v1/auth/login`；其余全部端点套 RequireUser 中间件 |
+| 公开端点 | `GET /healthz`、`POST /api/v1/auth/register`、`POST /api/v1/auth/login`、目录公开读（`GET /api/v1/providers[/{id}]`、`GET /api/v1/products[/{id}]`、`GET /api/v1/marketplace/coteries`，FR-2 浏览与 Marketplace Browse 无需账号）；其余全部端点套 RequireUser 中间件 |
 
 ### 6.2 Secret Management
 

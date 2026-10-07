@@ -39,9 +39,11 @@ export PORT=8080
 go run ./apps/server
 ```
 
-Every route except `GET /healthz`, `POST /api/v1/auth/register`, and
-`POST /api/v1/auth/login` needs `Authorization: Bearer <token>` (tokens are
-issued on register/login and live for 30 days).
+Every route except `GET /healthz`, `POST /api/v1/auth/register`,
+`POST /api/v1/auth/login`, and the public catalog reads (`GET /api/v1/providers`,
+`GET /api/v1/products`, `GET /api/v1/marketplace/coteries`) needs
+`Authorization: Bearer <token>` (tokens are issued on register/login and
+live for 30 days).
 
 A complete smoke test of the MVP journey (register → provider → product →
 subscription → coterie → seats → invite → join → billing → settlement →
@@ -56,7 +58,7 @@ scripts/smoke.sh http://localhost:8080
 | Area | Endpoints |
 |------|-----------|
 | Auth | `POST /api/v1/auth/register` · `login` · `logout` · `GET me` |
-| Catalog | `/api/v1/providers` · `/api/v1/products` (CRUD) |
+| Catalog | `/api/v1/providers` · `/api/v1/products` (CRUD; reads public, seeded registry ships in migration 0006) |
 | Subscription | `/api/v1/subscriptions` (CRUD) · `/api/v1/subscriptions/{id}/seats` |
 | Seats | `/api/v1/seats/{id}` · `assign` · `release` |
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |

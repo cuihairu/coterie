@@ -17,7 +17,7 @@ func TestProviderLifecycle(t *testing.T) {
 	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "prov-life")
 
 	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+providersPath,
-		`{"slug":"netflix","name":"Netflix","category":"video","metadata":{"region":"US"}}`, tok)
+		`{"slug":"ts-netflix","name":"Netflix Fixture","category":"video","metadata":{"region":"US"}}`, tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201: %v", code, body)
 	}
@@ -31,7 +31,7 @@ func TestProviderLifecycle(t *testing.T) {
 	}
 
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+providersPath+"/"+id, "", tok)
-	if code != http.StatusOK || body["slug"] != "netflix" {
+	if code != http.StatusOK || body["slug"] != "ts-netflix" {
 		t.Fatalf("get status = %d body = %v", code, body)
 	}
 
@@ -43,7 +43,7 @@ func TestProviderLifecycle(t *testing.T) {
 	if meta, _ = body["metadata"].(map[string]any); meta == nil || meta["region"] != "EU" {
 		t.Fatalf("patched metadata wrong: %v", body)
 	}
-	if body["slug"] != "netflix" {
+	if body["slug"] != "ts-netflix" {
 		t.Fatalf("patch must not touch slug: %v", body)
 	}
 
@@ -73,14 +73,71 @@ func TestProviderSlugConflictIsCaseInsensitive(t *testing.T) {
 	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "prov-conf")
 
 	if code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+providersPath,
-		`{"slug":"spotify","name":"Spotify","category":"music"}`, tok); code != http.StatusCreated {
+		`{"slug":"ts-spotify","name":"Spotify Fixture","category":"music"}`, tok); code != http.StatusCreated {
 		t.Fatalf("seed status = %d: %v", code, body)
 	}
 
 	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+providersPath,
-		`{"slug":"SPOTIFY","name":"Spotify Again","category":"music"}`, tok)
+		`{"slug":"TS-SPOTIFY","name":"Spotify Again","category":"music"}`, tok)
 	if code != http.StatusConflict {
 		t.Fatalf("duplicate slug status = %d, want 409: %v", code, body)
+	}
+}
+
+// TestCatalogPublicReadsAndSeeds covers the Provider Catalog increment:
+// a fresh database ships the seeded registry (design §5.4), catalog
+// reads are public, and catalog mutations still need a session.
+func TestCatalogPublicReadsAndSeeds(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+
+	// Anonymous browse finds the seeded AI providers.
+	code, body := testsupport.DoJSON(t, client, http.MethodGet, srv.URL+providersPath+"?category=ai", "")
+	if code != http.StatusOK {
+		t.Fatalf("anonymous category list: status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	slugs := map[string]string{} // slug -> id
+	for _, it := range items {
+		p := it.(map[string]any)
+		slugs[p["slug"].(string)] = p["id"].(string)
+	}
+	if slugs["chatgpt"] == "" || slugs["claude"] == "" {
+		t.Fatalf("seeded ai providers missing: %v", slugs)
+	}
+
+	// Anonymous product list under a seeded provider shows its plans.
+	code, body = testsupport.DoJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/products?provider_id="+slugs["chatgpt"], "")
+	if code != http.StatusOK {
+		t.Fatalf("anonymous product list: status = %d: %v", code, body)
+	}
+	items, _ = body["items"].([]any)
+	names := map[string]bool{}
+	for _, it := range items {
+		p := it.(map[string]any)
+		names[p["name"].(string)] = true
+	}
+	if !names["Plus"] || !names["Pro"] {
+		t.Fatalf("seeded chatgpt plans missing: %v", names)
+	}
+
+	// Anonymous single reads work too.
+	code, _ = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+providersPath+"/"+slugs["chatgpt"], "")
+	if code != http.StatusOK {
+		t.Fatalf("anonymous provider get: status = %d", code)
+	}
+
+	// Mutations stay closed: 401 without a session.
+	code, _ = testsupport.DoJSON(t, client, http.MethodPost, srv.URL+providersPath,
+		`{"slug":"anon","name":"Anon","category":"video"}`)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous create: status = %d, want 401", code)
+	}
+	code, _ = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+providersPath+"/"+slugs["claude"], "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous delete: status = %d, want 401", code)
 	}
 }
 

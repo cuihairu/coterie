@@ -11,13 +11,14 @@ type Handler struct {
 	svc *Service
 }
 
-// RegisterRoutes wires the product endpoints onto mux. Every route is
-// behind requireUser (public endpoints live in the auth module).
+// RegisterRoutes wires the product endpoints onto mux. Catalog reads
+// are public (browse without an account, FR-2); mutations need a
+// session.
 func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware) {
 	h := &Handler{svc: svc}
 	mux.Handle("POST /api/v1/products", requireUser(http.HandlerFunc(h.create)))
-	mux.Handle("GET /api/v1/products/{id}", requireUser(http.HandlerFunc(h.get)))
-	mux.Handle("GET /api/v1/products", requireUser(http.HandlerFunc(h.list)))
+	mux.Handle("GET /api/v1/products/{id}", http.HandlerFunc(h.get))
+	mux.Handle("GET /api/v1/products", http.HandlerFunc(h.list))
 	mux.Handle("PATCH /api/v1/products/{id}", requireUser(http.HandlerFunc(h.update)))
 	mux.Handle("DELETE /api/v1/products/{id}", requireUser(http.HandlerFunc(h.remove)))
 }

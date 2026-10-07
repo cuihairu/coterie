@@ -33,6 +33,15 @@ TOK=$(jget "['token']" "$REG")
 expect "$(code_of -H "Authorization: Bearer $TOK" "$BASE/api/v1/auth/me")" 200 "auth/me with token"
 expect "$(code_of "$BASE/api/v1/users")" 401 "protected route rejects anonymous"
 
+step "catalog: anonymous browse of the seeded registry"
+expect "$(code_of "$BASE/api/v1/providers?category=ai")" 200 "public catalog read"
+CAT=$(api GET "/api/v1/providers?category=ai" "")
+case "$CAT" in
+  *ChatGPT*) ;;
+  *) echo "FAIL seeded catalog missing ChatGPT: $CAT" >&2; exit 1 ;;
+esac
+echo "ok  seeded providers present"
+
 step "catalog: provider → product"
 PROV=$(api POST /api/v1/providers "$TOK" "{\"slug\":\"smoke-$TAG\",\"name\":\"Smoke Provider\",\"category\":\"video\"}")
 PID=$(jget "['id']" "$PROV")
