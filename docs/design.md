@@ -203,6 +203,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D10** | 圈曝光与加入请求 | **opt-in listing + JoinRequest** | 圈默认 `listing=private`，Owner 显式 `public` 才进入目录（FR-16 约束：圈不默认成为交易市场）；JoinRequest 单一活跃（每圈每用户至多一条 pending），Owner/Admin 决定，接受走与邀请一致的准入检查；Marketplace 本体是**只读目录 + 请求收件箱**，经导出的准入方法与核心解耦（[§12.3](#123-marketplace)） |
 | **D9** | Usage 记账 | **追加式账本 + 投影** | `usage_records` 只增不改（修正记负数记录），是用量唯一事实源；quota Seat 的 `metadata.used` 是其席位归集记录的 SUM 投影，写入时行锁重算，不做增量累加（无浮点漂移、可对账）；账期 `usage` 分摊按成员期内用量比例、最大余数法分币，总额精确守恒（[§4.1](#41-billing)） |
 | **D11** | Payment Adapter | **接口 + Manual 内置 + 只增账本** | `Adapter` 接口（`Charge→Receipt`）是唯一渠道接缝；`payments` 只增不改，金额/币种恒取自 Contribution（不变量 5），落账与 Contribution 置 `paid` 同事务；Owner 或付款成员可登记；真实渠道（Stripe 等）以新适配器接入，不改核心（[§4.2](#42-payment-架构)） |
+| **D12** | Provider 插件面 | **按 slug 绑定 + 可选能力接口** | `Plugin` + 可选 `PolicyValidator`（订阅策略复验）/ `AdmissionGuard`（准入拒绝）；Registry 为空时全 Generic 语义，核心零依赖特定 Provider（[§5.1](#51-原则)）；核心准入同时执行 `max_members`（MemberLimit） |
 
 ---
 
@@ -434,6 +435,13 @@ Provider
 ```
 
 **Provider Adapter 必须是可选扩展，核心平台不应依赖任何特定 Provider。**
+
+Phase 3 起插件面落地（ADR D12）：`internal/provider` 定义 `Plugin`（按 slug 绑定）与两个可选能力接口——
+
+- **PolicyValidator（Validation 面）**：订阅创建/更新设置 `sharing_policy` 时，经「product → provider → slug」找到插件并复验策略（核心只校验 mode 枚举；插件可要求 region 等字段），拒绝 → 422；
+- **AdmissionGuard（Sharing 面）**：成员准入（邀请接受、JoinRequest 接受共用 `admitUser`）前调用，插件可按策略与当前人数拒绝（409）；核心自身同时执行 `max_members`（MemberLimit，FR-10）——席位约束设备数，`max_members` 约束人数，二者独立。
+
+`Registry` 按 slug 索引插件，**空注册表 = 全 Generic 语义**（§5.3）：不注册任何插件时上述钩子全部旁路，现有行为不变。
 
 ### 5.2 目录结构
 
@@ -848,7 +856,7 @@ Instance
 - **目录（公开读）**：`GET /api/v1/marketplace/coteries?product_id=` 列出 `listing=public` 且状态 open/active 的圈，附产品/提供商名称、价格与币种、成员数、席位总数/空闲、`full` 派生标志，以及按「价格 ÷ 活跃成员数」估的当前人均分摊（equal 口径，展示用估计值）；
 - **曝光 opt-in（D10）**：圈默认 `listing=private`；`PATCH /api/v1/coteries/{id}` 增 `listing` 字段（private/public），Owner 专属；非公开圈在目录与加入请求两条路径上都按不存在处理（404），不泄露存在性；
 - **加入请求**：已认证用户对公开圈 `POST /api/v1/coteries/{id}/join-requests`（可附留言）——圈须 open/active 且未满、请求者不是活跃成员、每圈每用户至多一条 `pending`；Owner/Admin 经 `GET /api/v1/coteries/{id}/join-requests?status=pending` 查看，`POST /api/v1/join-requests/{id}/accept|decline` 决定，请求者可 `DELETE` 撤回自己的 pending；
-- **接受即准入**：accept 复用与邀请接受一致的检查（open/active、未满、未重复加入），角色固定 member；满员时 accept 以 409 失败，请求退回 pending；
+- **接受即准入**：accept 复用与邀请接受一致的检查（open/active、未满、未重复加入、`max_members` 上限、Provider 插件 AdmissionGuard），角色固定 member；满员时 accept 以 409 失败，请求退回 pending；
 - **通知**：请求创建通知 Owner（`join_requested`），决定后通知请求者（`join_decided`）；
 - **Payment 门槛**：「Request Join → Payment → Join」链中的支付闸门需要**真实收费渠道**才有意义——Manual 适配器只做线下收款登记，无法在入圈前向用户收款；因此闸门继续推迟，接入真实渠道（Stripe 等）时一并落地，在那之前 accept 即入圈。
 
@@ -856,7 +864,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面。
 
 实现阶段仍需确认的细节：
 

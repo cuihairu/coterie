@@ -140,6 +140,19 @@ func (s *Store) ListMembers(ctx context.Context, coterieID string, page api.Page
 	return items, total, err
 }
 
+// ProviderSlugBySubscription returns the slug of the provider behind
+// the subscription's product — the key for provider plugin lookups.
+func (s *Store) ProviderSlugBySubscription(ctx context.Context, subscriptionID string) (string, error) {
+	var slug string
+	err := s.db.WithContext(ctx).
+		Table("products p").
+		Select("pr.slug").
+		Joins("JOIN providers pr ON pr.id = p.provider_id").
+		Where("p.id = (SELECT product_id FROM subscriptions WHERE id = ?)", subscriptionID).
+		Scan(&slug).Error
+	return slug, err
+}
+
 // MemberCount returns how many active members the coterie has.
 func (s *Store) MemberCount(ctx context.Context, coterieID string) (int, error) {
 	var n int64

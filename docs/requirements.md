@@ -858,7 +858,7 @@ Notification
 | 编号 | 需求 | 阶段 |
 |------|------|------|
 | FR-1 | 用户与认证 | Phase 1 |
-| FR-2 | Provider（含 Generic Provider） | Phase 1；Phase 2（目录公开读 + 种子注册表，见设计 §5.4/§6.1） |
+| FR-2 | Provider（含 Generic Provider） | Phase 1；Phase 2（目录公开读 + 种子注册表，见设计 §5.4/§6.1）；Phase 3（插件面 PolicyValidator/AdmissionGuard，见 D12） |
 | FR-3 | Product | Phase 1 |
 | FR-4 | Subscription | Phase 1 |
 | FR-5 | Coterie 与生命周期 | Phase 1 |
@@ -866,7 +866,7 @@ Notification
 | FR-7 | Member | Phase 1 |
 | FR-8 | Seat | Phase 1 |
 | FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Payment Adapter 接口 + `payments` 账本已落地，Manual 渠道；真实渠道 → Phase 3 前后） |
-| FR-10 | Sharing Policy | Phase 1（基础限制；UsageLimit 等 → Phase 2） |
+| FR-10 | Sharing Policy | Phase 1（基础限制）；Phase 3（MemberLimit `max_members` 准入强制 + Provider 插件策略复验/准入守卫已落地，见设计 D12；其余 Limit 后续扩展） |
 | FR-11 | Invitation | Phase 1 |
 | FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook 已落地；Push 后续） |
 | FR-13 | Dashboard | Phase 1 |

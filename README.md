@@ -18,7 +18,8 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> 🚧 **Status: Phase 1 backend complete, Phase 2 complete** (usage tracking,
+> 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
+> underway** (provider plugin face landed; usage tracking,
 > quota, marketplace, provider catalog, payment adapter, and the
 > email/webhook notification channels all landed). The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →

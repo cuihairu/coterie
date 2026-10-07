@@ -3,12 +3,14 @@ package subscription
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"regexp"
 
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/pkg/api"
 
 	"github.com/google/uuid"
@@ -26,13 +28,21 @@ var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // Service carries the subscription business rules on top of the store.
 type Service struct {
-	store *Store
-	log   *slog.Logger
+	store   *Store
+	plugins *provider.Registry
+	log     *slog.Logger
 }
 
-// NewService builds a Service.
+// NewService builds a Service without provider plugins.
 func NewService(db *gorm.DB) *Service {
-	return &Service{store: NewStore(db), log: slog.Default()}
+	return NewServiceWithPlugins(db, nil)
+}
+
+// NewServiceWithPlugins builds a Service that consults the provider
+// plugin registry when policies are set (Validation facet). A nil
+// registry means no plugins — plain Generic behavior.
+func NewServiceWithPlugins(db *gorm.DB, plugins *provider.Registry) *Service {
+	return &Service{store: NewStore(db), plugins: plugins, log: slog.Default()}
 }
 
 // Create validates and inserts a subscription. Field-level rules fail
@@ -83,6 +93,9 @@ func (s *Service) Create(ctx context.Context, req CreateSubscriptionRequest) (*S
 	} else if !ok {
 		return nil, api.Validation("referenced resources missing",
 			api.Detail{Field: "owner_user_id", Message: "user not found"})
+	}
+	if err := s.validatePolicyWithPlugin(ctx, req.ProductID, req.SharingPolicy); err != nil {
+		return nil, err
 	}
 
 	sub := &Subscription{
@@ -199,6 +212,9 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateSubscriptionR
 		sub.MaxMembers = req.MaxMembers
 	}
 	if req.SharingPolicy != nil {
+		if err := s.validatePolicyWithPlugin(ctx, sub.ProductID, *req.SharingPolicy); err != nil {
+			return nil, err
+		}
 		sub.SharingPolicy = database.JSONB(*req.SharingPolicy)
 	}
 	if req.RenewalDate != nil {
@@ -277,6 +293,33 @@ func detailPrice() api.Detail {
 
 func detailStatus() api.Detail {
 	return api.Detail{Field: "status", Message: "must be one of active, paused, cancelled, expired"}
+}
+
+// validatePolicyWithPlugin hands the policy to the product provider's
+// plugin, when one implements PolicyValidator (design §5.1). Plain
+// errors from plugins become 422s.
+func (s *Service) validatePolicyWithPlugin(ctx context.Context, productID string, policy json.RawMessage) error {
+	if s.plugins == nil || len(policy) == 0 {
+		return nil
+	}
+	slug, err := s.store.ProviderSlugByProduct(ctx, productID)
+	if err != nil {
+		return err
+	}
+	p := s.plugins.For(slug)
+	v, ok := p.(provider.PolicyValidator)
+	if !ok {
+		return nil
+	}
+	if err := v.ValidatePolicy(ctx, policy); err != nil {
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) {
+			return apiErr
+		}
+		return api.Validation("policy rejected by provider",
+			api.Detail{Field: "sharing_policy", Message: err.Error()})
+	}
+	return nil
 }
 
 func detailSeats() api.Detail {

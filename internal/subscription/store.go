@@ -37,6 +37,20 @@ func (s *Store) Get(ctx context.Context, id string) (*Subscription, error) {
 	return &sub, nil
 }
 
+// ProviderSlugByProduct returns the slug of the provider behind a
+// product — the key for provider plugin lookups. Empty when the
+// product does not exist.
+func (s *Store) ProviderSlugByProduct(ctx context.Context, productID string) (string, error) {
+	var slug string
+	err := s.db.WithContext(ctx).
+		Table("products p").
+		Select("pr.slug").
+		Joins("JOIN providers pr ON pr.id = p.provider_id").
+		Where("p.id = ?", productID).
+		Scan(&slug).Error
+	return slug, err
+}
+
 // ProductExists reports whether the referenced product exists.
 func (s *Store) ProductExists(ctx context.Context, id string) (bool, error) {
 	var n int64

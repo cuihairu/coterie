@@ -30,12 +30,19 @@ type Option func(*options)
 
 type options struct {
 	notificationChannels []notification.Channel
+	providerPlugins      []provider.Plugin
 }
 
 // WithNotificationChannels registers outbound delivery channels (FR-12);
 // production wires them from config in apps/server.
 func WithNotificationChannels(channels ...notification.Channel) Option {
 	return func(o *options) { o.notificationChannels = append(o.notificationChannels, channels...) }
+}
+
+// WithProviderPlugins registers provider plugins (design §5.1);
+// production wires them in apps/server as real providers arrive.
+func WithProviderPlugins(plugins ...provider.Plugin) Option {
+	return func(o *options) { o.providerPlugins = append(o.providerPlugins, plugins...) }
 }
 
 // New assembles the server handler. Every module route sits behind the
@@ -63,12 +70,13 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 
 		auth.RegisterRoutes(mux, authSvc)
 		user.RegisterRoutes(mux, user.NewService(db), requireUser)
+		pluginRegistry := provider.NewRegistry(o.providerPlugins...)
 		provider.RegisterRoutes(mux, provider.NewService(db), requireUser)
 		product.RegisterRoutes(mux, product.NewService(db), requireUser)
-		subscription.RegisterRoutes(mux, subscription.NewService(db), requireUser)
+		subscription.RegisterRoutes(mux, subscription.NewServiceWithPlugins(db, pluginRegistry), requireUser)
 		seatSvc := seat.NewService(db, notifier)
 		seat.RegisterRoutes(mux, seatSvc, requireUser)
-		coterieSvc := coterie.NewService(db, seatSvc, notifier)
+		coterieSvc := coterie.NewService(db, seatSvc, notifier, pluginRegistry)
 		coterie.RegisterRoutes(mux, coterieSvc, requireUser)
 		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier), requireUser)
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)

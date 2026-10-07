@@ -2,6 +2,8 @@ package coterie
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -10,7 +12,9 @@ import (
 
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/notification"
+	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/seat"
+	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
 )
@@ -39,14 +43,16 @@ type Service struct {
 	store    *Store
 	seats    *seat.Service
 	notifier *notification.Service
+	plugins  *provider.Registry
 	log      *slog.Logger
 }
 
 // NewService builds a Service. seats is shared with the app wiring so
 // coterie creation can provision seats inside its transaction; notifier
-// may be nil in tests that do not exercise notifications.
-func NewService(db *gorm.DB, seats *seat.Service, notifier *notification.Service) *Service {
-	return &Service{store: NewStore(db), seats: seats, notifier: notifier, log: slog.Default()}
+// may be nil in tests that do not exercise notifications; plugins is
+// the provider plugin registry (nil — Generic behavior only).
+func NewService(db *gorm.DB, seats *seat.Service, notifier *notification.Service, plugins *provider.Registry) *Service {
+	return &Service{store: NewStore(db), seats: seats, notifier: notifier, plugins: plugins, log: slog.Default()}
 }
 
 // Create bootstraps a coterie for a subscription the actor owns: the
@@ -277,12 +283,31 @@ func (s *Service) admitUser(ctx context.Context, db *gorm.DB, c *Coterie, userID
 	} else if existing != nil {
 		return nil, api.Conflict("already a member of this coterie")
 	}
+	sub, err := st.SubscriptionByID(ctx, c.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, api.Conflict("subscription %s no longer exists", c.SubscriptionID)
+	}
+	memberCount, err := st.MemberCount(ctx, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	// Sharing facet, core part (FR-10): max_members caps the circle
+	// regardless of seats — seats bound devices, max_members bounds people.
+	if sub.MaxMembers != nil && memberCount >= *sub.MaxMembers {
+		return nil, api.Conflict("membership limit reached (%d members)", *sub.MaxMembers)
+	}
 	total, free, err := st.SeatStats(ctx, c.SubscriptionID)
 	if err != nil {
 		return nil, err
 	}
 	if total > 0 && free == 0 {
 		return nil, api.Conflict("coterie is full")
+	}
+	if err := s.checkAdmissionGuard(ctx, st, sub, memberCount, userID, role); err != nil {
+		return nil, err
 	}
 	m := &Member{
 		ID:        uuid.NewString(),
@@ -296,6 +321,34 @@ func (s *Service) admitUser(ctx context.Context, db *gorm.DB, c *Coterie, userID
 		return nil, err
 	}
 	return m, nil
+}
+
+// checkAdmissionGuard consults the subscription product provider's
+// plugin, when one implements AdmissionGuard (design §5.1). Plain
+// errors from plugins become 409s.
+func (s *Service) checkAdmissionGuard(ctx context.Context, st *Store, sub *subscription.Subscription, memberCount int, userID, role string) error {
+	slug, err := st.ProviderSlugBySubscription(ctx, sub.ID)
+	if err != nil {
+		return err
+	}
+	guard, ok := s.plugins.For(slug).(provider.AdmissionGuard)
+	if !ok {
+		return nil
+	}
+	in := provider.GuardInput{
+		UserID:      userID,
+		Role:        role,
+		MemberCount: memberCount,
+		Policy:      json.RawMessage(sub.SharingPolicy),
+	}
+	if err := guard.CheckAdmission(ctx, in); err != nil {
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) {
+			return apiErr
+		}
+		return api.Conflict("admission refused by provider: %v", err)
+	}
+	return nil
 }
 
 // Leave marks the actor's membership as ended and releases their seats
