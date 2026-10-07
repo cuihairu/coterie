@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -23,13 +24,15 @@ const maxProvision = 100
 // (D2), mutations belong to the subscription owner (D5), and an assignee
 // must be an active member of the subscription's coterie (invariant 4).
 type Service struct {
-	store *Store
-	log   *slog.Logger
+	store    *Store
+	notifier *notification.Service
+	log      *slog.Logger
 }
 
-// NewService builds a Service.
-func NewService(db *gorm.DB) *Service {
-	return &Service{store: NewStore(db), log: slog.Default()}
+// NewService builds a Service. notifier may be nil in tests that do not
+// exercise notifications.
+func NewService(db *gorm.DB, notifier *notification.Service) *Service {
+	return &Service{store: NewStore(db), notifier: notifier, log: slog.Default()}
 }
 
 // Provision creates count seats for the subscription, named "Seat N"
@@ -157,6 +160,14 @@ func (s *Service) Assign(ctx context.Context, actor *user.User, seatID string, r
 	}
 	if !changed {
 		return nil, api.Conflict("seat %s is no longer free", seat.ID)
+	}
+	if s.notifier != nil {
+		if userID, err := s.store.MemberUser(ctx, req.MemberID); err == nil && userID != "" {
+			s.notifier.Notify(ctx, userID, notification.TypeSeatAssigned,
+				"A seat was assigned to you",
+				"You now hold "+seat.Label+" in your sharing circle.",
+				"seat", seat.ID)
+		}
 	}
 	return s.Get(ctx, seat.ID)
 }

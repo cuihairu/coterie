@@ -117,3 +117,13 @@ func (s *Store) ActiveMemberInCoterie(ctx context.Context, subscriptionID, membe
 		Count(&one).Error
 	return one > 0, err
 }
+
+// MemberUser returns the platform user behind a member.
+func (s *Store) MemberUser(ctx context.Context, memberID string) (string, error) {
+	var userID string
+	err := s.db.WithContext(ctx).Table("members").
+		Select("user_id").
+		Where("id = ?", memberID).
+		Scan(&userID).Error
+	return userID, err
+}

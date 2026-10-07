@@ -13,6 +13,7 @@ import (
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/coterie"
+	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/seat"
@@ -37,16 +38,18 @@ func New(db *gorm.DB, log *slog.Logger) http.Handler {
 	if db != nil {
 		authSvc := auth.NewService(db)
 		requireUser := authSvc.RequireUser()
+		notifier := notification.NewService(db)
 
 		auth.RegisterRoutes(mux, authSvc)
 		user.RegisterRoutes(mux, user.NewService(db), requireUser)
 		provider.RegisterRoutes(mux, provider.NewService(db), requireUser)
 		product.RegisterRoutes(mux, product.NewService(db), requireUser)
 		subscription.RegisterRoutes(mux, subscription.NewService(db), requireUser)
-		seatSvc := seat.NewService(db)
+		seatSvc := seat.NewService(db, notifier)
 		seat.RegisterRoutes(mux, seatSvc, requireUser)
-		coterie.RegisterRoutes(mux, coterie.NewService(db, seatSvc), requireUser)
-		billing.RegisterRoutes(mux, billing.NewService(db), requireUser)
+		coterie.RegisterRoutes(mux, coterie.NewService(db, seatSvc, notifier), requireUser)
+		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
+		notification.RegisterRoutes(mux, notifier, requireUser)
 	}
 
 	// Catch-all so unmatched paths return the JSON error envelope

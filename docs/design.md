@@ -633,7 +633,7 @@ coterie/
 │   ├── seat/            # ✅ M2b：席位（容量管理、分配/释放/转移）
 │   ├── coterie/         # ✅ M2b：圈聚合（含 member 与 invitation，事务同聚合）
 │   ├── billing/         # ✅ FR-9：账期 + 分摊（equal/per_seat/fixed）+ 手动结算
-│   ├── notification/
+│   ├── notification/    # ✅ FR-12：站内信（payment_due / seat_assigned / coterie_closed 联动）
 │   ├── audit/
 │   └── secret/
 │
@@ -657,7 +657,8 @@ coterie/
 | `seat` | Seat（订阅容量与分配） |
 | `coterie`（含 member、invitation） | Coterie、Member、Invitation |
 | `billing`（含 contribution） | BillingPeriod、Contribution、Settlement |
-| `notification` / `audit` / `secret` | 支撑能力 |
+| `notification` | Notification（Web 站内信；Email/Push/Webhook 为 Phase 2 适配器） |
+| `audit` / `secret` | 支撑能力 |
 | `auth` / `identity` / `user` | 平台账号与会话（D8）、外部身份（扩展点）、用户 |
 
 具体目录可根据实际代码调整。
@@ -683,6 +684,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/seats
 /api/v1/billing-periods
 /api/v1/contributions
+/api/v1/notifications
 /api/v1/invitations
 /api/v1/notifications
 ```

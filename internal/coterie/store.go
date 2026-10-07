@@ -149,6 +149,16 @@ func (s *Store) MemberCount(ctx context.Context, coterieID string) (int, error) 
 	return int(n), err
 }
 
+// ActiveMemberUserIDs returns the platform user ids of all active
+// members — the audience for coterie-wide notifications.
+func (s *Store) ActiveMemberUserIDs(ctx context.Context, coterieID string) ([]string, error) {
+	var ids []string
+	err := s.db.WithContext(ctx).Model(&Member{}).
+		Where("coterie_id = ? AND left_at IS NULL", coterieID).
+		Pluck("user_id", &ids).Error
+	return ids, err
+}
+
 // SeatStats returns the subscription's total and free seat counts.
 func (s *Store) SeatStats(ctx context.Context, subscriptionID string) (total, free int, err error) {
 	type row struct {

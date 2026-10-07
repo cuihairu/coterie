@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -25,13 +26,15 @@ var amountPattern = regexp.MustCompile(`^\d{1,10}(\.\d{1,2})?$`)
 // by the subscription owner, contributions record who owes what, and
 // settlement is manual (design §4.2 — payment stays an adapter).
 type Service struct {
-	store *Store
-	log   *slog.Logger
+	store    *Store
+	notifier *notification.Service
+	log      *slog.Logger
 }
 
-// NewService builds a Service.
-func NewService(db *gorm.DB) *Service {
-	return &Service{store: NewStore(db), log: slog.Default()}
+// NewService builds a Service. notifier may be nil in tests that do
+// not exercise notifications.
+func NewService(db *gorm.DB, notifier *notification.Service) *Service {
+	return &Service{store: NewStore(db), notifier: notifier, log: slog.Default()}
 }
 
 // CreatePeriod opens a chargeable window. Explicit dates cover monthly,
@@ -216,6 +219,21 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 			return nil, api.Conflict("a member appears twice or already has a contribution in this period")
 		}
 		return nil, err
+	}
+	if s.notifier != nil {
+		userByMember := make(map[string]string, len(members))
+		for _, m := range members {
+			userByMember[m.ID] = m.UserID
+		}
+		window := p.StartDate.Time.Format("2006-01-02") + " – " + p.EndDate.Time.Format("2006-01-02")
+		for _, c := range contributions {
+			if uid, ok := userByMember[c.MemberID]; ok {
+				s.notifier.Notify(ctx, uid, notification.TypePaymentDue,
+					"Payment due ("+window+")",
+					"Your share for this period is "+c.Amount+" "+c.Currency+".",
+					"billing_period", p.ID)
+			}
+		}
 	}
 	return contributions, nil
 }

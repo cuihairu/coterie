@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/auth"
+	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/seat"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -35,15 +36,17 @@ var transitions = map[string]map[string]bool{
 // subscription (D1), owner identity (D5), the lifecycle state machine,
 // derived full flag (D3), and invitation-based joining.
 type Service struct {
-	store *Store
-	seats *seat.Service
-	log   *slog.Logger
+	store    *Store
+	seats    *seat.Service
+	notifier *notification.Service
+	log      *slog.Logger
 }
 
 // NewService builds a Service. seats is shared with the app wiring so
-// coterie creation can provision seats inside its transaction.
-func NewService(db *gorm.DB, seats *seat.Service) *Service {
-	return &Service{store: NewStore(db), seats: seats, log: slog.Default()}
+// coterie creation can provision seats inside its transaction; notifier
+// may be nil in tests that do not exercise notifications.
+func NewService(db *gorm.DB, seats *seat.Service, notifier *notification.Service) *Service {
+	return &Service{store: NewStore(db), seats: seats, notifier: notifier, log: slog.Default()}
 }
 
 // Create bootstraps a coterie for a subscription the actor owns: the
@@ -163,6 +166,16 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	c.UpdatedAt = time.Now().UTC()
 	if err := s.store.UpdateCoterie(ctx, c); err != nil {
 		return nil, err
+	}
+	if req.Status != nil && c.Status == StatusClosed && s.notifier != nil {
+		if ids, err := s.store.ActiveMemberUserIDs(ctx, c.ID); err == nil {
+			for _, uid := range ids {
+				s.notifier.Notify(ctx, uid, notification.TypeCoterieClosed,
+					"Your sharing circle was closed",
+					c.Name+" is now closed.",
+					"coterie", c.ID)
+			}
+		}
 	}
 	return s.view(ctx, c)
 }
