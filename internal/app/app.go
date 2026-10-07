@@ -13,6 +13,7 @@ import (
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/coterie"
+	"github.com/cuihairu/coterie/internal/marketplace"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
@@ -48,7 +49,9 @@ func New(db *gorm.DB, log *slog.Logger) http.Handler {
 		subscription.RegisterRoutes(mux, subscription.NewService(db), requireUser)
 		seatSvc := seat.NewService(db, notifier)
 		seat.RegisterRoutes(mux, seatSvc, requireUser)
-		coterie.RegisterRoutes(mux, coterie.NewService(db, seatSvc, notifier), requireUser)
+		coterieSvc := coterie.NewService(db, seatSvc, notifier)
+		coterie.RegisterRoutes(mux, coterieSvc, requireUser)
+		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier), requireUser)
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
 		usage.RegisterRoutes(mux, usage.NewService(db), requireUser)
 		notification.RegisterRoutes(mux, notifier, requireUser)

@@ -83,8 +83,11 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateCoteri
 		SubscriptionID: sub.ID,
 		Name:           req.Name,
 		Status:         StatusDraft,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		// Opt-in exposure (D10): circles start invisible to the
+		// marketplace until the owner lists them.
+		Listing:   ListingPrivate,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	owner := &Member{
 		ID:        uuid.NewString(),
@@ -157,6 +160,13 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 		}
 		c.Name = *req.Name
 	}
+	if req.Listing != nil && *req.Listing != c.Listing {
+		if *req.Listing != ListingPrivate && *req.Listing != ListingPublic {
+			return nil, api.Validation("invalid coterie",
+				api.Detail{Field: "listing", Message: "must be private or public"})
+		}
+		c.Listing = *req.Listing
+	}
 	if req.Status != nil && *req.Status != c.Status {
 		if !transitions[c.Status][*req.Status] {
 			return nil, api.Conflict("cannot transition coterie from %s to %s", c.Status, *req.Status)
@@ -218,36 +228,12 @@ func (s *Service) Join(ctx context.Context, actor *user.User, req AcceptInvitati
 	if c == nil {
 		return nil, api.NotFound("coterie %s not found", inv.CoterieID)
 	}
-	if c.Status != StatusOpen && c.Status != StatusActive {
-		return nil, api.Conflict("coterie is not accepting members while %s", c.Status)
-	}
-	if existing, err := s.store.ActiveMemberByUser(ctx, c.ID, actor.ID); err != nil {
-		return nil, err
-	} else if existing != nil {
-		return nil, api.Conflict("already a member of this coterie")
-	}
-
-	total, free, err := s.store.SeatStats(ctx, c.SubscriptionID)
+	m, err := s.admitUser(ctx, s.store.DB().WithContext(ctx), c, actor.ID, inv.Role)
 	if err != nil {
 		return nil, err
 	}
-	if total > 0 && free == 0 {
-		return nil, api.Conflict("coterie is full")
-	}
-
-	m := &Member{
-		ID:        uuid.NewString(),
-		CoterieID: c.ID,
-		UserID:    actor.ID,
-		Role:      inv.Role,
-		Status:    "active",
-		JoinedAt:  now,
-	}
 	accepted := false
 	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(m).Error; err != nil {
-			return err
-		}
 		ok, err := s.store.MarkInvitationAccepted(ctx, inv.ID, now)
 		accepted = ok
 		return err
@@ -257,6 +243,57 @@ func (s *Service) Join(ctx context.Context, actor *user.User, req AcceptInvitati
 	}
 	if !accepted {
 		return nil, api.Conflict("invitation has already been used")
+	}
+	return m, nil
+}
+
+// AdmitMember admits a user into the coterie directly — the marketplace
+// join-request accept path. The operator must be the owner or an admin;
+// the admitted user runs the same checks as invitation acceptance
+// (recruiting status, not full, not already a member).
+func (s *Service) AdmitMember(ctx context.Context, operator *user.User, coterieID string, admitted *user.User) (*Member, error) {
+	if _, _, err := s.LoadForRole(ctx, operator, coterieID, RoleOwner, RoleAdmin); err != nil {
+		return nil, err
+	}
+	c, err := s.store.GetCoterie(ctx, coterieID)
+	if err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return nil, api.NotFound("coterie %s not found", coterieID)
+	}
+	return s.admitUser(ctx, s.store.DB().WithContext(ctx), c, admitted.ID, RoleMember)
+}
+
+// admitUser runs the shared admission checks and inserts the active
+// member. db allows callers to keep larger transactions around it.
+func (s *Service) admitUser(ctx context.Context, db *gorm.DB, c *Coterie, userID, role string) (*Member, error) {
+	if c.Status != StatusOpen && c.Status != StatusActive {
+		return nil, api.Conflict("coterie is not accepting members while %s", c.Status)
+	}
+	st := NewStore(db)
+	if existing, err := st.ActiveMemberByUser(ctx, c.ID, userID); err != nil {
+		return nil, err
+	} else if existing != nil {
+		return nil, api.Conflict("already a member of this coterie")
+	}
+	total, free, err := st.SeatStats(ctx, c.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if total > 0 && free == 0 {
+		return nil, api.Conflict("coterie is full")
+	}
+	m := &Member{
+		ID:        uuid.NewString(),
+		CoterieID: c.ID,
+		UserID:    userID,
+		Role:      role,
+		Status:    "active",
+		JoinedAt:  time.Now().UTC(),
+	}
+	if err := db.Create(m).Error; err != nil {
+		return nil, err
 	}
 	return m, nil
 }
@@ -323,7 +360,7 @@ func (s *Service) retireMember(ctx context.Context, m *Member) error {
 // admins may invite (permission baseline); the raw token is returned
 // exactly once — only its SHA-256 hash is stored.
 func (s *Service) CreateInvitation(ctx context.Context, actor *user.User, coterieID string, req CreateInvitationRequest) (*InvitationView, error) {
-	c, m, err := s.loadForRole(ctx, actor, coterieID, RoleOwner, RoleAdmin)
+	c, m, err := s.LoadForRole(ctx, actor, coterieID, RoleOwner, RoleAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +404,7 @@ func (s *Service) CreateInvitation(ctx context.Context, actor *user.User, coteri
 // ListInvitations returns the coterie's invitations (owners and admins
 // only). Tokens are never included.
 func (s *Service) ListInvitations(ctx context.Context, actor *user.User, coterieID string, page api.Page) ([]Invitation, int64, error) {
-	if _, _, err := s.loadForRole(ctx, actor, coterieID, RoleOwner, RoleAdmin); err != nil {
+	if _, _, err := s.LoadForRole(ctx, actor, coterieID, RoleOwner, RoleAdmin); err != nil {
 		return nil, 0, err
 	}
 	return s.store.ListInvitations(ctx, coterieID, page)
@@ -393,9 +430,11 @@ func (s *Service) loadForOwner(ctx context.Context, actor *user.User, coterieID 
 	return c, nil
 }
 
-// loadForRole returns the coterie and the actor's active membership
-// when their role is one of the given ones.
-func (s *Service) loadForRole(ctx context.Context, actor *user.User, coterieID string, roles ...string) (*Coterie, *Member, error) {
+// LoadForRole returns the coterie and the actor's active membership
+// when their role is one of the given ones. Exported for sibling
+// modules (marketplace join requests) so permission semantics stay in
+// one place.
+func (s *Service) LoadForRole(ctx context.Context, actor *user.User, coterieID string, roles ...string) (*Coterie, *Member, error) {
 	c, err := s.store.GetCoterie(ctx, coterieID)
 	if err != nil {
 		return nil, nil, err

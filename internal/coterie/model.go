@@ -28,6 +28,7 @@ type Coterie struct {
 	SubscriptionID string    `gorm:"column:subscription_id;not null" json:"subscription_id"`
 	Name           string    `gorm:"column:name;not null" json:"name"`
 	Status         string    `gorm:"column:status;not null" json:"status"`
+	Listing        string    `gorm:"column:listing;not null" json:"listing"`
 	CreatedAt      time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt      time.Time `gorm:"column:updated_at" json:"updated_at"`
 }
@@ -89,9 +90,17 @@ type CreateCoterieRequest struct {
 // UpdateCoterieRequest patches the name and drives the lifecycle via
 // status (illegal transitions are rejected with 409).
 type UpdateCoterieRequest struct {
-	Name   *string `json:"name"`
-	Status *string `json:"status"`
+	Name    *string `json:"name"`
+	Status  *string `json:"status"`
+	Listing *string `json:"listing"` // private or public (design D10)
 }
+
+// Listing values. Public coteries appear in the marketplace directory
+// and accept join requests; private is the default.
+const (
+	ListingPrivate = "private"
+	ListingPublic  = "public"
+)
 
 // CreateInvitationRequest is the payload for POST
 // /coteries/{id}/invitations. Role accepts admin and member only.

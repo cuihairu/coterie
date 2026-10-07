@@ -872,6 +872,6 @@ Notification
 | FR-13 | Dashboard | Phase 1 |
 | FR-14 | Admin | Phase 1（基础） |
 | FR-15 | Audit Log | Phase 1 |
-| FR-16 | Marketplace | Phase 2 |
+| FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10；支付门槛随 Payment Adapter） |
 | FR-17 | Dispute | Phase 3 |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |

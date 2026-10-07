@@ -19,10 +19,11 @@ among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
 > 🚧 **Status: Phase 1 backend complete, Phase 2 underway** (usage tracking
-> landed). The full REST API works end to end: auth → catalog →
-> subscription → coterie → seats → invitations → manual settlement →
-> notifications → usage records. Web and mobile clients have not started
-> yet — the API is the product for now ([design §9](docs/design.md#9-api-design)).
+> and the marketplace landed). The full REST API works end to end: auth →
+> catalog → subscription → coterie → seats → invitations → manual
+> settlement → notifications → usage records → marketplace. Web and mobile
+> clients have not started yet — the API is the product for now
+> ([design §9](docs/design.md#9-api-design)).
 
 ## Quick start
 
@@ -62,6 +63,7 @@ scripts/smoke.sh http://localhost:8080
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage) · `/api/v1/contributions/{id}` |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
+| Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |
 
 Errors use a single envelope `{"error": {"code", "message", "details?}}`;

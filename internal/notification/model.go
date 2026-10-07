@@ -13,6 +13,8 @@ const (
 	TypeSubscriptionExpired = "subscription_expired"
 	TypeCoterieClosed       = "coterie_closed"
 	TypeSystem              = "system"
+	TypeJoinRequested       = "join_requested"
+	TypeJoinDecided         = "join_decided"
 )
 
 // Notification is one in-app message for a user. Read state is a
