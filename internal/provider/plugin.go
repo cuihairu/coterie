@@ -1,8 +1,9 @@
 // Provider plugin face (design §5.1): a plugin binds to one provider
 // slug and may enable optional capabilities — policy validation when a
 // subscription is created or edited, admission checks when someone
-// joins a circle on that provider. The core platform depends on none of
-// them: with an empty registry everything behaves as Generic (§5.3).
+// joins a circle on that provider, usage validation when a usage record
+// is appended. The core platform depends on none of them: with an empty
+// registry everything behaves as Generic (§5.3).
 package provider
 
 import (
@@ -36,6 +37,21 @@ type GuardInput struct {
 // error (typically 409) to refuse the admission.
 type AdmissionGuard interface {
 	CheckAdmission(ctx context.Context, in GuardInput) error
+}
+
+// UsageInput carries the usage record context to a plugin.
+type UsageInput struct {
+	UserID string // member the usage is recorded for
+	Amount string // canonical decimal string; negatives are corrections
+	Unit   string // unit of measure, e.g. credits or GB
+	SeatID string // attribution target, "" when the record is seatless
+}
+
+// UsageValidator is the metering facet: consulted before a usage record
+// is appended to a subscription on this provider. Return an api error
+// (typically 422) to reject the record.
+type UsageValidator interface {
+	ValidateUsage(ctx context.Context, in UsageInput) error
 }
 
 // Registry resolves provider slugs to plugins. A nil Registry behaves

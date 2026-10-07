@@ -94,6 +94,19 @@ func (s *Store) Create(ctx context.Context, r *UsageRecord) error {
 	return s.db.WithContext(ctx).Create(r).Error
 }
 
+// ProviderSlugBySubscription returns the slug of the provider behind
+// the subscription's product — the key for provider plugin lookups.
+func (s *Store) ProviderSlugBySubscription(ctx context.Context, subscriptionID string) (string, error) {
+	var slug string
+	err := s.db.WithContext(ctx).
+		Table("products p").
+		Select("pr.slug").
+		Joins("JOIN providers pr ON pr.id = p.provider_id").
+		Where("p.id = (SELECT product_id FROM subscriptions WHERE id = ?)", subscriptionID).
+		Scan(&slug).Error
+	return slug, err
+}
+
 // RecordByID returns the usage record, or nil when absent.
 func (s *Store) RecordByID(ctx context.Context, id string) (*UsageRecord, error) {
 	var r UsageRecord

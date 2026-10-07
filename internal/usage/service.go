@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"regexp"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/seat"
 	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/internal/user"
@@ -25,12 +27,19 @@ var amountPattern = regexp.MustCompile(`^-?\d{1,10}(\.\d{1,4})?$`)
 // Service records metered usage against subscriptions (design D9).
 // Writes are owner-only like the rest of subscription management.
 type Service struct {
-	store *Store
+	store   *Store
+	plugins *provider.Registry
 }
 
-// NewService builds a Service.
+// NewService builds a Service without provider plugins.
 func NewService(db *gorm.DB) *Service {
-	return &Service{store: NewStore(db)}
+	return NewServiceWithPlugins(db, nil)
+}
+
+// NewServiceWithPlugins builds a Service that consults the provider
+// plugin face (§5.1) on usage writes.
+func NewServiceWithPlugins(db *gorm.DB, plugins *provider.Registry) *Service {
+	return &Service{store: NewStore(db), plugins: plugins}
 }
 
 // Create appends a usage record and, when the record lands on a quota
@@ -130,6 +139,9 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 		id := attributed.ID
 		seatID = &id
 	}
+	if err := s.validateUsageWithPlugin(ctx, tstore, sub.ID, req, seatID); err != nil {
+		return nil, err
+	}
 	record := &UsageRecord{
 		ID:             uuid.NewString(),
 		SubscriptionID: sub.ID,
@@ -153,6 +165,38 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 		return nil, err
 	}
 	return record, nil
+}
+
+// validateUsageWithPlugin consults the provider plugin's metering
+// facet, if one is registered for the subscription's provider. Plugin
+// api errors pass through; anything else becomes a 422.
+func (s *Service) validateUsageWithPlugin(ctx context.Context, st *Store, subscriptionID string, req CreateRecordRequest, seatID *string) error {
+	slug, err := st.ProviderSlugBySubscription(ctx, subscriptionID)
+	if err != nil {
+		return err
+	}
+	v, ok := s.plugins.For(slug).(provider.UsageValidator)
+	if !ok {
+		return nil
+	}
+	sid := ""
+	if seatID != nil {
+		sid = *seatID
+	}
+	if err := v.ValidateUsage(ctx, provider.UsageInput{
+		UserID: req.MemberID,
+		Amount: req.Amount,
+		Unit:   req.Unit,
+		SeatID: sid,
+	}); err != nil {
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) {
+			return apiErr
+		}
+		return api.Validation("invalid usage record",
+			api.Detail{Field: "amount", Message: "rejected by provider: " + err.Error()})
+	}
+	return nil
 }
 
 // Get returns the record, mapping absence to 404.

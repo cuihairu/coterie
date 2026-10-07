@@ -91,7 +91,7 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		// Manual stays registered no matter what's configured on top.
 		paymentAdapters := append([]payment.Adapter{payment.Manual{}}, o.paymentAdapters...)
 		payment.RegisterRoutes(mux, payment.NewServiceWithAdapters(db, notifier, paymentAdapters...), requireUser)
-		usage.RegisterRoutes(mux, usage.NewService(db), requireUser)
+		usage.RegisterRoutes(mux, usage.NewServiceWithPlugins(db, pluginRegistry), requireUser)
 		notification.RegisterRoutes(mux, notifier, requireUser)
 	}
 

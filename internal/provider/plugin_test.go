@@ -213,3 +213,100 @@ func TestMemberLimitCore(t *testing.T) {
 		t.Fatalf("limit message = %q", msg)
 	}
 }
+
+// meterPlugin is a UsageValidator: any single record over 100 units is
+// refused, and the magic "weird" unit trips the plain-error path
+// (Metering facet).
+type meterPlugin struct{}
+
+func (meterPlugin) Slug() string { return "plugin-meter" }
+
+func (meterPlugin) ValidateUsage(_ context.Context, in provider.UsageInput) error {
+	if in.Unit == "weird" {
+		return fmt.Errorf("unit %q is not meterable on this provider", in.Unit)
+	}
+	var over bool
+	_, err := fmt.Sscanf(in.Amount, "%v", new(float64))
+	if err == nil {
+		var v float64
+		_, _ = fmt.Sscanf(in.Amount, "%g", &v)
+		over = v > 100
+	}
+	if over {
+		return api.Validation("invalid usage record",
+			api.Detail{Field: "amount", Message: "a single record may not exceed 100 units"})
+	}
+	return nil
+}
+
+func TestPluginUsageValidation(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t), app.WithProviderPlugins(meterPlugin{}))
+	client, base := srv.Client(), srv.URL
+
+	tok, _ := testsupport.RegisterAndLogin(t, client, base, "plug-meter")
+	productID := seedCatalog(t, client, base, "plugin-meter", tok)
+	code, body := createSubscriptionAs(t, client, base, tok, productID, "", 0)
+	var mems map[string]any
+	if code != http.StatusCreated {
+		t.Fatalf("seed subscription: status = %d: %v", code, body)
+	}
+	subID, _ := body["id"].(string)
+	coterieID := openCircle(t, client, base, tok, subID, "Meter Circle")
+	// Usage records key on the member row id; the owner joined first.
+	code, mems = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID+"/members", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list members: status = %d: %v", code, mems)
+	}
+	memberItems, _ := mems["items"].([]any)
+	if len(memberItems) == 0 {
+		t.Fatalf("circle has no members: %v", mems)
+	}
+	ownerMemberID, _ := memberItems[0].(map[string]any)["id"].(string)
+
+	record := func(memberID, amount, unit string) (int, map[string]any) {
+		t.Helper()
+		return testsupport.DoAuthJSON(t, client, http.MethodPost,
+			fmt.Sprintf("%s/api/v1/subscriptions/%s/usage-records", base, subID),
+			fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":%q}`, memberID, amount, unit), tok)
+	}
+
+	// Within the plugin's cap the record lands.
+	code, body = record(ownerMemberID, "50", "credits")
+	if code != http.StatusCreated {
+		t.Fatalf("record usage: status = %d: %v", code, body)
+	}
+
+	// Over the cap the provider plugin refuses with its 422.
+	code, body = record(ownerMemberID, "150", "credits")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("over-cap usage: status = %d, want 422: %v", code, body)
+	}
+	if msg, _ := body["error"].(map[string]any)["message"].(string); msg != "invalid usage record" {
+		t.Fatalf("reject message = %q", msg)
+	}
+
+	// A plain (non-api) plugin error also degrades to 422.
+	code, body = record(ownerMemberID, "1", "weird")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("weird unit: status = %d, want 422: %v", code, body)
+	}
+
+	// The plugin face leaves other providers untouched: the same record
+	// set goes through on a generically seeded chain.
+	chainTok, _, chainSub := testsupport.SeedChain(t, client, base, "plug-meter-generic", "10.00", 4)
+	chainCircle := openCircle(t, client, base, chainTok, chainSub, "Generic Meter Circle")
+	code, chainMems := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+chainCircle+"/members", "", chainTok)
+	if code != http.StatusOK {
+		t.Fatalf("list chain members: status = %d: %v", code, chainMems)
+	}
+	chainItems, _ := chainMems["items"].([]any)
+	chainMemberID, _ := chainItems[0].(map[string]any)["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		fmt.Sprintf("%s/api/v1/subscriptions/%s/usage-records", base, chainSub),
+		fmt.Sprintf(`{"member_id":%q,"amount":"1000","unit":"credits"}`, chainMemberID), chainTok)
+	if code != http.StatusCreated {
+		t.Fatalf("generic provider usage: status = %d: %v", code, body)
+	}
+}

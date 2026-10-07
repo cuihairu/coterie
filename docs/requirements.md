@@ -862,7 +862,7 @@ Notification
 | FR-3 | Product | Phase 1 |
 | FR-4 | Subscription | Phase 1 |
 | FR-5 | Coterie 与生命周期 | Phase 1 |
-| FR-6 | 共享模式 | Phase 1（Account / Seat / Family 基础支持）；Phase 2（Quota 用量记账与 usage 分摊，见设计 D9；Resource 共享后续扩展） |
+| FR-6 | 共享模式 | Phase 1（Account / Seat / Family 基础支持）；Phase 2（Quota 用量记账与 usage 分摊，见设计 D9）；Phase 3（Provider 插件 UsageValidator 记账复验面，见 D12；Resource 共享后续扩展） |
 | FR-7 | Member | Phase 1 |
 | FR-8 | Seat | Phase 1 |
 | FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；真实渠道 → 后续） |
