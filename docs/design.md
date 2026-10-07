@@ -192,6 +192,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D4** | Quota 建模 | **复用 Seat + metadata** | Seat 成为通用分配单元，概念数量最少；配额调整即 metadata 更新 |
 | **D5** | Owner 同一性 | 圈 Owner ≡ 订阅 Owner（MVP） | 1:1 下费用责任人与圈管理人天然一致；转让是 Phase 2 特性 |
 | **D6** | 币种 | MVP 单币种、无换汇 | Contribution 币种恒等于订阅币种；FX 留待真实支付阶段（Phase 2+） |
+| **D7** | 数据访问层 | **GORM 做 CRUD；AutoMigrate 禁用** | schema 唯一来源仍是手写迁移（`migrations/`），DB 级不变量靠迁移约束保证（[§1.4](#14-关键不变量)）；GORM 只做查询/写入映射，schema 演进由 golang-migrate 在启动时执行 |
 
 ---
 
@@ -589,15 +590,19 @@ Web
 ```text
 coterie/
 ├── apps/
-│   ├── server/
+│   ├── server/          # main + 优雅停机
 │   └── web/
 │
 ├── internal/
+│   ├── config/          # 环境变量解析
+│   ├── database/        # GORM 打开/连接池 + golang-migrate + Date/JSONB 类型
+│   ├── testsupport/     # testcontainers 测试基建（PG18 + 迁移）
+│   ├── app/             # 路由装配（healthz + 各模块），main 之外可测试
 │   ├── identity/
-│   ├── user/
-│   ├── provider/
-│   ├── product/
-│   ├── subscription/
+│   ├── user/            # ✅ M1：model/store/service/http + 集成测试
+│   ├── provider/        # ✅ M1：同上
+│   ├── product/         # ✅ M1：同上
+│   ├── subscription/    # ✅ M1：同上
 │   ├── coterie/
 │   ├── member/
 │   ├── seat/
@@ -609,7 +614,7 @@ coterie/
 │   └── secret/
 │
 ├── pkg/
-│   ├── api/
+│   ├── api/             # ✅ M1：错误信封/JSON/中间件/分页
 │   ├── events/
 │   └── plugin/
 │

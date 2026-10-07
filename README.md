@@ -5,7 +5,7 @@
   <p>
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
     <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange">
-    <img alt="Go" src="https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white">
+    <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white">
     <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
   </p>
 </div>
@@ -82,8 +82,10 @@ Seats / Quota / Cost
 
 ## Tech stack
 
-Go · PostgreSQL · React + TypeScript (Vite, Tailwind CSS, shadcn/ui,
-TanStack Query / Router) — see the [design doc](docs/design.md) for details.
+Go (stdlib `net/http`, GORM) · PostgreSQL (hand-written SQL migrations,
+applied by golang-migrate on startup) · React + TypeScript (Vite, Tailwind
+CSS, shadcn/ui, TanStack Query / Router) — see the [design
+doc](docs/design.md) for details.
 
 ## Contributing
 
