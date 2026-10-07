@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds the server runtime configuration.
@@ -31,6 +32,11 @@ type Config struct {
 	// adapter (design §4.2), comma-separated; unknown names are skipped
 	// with a warning at startup.
 	PaymentMethods []string
+
+	// Cadence of the billing rollover scheduler (design D13); 0
+	// disables the scheduler entirely. Parses Go duration strings
+	// ("1h", "30s").
+	AutoBillingInterval time.Duration
 }
 
 // Load reads configuration from environment variables, applying defaults.
@@ -51,7 +57,21 @@ func Load() Config {
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 
 		PaymentMethods: envList("PAYMENT_METHODS"),
+
+		AutoBillingInterval: envDuration("AUTO_BILLING_INTERVAL", time.Hour),
 	}
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 func envList(key string) []string {

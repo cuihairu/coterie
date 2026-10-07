@@ -111,6 +111,7 @@ func (s *Service) Create(ctx context.Context, req CreateSubscriptionRequest) (*S
 		MaxSeats:      req.MaxSeats,
 		MaxMembers:    req.MaxMembers,
 		SharingPolicy: database.JSONB("{}"),
+		AutoBilling:   req.AutoBilling,
 	}
 	if len(req.SharingPolicy) > 0 {
 		sub.SharingPolicy = database.JSONB(req.SharingPolicy)
@@ -210,6 +211,9 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateSubscriptionR
 	}
 	if req.MaxMembers != nil {
 		sub.MaxMembers = req.MaxMembers
+	}
+	if req.AutoBilling != nil {
+		sub.AutoBilling = *req.AutoBilling
 	}
 	if req.SharingPolicy != nil {
 		if err := s.validatePolicyWithPlugin(ctx, sub.ProductID, *req.SharingPolicy); err != nil {

@@ -20,7 +20,8 @@ services and more.
 
 > 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
 > underway** (provider plugin face with policy/admission/usage hooks,
-> sandbox payment channel registered via config; usage tracking,
+> sandbox payment channel registered via config, auto-billing
+> rollover scheduler; usage tracking,
 > quota, marketplace, provider catalog, payment adapter, and the
 > email/webhook notification channels all landed). The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →

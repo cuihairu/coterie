@@ -48,6 +48,7 @@ type Subscription struct {
 	MaxSeats      int            `gorm:"column:max_seats;not null" json:"max_seats"`
 	MaxMembers    *int           `gorm:"column:max_members" json:"max_members,omitempty"`
 	SharingPolicy database.JSONB `gorm:"column:sharing_policy;not null" json:"sharing_policy"`
+	AutoBilling   bool           `gorm:"column:auto_billing;not null;default:false" json:"auto_billing"`
 	CreatedAt     time.Time      `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt     time.Time      `gorm:"column:updated_at" json:"updated_at"`
 }
@@ -68,6 +69,7 @@ type CreateSubscriptionRequest struct {
 	MaxSeats      int             `json:"max_seats"`
 	MaxMembers    *int            `json:"max_members"`
 	SharingPolicy json.RawMessage `json:"sharing_policy"`
+	AutoBilling   bool            `json:"auto_billing"`
 }
 
 // UpdateSubscriptionRequest patches mutable fields; nil fields are left
@@ -80,4 +82,5 @@ type UpdateSubscriptionRequest struct {
 	MaxSeats      *int             `json:"max_seats"`
 	MaxMembers    *int             `json:"max_members"`
 	SharingPolicy *json.RawMessage `json:"sharing_policy"`
+	AutoBilling   *bool            `json:"auto_billing"`
 }

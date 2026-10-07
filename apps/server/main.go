@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/cuihairu/coterie/internal/app"
+	"github.com/cuihairu/coterie/internal/automation"
+	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/config"
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/notification"
@@ -92,6 +94,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 			app.WithNotificationChannels(channels(db, cfg)...),
 			app.WithPaymentAdapters(paymentAdapters(cfg, log)...)),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	// Billing rollover scheduler (design D13); AUTO_BILLING_INTERVAL=0
+	// disables it. It shares the process and database, acting as each
+	// subscription's owner through the billing service. The notifier is
+	// rebuilt here because app.New keeps its own instance.
+	if cfg.AutoBillingInterval > 0 {
+		notifier := notification.NewServiceWithChannels(db, log, channels(db, cfg)...)
+		sched := automation.NewScheduler(db, billing.NewService(db, notifier), notifier, log, cfg.AutoBillingInterval)
+		go sched.Run(ctx)
+		log.Info("billing rollover scheduler running", "interval", cfg.AutoBillingInterval)
 	}
 
 	errCh := make(chan error, 1)
