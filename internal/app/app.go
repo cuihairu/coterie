@@ -31,6 +31,7 @@ type Option func(*options)
 type options struct {
 	notificationChannels []notification.Channel
 	providerPlugins      []provider.Plugin
+	paymentAdapters      []payment.Adapter
 }
 
 // WithNotificationChannels registers outbound delivery channels (FR-12);
@@ -43,6 +44,13 @@ func WithNotificationChannels(channels ...notification.Channel) Option {
 // production wires them in apps/server as real providers arrive.
 func WithProviderPlugins(plugins ...provider.Plugin) Option {
 	return func(o *options) { o.providerPlugins = append(o.providerPlugins, plugins...) }
+}
+
+// WithPaymentAdapters registers extra payment channels on top of the
+// always-present manual adapter (design §4.2); production wires them
+// from config in apps/server.
+func WithPaymentAdapters(adapters ...payment.Adapter) Option {
+	return func(o *options) { o.paymentAdapters = append(o.paymentAdapters, adapters...) }
 }
 
 // New assembles the server handler. Every module route sits behind the
@@ -80,7 +88,9 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		coterie.RegisterRoutes(mux, coterieSvc, requireUser)
 		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier), requireUser)
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
-		payment.RegisterRoutes(mux, payment.NewService(db, notifier), requireUser)
+		// Manual stays registered no matter what's configured on top.
+		paymentAdapters := append([]payment.Adapter{payment.Manual{}}, o.paymentAdapters...)
+		payment.RegisterRoutes(mux, payment.NewServiceWithAdapters(db, notifier, paymentAdapters...), requireUser)
 		usage.RegisterRoutes(mux, usage.NewService(db), requireUser)
 		notification.RegisterRoutes(mux, notifier, requireUser)
 	}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 	adapter, ok := s.adapters[method]
 	if !ok {
 		return nil, api.Validation("invalid payment",
-			api.Detail{Field: "method", Message: fmt.Sprintf("must be one of the registered adapters (today: %s)", Manual{}.Name())})
+			api.Detail{Field: "method", Message: fmt.Sprintf("must be one of the registered payment methods (%s)", strings.Join(s.Methods(), ", "))})
 	}
 	externalRef := strings.TrimSpace(req.ExternalRef)
 	if len(externalRef) > maxExternalRefLen {
@@ -146,6 +147,17 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 			"contribution", c.ID)
 	}
 	return p, nil
+}
+
+// Methods returns the registered adapter names — what POST payments
+// may pass as method (manual is always present).
+func (s *Service) Methods() []string {
+	names := make([]string, 0, len(s.adapters))
+	for name := range s.adapters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // List returns the contribution's payments (any authenticated user,

@@ -16,6 +16,7 @@ import (
 	"github.com/cuihairu/coterie/internal/config"
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/notification"
+	"github.com/cuihairu/coterie/internal/payment"
 	"gorm.io/gorm"
 )
 
@@ -45,6 +46,23 @@ func channels(db *gorm.DB, cfg config.Config) []notification.Channel {
 	return out
 }
 
+// paymentAdapters maps configured method names to the adapters the
+// binary knows; the manual adapter is always registered (design §4.2).
+// Unknown names are skipped with a warning so a typo doesn't kill the
+// server.
+func paymentAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
+	var out []payment.Adapter
+	for _, name := range cfg.PaymentMethods {
+		switch name {
+		case payment.Sandbox{}.Name():
+			out = append(out, payment.Sandbox{})
+		default:
+			log.Warn("unknown payment method in PAYMENT_METHODS, skipping", "method", name)
+		}
+	}
+	return out
+}
+
 func run(cfg config.Config, log *slog.Logger) error {
 	// Normalize the process to UTC: pgx decodes timestamptz into
 	// time.Local, so the host's local zone would otherwise leak into
@@ -69,8 +87,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           app.New(db, log, app.WithNotificationChannels(channels(db, cfg)...)),
+		Addr: ":" + cfg.Port,
+		Handler: app.New(db, log,
+			app.WithNotificationChannels(channels(db, cfg)...),
+			app.WithPaymentAdapters(paymentAdapters(cfg, log)...)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

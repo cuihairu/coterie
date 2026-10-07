@@ -26,6 +26,11 @@ type Config struct {
 	SMTPFrom      string
 	WebhookURL    string
 	WebhookSecret string
+
+	// Payment channels to register on top of the always-on manual
+	// adapter (design §4.2), comma-separated; unknown names are skipped
+	// with a warning at startup.
+	PaymentMethods []string
 }
 
 // Load reads configuration from environment variables, applying defaults.
@@ -44,7 +49,19 @@ func Load() Config {
 		SMTPFrom:      os.Getenv("SMTP_FROM"),
 		WebhookURL:    os.Getenv("WEBHOOK_URL"),
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
+
+		PaymentMethods: envList("PAYMENT_METHODS"),
 	}
+}
+
+func envList(key string) []string {
+	var out []string
+	for _, part := range strings.Split(os.Getenv(key), ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func envOr(key, fallback string) string {

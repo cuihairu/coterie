@@ -18,6 +18,7 @@ type Handler struct {
 // paying member in the service.
 func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware) {
 	h := &Handler{svc: svc}
+	mux.Handle("GET /api/v1/payments/methods", requireUser(http.HandlerFunc(h.methods)))
 	mux.Handle("POST /api/v1/contributions/{id}/payments", requireUser(http.HandlerFunc(h.record)))
 	mux.Handle("GET /api/v1/contributions/{id}/payments", requireUser(http.HandlerFunc(h.list)))
 	mux.Handle("GET /api/v1/payments/{id}", requireUser(http.HandlerFunc(h.get)))
@@ -44,6 +45,13 @@ func (h *Handler) record(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	api.WriteJSON(w, http.StatusCreated, p)
+}
+
+// methods lists the registered payment channels.
+func (h *Handler) methods(w http.ResponseWriter, _ *http.Request) {
+	api.WriteJSON(w, http.StatusOK, api.NewList(h.svc.Methods(), api.Meta{
+		Total: int64(len(h.svc.Methods())),
+	}))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {

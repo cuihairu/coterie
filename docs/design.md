@@ -406,6 +406,8 @@ Payment
 
 Phase 2 落地（ADR D11）：`internal/payment` 定义 `Adapter` 接口（`Name` + `Charge(Charge) → Receipt`），MVP 仅内置 **Manual** 适配器（线下收款后登记，恒成功）；`payments` 表只增不改（金额/币种恒取自 Contribution，不变量 5），`POST /api/v1/contributions/{id}/payments` 在同一事务内完成「渠道应答 → 落账 → Contribution 置 `paid`/`paid_at`」；Owner 或付款成员本人可登记；已结算/不可支付（waived/cancelled）409；Stripe 等真实渠道后续以新适配器接入，Check 清单随迁移扩展。
 
+Phase 3 补充：适配器经 `app.WithPaymentAdapters` 注册（`PAYMENT_METHODS` 环境变量驱动，Manual 恒注册），`GET /api/v1/payments/methods` 列出已注册渠道；内置 **Sandbox** 演示渠道（离线确定性应答，外部单号 `sbx_` 前缀）作为插件接缝的端到端模板，`payments.method` CHECK 随迁移 0008 扩展为 `('manual','sandbox')`（D11「Check 清单随迁移扩展」的首次演练）。
+
 ---
 
 ## 5. Provider Adapter
@@ -717,6 +719,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/billing-periods
 /api/v1/contributions
 /api/v1/payments
+/api/v1/payments/methods
 /api/v1/usage-records
 /api/v1/join-requests
 /api/v1/marketplace

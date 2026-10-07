@@ -66,7 +66,7 @@ scripts/smoke.sh http://localhost:8080
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage) · `/api/v1/contributions/{id}` |
-| Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual adapter) · `GET /api/v1/payments/{id}` |
+| Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual, plus configured channels) · `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |

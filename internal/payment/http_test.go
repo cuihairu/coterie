@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cuihairu/coterie/internal/app"
+	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -210,5 +212,89 @@ func TestPaymentValidation(t *testing.T) {
 		base+"/api/v1/payments/00000000-0000-0000-0000-000000000000", "", tok)
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown payment: status = %d, want 404", code)
+	}
+}
+
+// The sandbox adapter is the plugin-seam demo channel (design §4.2):
+// registered by configuration, settles instantly with a synthetic
+// reference, and shows up in the methods listing.
+func TestSandboxChannel(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithPaymentAdapters(payment.Sandbox{}))
+	client, base := srv.Client(), srv.URL
+	tok, _, periodID, joined, contributions := seedDebt(t, client, base, "pay-sbx", "8.00", 1)
+	c := contributionOf(t, contributions, joined[0].MemberID)
+	cid, _ := c["id"].(string)
+
+	// The member pays through the sandbox channel.
+	code, body := pay(t, client, base, joined[0].Token, cid, `{"method":"sandbox"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("sandbox payment: status = %d: %v", code, body)
+	}
+	if body["method"] != "sandbox" || body["status"] != "succeeded" {
+		t.Fatalf("payment body = %v", body)
+	}
+	ref, _ := body["external_ref"].(string)
+	if !strings.HasPrefix(ref, "sbx_") {
+		t.Fatalf("external_ref = %q, want sbx_ prefix from the adapter receipt", ref)
+	}
+	if body["amount"] != c["amount"] {
+		t.Fatalf("payment must echo the contribution amount: %v vs %v", body, c)
+	}
+
+	// The contribution is settled exactly as with manual.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list contributions: status = %d: %v", code, body)
+	}
+	settled := false
+	items, _ := body["items"].([]any)
+	for _, it := range items {
+		row := it.(map[string]any)
+		if row["id"] == cid {
+			settled = row["status"] == "paid" && row["paid_at"] != nil
+		}
+	}
+	if !settled {
+		t.Fatalf("contribution %s not settled after sandbox payment: %v", cid, body)
+	}
+}
+
+// The methods listing reports the registered adapters; manual is always
+// present, sandbox only when configured.
+func TestPaymentMethodsListing(t *testing.T) {
+	plain := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := plain.Client(), plain.URL
+	tok, _ := testsupport.RegisterAndLogin(t, client, base, "pay-methods-plain")
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/payments/methods", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("methods: status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	if len(items) != 1 || items[0] != "manual" {
+		t.Fatalf("default methods = %v, want [manual]", items)
+	}
+
+	// Anonymous reads stay behind the auth baseline.
+	code, body = testsupport.DoJSON(t, client, http.MethodGet, base+"/api/v1/payments/methods", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous methods: status = %d, want 401: %v", code, body)
+	}
+
+	withSandbox := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithPaymentAdapters(payment.Sandbox{}))
+	client2, base2 := withSandbox.Client(), withSandbox.URL
+	tok2, _ := testsupport.RegisterAndLogin(t, client2, base2, "pay-methods-sbx")
+	code, body = testsupport.DoAuthJSON(t, client2, http.MethodGet,
+		base2+"/api/v1/payments/methods", "", tok2)
+	if code != http.StatusOK {
+		t.Fatalf("methods with sandbox: status = %d: %v", code, body)
+	}
+	items, _ = body["items"].([]any)
+	if len(items) != 2 || items[0] != "manual" || items[1] != "sandbox" {
+		t.Fatalf("methods = %v, want [manual sandbox]", items)
 	}
 }
