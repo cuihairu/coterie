@@ -61,10 +61,38 @@ func TestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// DoJSON sends a request with an optional JSON body and returns the
-// status code plus the decoded response body (nil for an empty body,
-// e.g. 204 No Content).
+// DoJSON sends a request with an optional JSON body to a public route
+// and returns the status code plus the decoded response body (nil for
+// an empty body, e.g. 204 No Content).
 func DoJSON(t *testing.T, client *http.Client, method, url, body string) (int, map[string]any) {
+	return do(t, client, method, url, body, "")
+}
+
+// DoAuthJSON is DoJSON with a bearer token attached, for protected
+// routes.
+func DoAuthJSON(t *testing.T, client *http.Client, method, url, body, token string) (int, map[string]any) {
+	return do(t, client, method, url, body, token)
+}
+
+// RegisterAndLogin registers a fresh user under tag (username and
+// email derived from it) and returns a bearer token plus the user id.
+func RegisterAndLogin(t *testing.T, client *http.Client, baseURL, tag string) (string, string) {
+	t.Helper()
+	code, body := DoJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/register",
+		fmt.Sprintf(`{"username":%q,"email":%q,"password":"password-123"}`, tag, tag+"@example.com"))
+	if code != http.StatusCreated {
+		t.Fatalf("register %s: status = %d: %v", tag, code, body)
+	}
+	token, _ := body["token"].(string)
+	u, _ := body["user"].(map[string]any)
+	id, _ := u["id"].(string)
+	if token == "" || id == "" {
+		t.Fatalf("register %s: missing token or user id: %v", tag, body)
+	}
+	return token, id
+}
+
+func do(t *testing.T, client *http.Client, method, url, body, token string) (int, map[string]any) {
 	t.Helper()
 	var reader io.Reader
 	if body != "" {
@@ -76,6 +104,9 @@ func DoJSON(t *testing.T, client *http.Client, method, url, body string) (int, m
 	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

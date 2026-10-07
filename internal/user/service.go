@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/database"
@@ -47,6 +48,13 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (*User, err
 	if len(req.Timezone) > 64 {
 		details = append(details, api.Detail{Field: "timezone", Message: "must be at most 64 characters"})
 	}
+	if req.Password != "" {
+		if len(req.Password) < 8 {
+			details = append(details, api.Detail{Field: "password", Message: "must be at least 8 characters"})
+		} else if len(req.Password) > 72 {
+			details = append(details, api.Detail{Field: "password", Message: "must be at most 72 characters"})
+		}
+	}
 	if len(details) > 0 {
 		return nil, api.Validation("invalid user", details...)
 	}
@@ -65,6 +73,14 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (*User, err
 		Locale:   req.Locale,
 		Timezone: req.Timezone,
 		Status:   StatusActive,
+	}
+	if req.Password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+		hashStr := string(hash)
+		u.PasswordHash = &hashStr
 	}
 	if err := s.store.Create(ctx, u); err != nil {
 		if database.IsUniqueViolation(err) {

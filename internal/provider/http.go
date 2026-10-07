@@ -11,14 +11,15 @@ type Handler struct {
 	svc *Service
 }
 
-// RegisterRoutes wires the provider endpoints onto mux.
-func RegisterRoutes(mux *http.ServeMux, svc *Service) {
+// RegisterRoutes wires the provider endpoints onto mux. Every route is
+// behind requireUser (public endpoints live in the auth module).
+func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware) {
 	h := &Handler{svc: svc}
-	mux.HandleFunc("POST /api/v1/providers", h.create)
-	mux.HandleFunc("GET /api/v1/providers/{id}", h.get)
-	mux.HandleFunc("GET /api/v1/providers", h.list)
-	mux.HandleFunc("PATCH /api/v1/providers/{id}", h.update)
-	mux.HandleFunc("DELETE /api/v1/providers/{id}", h.remove)
+	mux.Handle("POST /api/v1/providers", requireUser(http.HandlerFunc(h.create)))
+	mux.Handle("GET /api/v1/providers/{id}", requireUser(http.HandlerFunc(h.get)))
+	mux.Handle("GET /api/v1/providers", requireUser(http.HandlerFunc(h.list)))
+	mux.Handle("PATCH /api/v1/providers/{id}", requireUser(http.HandlerFunc(h.update)))
+	mux.Handle("DELETE /api/v1/providers/{id}", requireUser(http.HandlerFunc(h.remove)))
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {

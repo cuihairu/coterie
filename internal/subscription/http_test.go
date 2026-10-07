@@ -12,24 +12,24 @@ const subscriptionsPath = "/api/v1/subscriptions"
 
 // seedChain creates provider → product → user through the API and
 // returns their ids, ready for subscription creation.
-func seedChain(t *testing.T, client *http.Client, base, tag string) (productID, userID string) {
+func seedChain(t *testing.T, client *http.Client, base, tag, tok string) (productID, userID string) {
 	t.Helper()
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, base+"/api/v1/providers",
-		fmt.Sprintf(`{"slug":"prov-%s","name":"Provider %s","category":"video"}`, tag, tag))
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/providers",
+		fmt.Sprintf(`{"slug":"prov-%s","name":"Provider %s","category":"video"}`, tag, tag), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("seed provider: status = %d: %v", code, body)
 	}
 	providerID, _ := body["id"].(string)
 
-	code, body = testsupport.DoJSON(t, client, http.MethodPost, base+"/api/v1/products",
-		fmt.Sprintf(`{"provider_id":%q,"name":"Premium %s"}`, providerID, tag))
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/products",
+		fmt.Sprintf(`{"provider_id":%q,"name":"Premium %s"}`, providerID, tag), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("seed product: status = %d: %v", code, body)
 	}
 	productID, _ = body["id"].(string)
 
-	code, body = testsupport.DoJSON(t, client, http.MethodPost, base+"/api/v1/users",
-		fmt.Sprintf(`{"username":"owner-%s","email":"%s@example.com"}`, tag, tag))
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/users",
+		fmt.Sprintf(`{"username":"owner-%s","email":"%s@example.com"}`, tag, tag), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("seed user: status = %d: %v", code, body)
 	}
@@ -42,7 +42,8 @@ func TestSubscriptionLifecycle(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	productID, userID := seedChain(t, client, srv.URL, "life")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-life")
+	productID, userID := seedChain(t, client, srv.URL, "life", tok)
 
 	createBody := fmt.Sprintf(`{
 		"product_id":%q,
@@ -57,7 +58,7 @@ func TestSubscriptionLifecycle(t *testing.T) {
 		"sharing_policy":{"mode":"seat","max_members":5}
 	}`, productID, userID)
 
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, createBody)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, createBody, tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201: %v", code, body)
 	}
@@ -81,21 +82,21 @@ func TestSubscriptionLifecycle(t *testing.T) {
 		t.Fatalf("sharing_policy not echoed: %v", body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+subscriptionsPath+"/"+id, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+subscriptionsPath+"/"+id, "", tok)
 	if code != http.StatusOK || body["price"] != "12.50" {
 		t.Fatalf("get status = %d body = %v", code, body)
 	}
 
 	// PATCH price and status.
-	code, body = testsupport.DoJSON(t, client, http.MethodPatch, srv.URL+subscriptionsPath+"/"+id,
-		`{"price":"15.00","status":"paused"}`)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch, srv.URL+subscriptionsPath+"/"+id,
+		`{"price":"15.00","status":"paused"}`, tok)
 	if code != http.StatusOK || body["price"] != "15.00" || body["status"] != "paused" {
 		t.Fatalf("patch status = %d body = %v", code, body)
 	}
 
 	// PATCH renewal_date "" clears the field.
-	code, body = testsupport.DoJSON(t, client, http.MethodPatch, srv.URL+subscriptionsPath+"/"+id,
-		`{"renewal_date":""}`)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch, srv.URL+subscriptionsPath+"/"+id,
+		`{"renewal_date":""}`, tok)
 	if code != http.StatusOK {
 		t.Fatalf("clear renewal status = %d: %v", code, body)
 	}
@@ -104,8 +105,8 @@ func TestSubscriptionLifecycle(t *testing.T) {
 	}
 
 	// List filtered by owner.
-	code, body = testsupport.DoJSON(t, client, http.MethodGet,
-		srv.URL+subscriptionsPath+"?owner_user_id="+userID, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+subscriptionsPath+"?owner_user_id="+userID, "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("list status = %d: %v", code, body)
 	}
@@ -113,7 +114,7 @@ func TestSubscriptionLifecycle(t *testing.T) {
 		t.Fatalf("owner filter total = %v, want 1", body["meta"])
 	}
 
-	code, _ = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+id, "")
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+id, "", tok)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want 204", code)
 	}
@@ -123,7 +124,8 @@ func TestSubscriptionValidation(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	productID, userID := seedChain(t, client, srv.URL, "valid")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-valid")
+	productID, userID := seedChain(t, client, srv.URL, "valid", tok)
 
 	cases := []struct {
 		name string
@@ -144,7 +146,7 @@ func TestSubscriptionValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, tc.body)
+			code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, tc.body, tok)
 			if code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want 422: %v", code, body)
 			}
@@ -156,9 +158,10 @@ func TestSubscriptionAggregateProtection(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	productID, userID := seedChain(t, client, srv.URL, "prot")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-prot")
+	productID, userID := seedChain(t, client, srv.URL, "prot", tok)
 
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, fmt.Sprintf(`{
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath, fmt.Sprintf(`{
 		"product_id":%q,
 		"owner_user_id":%q,
 		"billing_cycle":"yearly",
@@ -167,14 +170,14 @@ func TestSubscriptionAggregateProtection(t *testing.T) {
 		"start_date":"2026-10-01",
 		"max_seats":6,
 		"sharing_policy":{"mode":"quota","quota":300,"unit":"credits"}
-	}`, productID, userID))
+	}`, productID, userID), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201: %v", code, body)
 	}
 	subID, _ := body["id"].(string)
 
 	// A coterie bound to the subscription (inserted directly — the
-	// coterie module itself is M2 scope).
+	// coterie module itself is M2b scope).
 	if err := db.Exec(
 		"INSERT INTO coteries (subscription_id, name) VALUES (?, ?)",
 		subID, "Protection Test Circle",
@@ -183,13 +186,14 @@ func TestSubscriptionAggregateProtection(t *testing.T) {
 	}
 
 	// Deleting the subscription with a bound coterie → 409.
-	code, body = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "", tok)
 	if code != http.StatusConflict {
 		t.Fatalf("delete with coterie status = %d, want 409: %v", code, body)
 	}
 
 	// Deleting the product backing the subscription → 409.
-	code, body = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+"/api/v1/products/"+productID, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodDelete,
+		srv.URL+"/api/v1/products/"+productID, "", tok)
 	if code != http.StatusConflict {
 		t.Fatalf("delete product with subscription status = %d, want 409: %v", code, body)
 	}
@@ -198,7 +202,7 @@ func TestSubscriptionAggregateProtection(t *testing.T) {
 	if err := db.Exec("DELETE FROM coteries WHERE subscription_id = ?", subID).Error; err != nil {
 		t.Fatal(err)
 	}
-	code, _ = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "")
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "", tok)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete after coterie removal status = %d, want 204", code)
 	}

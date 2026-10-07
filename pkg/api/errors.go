@@ -33,6 +33,11 @@ func Validation(message string, details ...Detail) *APIError {
 	return &APIError{Status: http.StatusUnprocessableEntity, Code: "validation_failed", Message: message, Details: details}
 }
 
+// Unauthorized reports missing or invalid credentials (401).
+func Unauthorized(format string, args ...any) *APIError {
+	return &APIError{Status: http.StatusUnauthorized, Code: "unauthorized", Message: fmt.Sprintf(format, args...)}
+}
+
 // NotFound reports a missing resource (404).
 func NotFound(format string, args ...any) *APIError {
 	return &APIError{Status: http.StatusNotFound, Code: "not_found", Message: fmt.Sprintf(format, args...)}

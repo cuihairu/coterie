@@ -14,10 +14,11 @@ func TestProductLifecycle(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	providerID := seedProvider(t, client, srv.URL, "main-provider")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "prod-life")
+	providerID := seedProvider(t, client, srv.URL, "main-provider", tok)
 
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+productsPath,
-		fmt.Sprintf(`{"provider_id":%q,"name":"Premium","tier":"4K","metadata":{"profiles":5}}`, providerID))
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+productsPath,
+		fmt.Sprintf(`{"provider_id":%q,"name":"Premium","tier":"4K","metadata":{"profiles":5}}`, providerID), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201: %v", code, body)
 	}
@@ -29,18 +30,19 @@ func TestProductLifecycle(t *testing.T) {
 		t.Fatalf("tier not echoed: %v", body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+productsPath+"/"+id, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+productsPath+"/"+id, "", tok)
 	if code != http.StatusOK || body["name"] != "Premium" {
 		t.Fatalf("get status = %d body = %v", code, body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodPatch, srv.URL+productsPath+"/"+id,
-		`{"name":"Premium Plus"}`)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch, srv.URL+productsPath+"/"+id,
+		`{"name":"Premium Plus"}`, tok)
 	if code != http.StatusOK || body["name"] != "Premium Plus" {
 		t.Fatalf("patch status = %d body = %v", code, body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+productsPath+"?provider_id="+providerID, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+productsPath+"?provider_id="+providerID, "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("list status = %d: %v", code, body)
 	}
@@ -49,7 +51,7 @@ func TestProductLifecycle(t *testing.T) {
 		t.Fatalf("provider filter items = %d, want 1: %v", len(items), body)
 	}
 
-	code, _ = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+productsPath+"/"+id, "")
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+productsPath+"/"+id, "", tok)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want 204", code)
 	}
@@ -59,16 +61,17 @@ func TestProductProviderFilterIsolates(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	providerA := seedProvider(t, client, srv.URL, "provider-a")
-	providerB := seedProvider(t, client, srv.URL, "provider-b")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "prod-filter")
+	providerA := seedProvider(t, client, srv.URL, "provider-a", tok)
+	providerB := seedProvider(t, client, srv.URL, "provider-b", tok)
 
 	for _, name := range []string{"Basic", "Standard"} {
-		createProduct(t, client, srv.URL, providerA, name)
+		createProduct(t, client, srv.URL, providerA, name, tok)
 	}
-	createProduct(t, client, srv.URL, providerB, "Solo")
+	createProduct(t, client, srv.URL, providerB, "Solo", tok)
 
-	code, body := testsupport.DoJSON(t, client, http.MethodGet,
-		srv.URL+productsPath+"?provider_id="+providerA, "")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+productsPath+"?provider_id="+providerA, "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("list status = %d: %v", code, body)
 	}
@@ -85,47 +88,50 @@ func TestProductValidationAndConflicts(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	providerID := seedProvider(t, client, srv.URL, "conflict-provider")
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "prod-conf")
+	providerID := seedProvider(t, client, srv.URL, "conflict-provider", tok)
 
 	// Unknown provider → 422 with a field detail.
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+productsPath,
-		`{"provider_id":"00000000-0000-0000-0000-000000000000","name":"Ghost"}`)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+productsPath,
+		`{"provider_id":"00000000-0000-0000-0000-000000000000","name":"Ghost"}`, tok)
 	if code != http.StatusUnprocessableEntity {
 		t.Fatalf("unknown provider status = %d, want 422: %v", code, body)
 	}
 
 	// Duplicate (provider_id, name) → 409.
-	createProduct(t, client, srv.URL, providerID, "Dup")
-	code, body = testsupport.DoJSON(t, client, http.MethodPost, srv.URL+productsPath,
-		fmt.Sprintf(`{"provider_id":%q,"name":"Dup"}`, providerID))
+	createProduct(t, client, srv.URL, providerID, "Dup", tok)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+productsPath,
+		fmt.Sprintf(`{"provider_id":%q,"name":"Dup"}`, providerID), tok)
 	if code != http.StatusConflict {
 		t.Fatalf("duplicate name status = %d, want 409: %v", code, body)
 	}
 
 	// Missing name → 422.
-	code, body = testsupport.DoJSON(t, client, http.MethodPost, srv.URL+productsPath,
-		fmt.Sprintf(`{"provider_id":%q}`, providerID))
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+productsPath,
+		fmt.Sprintf(`{"provider_id":%q}`, providerID), tok)
 	if code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing name status = %d, want 422: %v", code, body)
 	}
 
 	// Deleting a provider that still has products → 409.
-	code, body = testsupport.DoJSON(t, client, http.MethodDelete, srv.URL+"/api/v1/providers/"+providerID, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodDelete,
+		srv.URL+"/api/v1/providers/"+providerID, "", tok)
 	if code != http.StatusConflict {
 		t.Fatalf("delete provider with products status = %d, want 409: %v", code, body)
 	}
 
 	// Unknown product → 404.
-	code, _ = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+productsPath+"/00000000-0000-0000-0000-000000000000", "")
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+productsPath+"/00000000-0000-0000-0000-000000000000", "", tok)
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown product status = %d, want 404", code)
 	}
 }
 
-func createProduct(t *testing.T, client *http.Client, base, providerID, name string) string {
+func createProduct(t *testing.T, client *http.Client, base, providerID, name, tok string) string {
 	t.Helper()
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, base+productsPath,
-		fmt.Sprintf(`{"provider_id":%q,"name":%q}`, providerID, name))
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+productsPath,
+		fmt.Sprintf(`{"provider_id":%q,"name":%q}`, providerID, name), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create product %s: status = %d: %v", name, code, body)
 	}
@@ -137,10 +143,10 @@ func createProduct(t *testing.T, client *http.Client, base, providerID, name str
 }
 
 // seedProvider creates a provider through the API and returns its id.
-func seedProvider(t *testing.T, client *http.Client, base, slug string) string {
+func seedProvider(t *testing.T, client *http.Client, base, slug, tok string) string {
 	t.Helper()
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, base+"/api/v1/providers",
-		fmt.Sprintf(`{"slug":%q,"name":%q,"category":"video"}`, slug, slug))
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/providers",
+		fmt.Sprintf(`{"slug":%q,"name":%q,"category":"video"}`, slug, slug), tok)
 	if code != http.StatusCreated {
 		t.Fatalf("seed provider %s: status = %d: %v", slug, code, body)
 	}

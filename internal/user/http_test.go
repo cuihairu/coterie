@@ -13,9 +13,10 @@ func TestUserLifecycle(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "user-life")
 
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+usersPath,
-		`{"username":"alice","email":"alice@example.com"}`)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath,
+		`{"username":"alice","email":"alice@example.com"}`, tok)
 	if code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201: %v", code, body)
 	}
@@ -30,7 +31,7 @@ func TestUserLifecycle(t *testing.T) {
 		t.Fatalf("defaults not applied: %v", body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+usersPath+"/"+id, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+usersPath+"/"+id, "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("get status = %d, want 200: %v", code, body)
 	}
@@ -38,7 +39,7 @@ func TestUserLifecycle(t *testing.T) {
 		t.Fatalf("round-trip id = %v, want %v", body["id"], id)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodGet, srv.URL+usersPath, "")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+usersPath, "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("list status = %d, want 200: %v", code, body)
 	}
@@ -56,20 +57,21 @@ func TestUserConflicts(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "user-conf")
 
-	if code, _ := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+usersPath,
-		`{"username":"bob","email":"bob@example.com"}`); code != http.StatusCreated {
+	if code, _ := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath,
+		`{"username":"bob","email":"bob@example.com"}`, tok); code != http.StatusCreated {
 		t.Fatalf("seed user status = %d, want 201", code)
 	}
 
-	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+usersPath,
-		`{"username":"bob","email":"other@example.com"}`)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath,
+		`{"username":"bob","email":"other@example.com"}`, tok)
 	if code != http.StatusConflict {
 		t.Fatalf("duplicate username status = %d, want 409: %v", code, body)
 	}
 
-	code, body = testsupport.DoJSON(t, client, http.MethodPost, srv.URL+usersPath,
-		`{"username":"bob2","email":"BOB@example.com"}`)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath,
+		`{"username":"bob2","email":"BOB@example.com"}`, tok)
 	if code != http.StatusConflict {
 		t.Fatalf("duplicate email (case-insensitive) status = %d, want 409: %v", code, body)
 	}
@@ -79,6 +81,7 @@ func TestUserValidationErrors(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "user-valid")
 
 	cases := []struct {
 		name string
@@ -93,7 +96,7 @@ func TestUserValidationErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+usersPath, tc.body)
+			code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath, tc.body, tok)
 			if code != tc.want {
 				t.Fatalf("status = %d, want %d: %v", code, tc.want, body)
 			}
@@ -103,7 +106,8 @@ func TestUserValidationErrors(t *testing.T) {
 		})
 	}
 
-	code, _ := testsupport.DoJSON(t, client, http.MethodGet, srv.URL+usersPath+"/00000000-0000-0000-0000-000000000000", "")
+	code, _ := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+usersPath+"/00000000-0000-0000-0000-000000000000", "", tok)
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown user status = %d, want 404", code)
 	}

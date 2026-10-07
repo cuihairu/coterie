@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/subscription"
@@ -17,8 +18,9 @@ import (
 	"github.com/cuihairu/coterie/pkg/api"
 )
 
-// New assembles the server handler. db must not be nil in real runs;
-// tests may pass nil to exercise healthz only.
+// New assembles the server handler. Every module route sits behind the
+// auth middleware; only healthz and register/login are public. db must
+// not be nil in real runs; tests may pass nil to exercise healthz only.
 func New(db *gorm.DB, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
@@ -30,10 +32,14 @@ func New(db *gorm.DB, log *slog.Logger) http.Handler {
 	})
 
 	if db != nil {
-		user.RegisterRoutes(mux, user.NewService(db))
-		provider.RegisterRoutes(mux, provider.NewService(db))
-		product.RegisterRoutes(mux, product.NewService(db))
-		subscription.RegisterRoutes(mux, subscription.NewService(db))
+		authSvc := auth.NewService(db)
+		requireUser := authSvc.RequireUser()
+
+		auth.RegisterRoutes(mux, authSvc)
+		user.RegisterRoutes(mux, user.NewService(db), requireUser)
+		provider.RegisterRoutes(mux, provider.NewService(db), requireUser)
+		product.RegisterRoutes(mux, product.NewService(db), requireUser)
+		subscription.RegisterRoutes(mux, subscription.NewService(db), requireUser)
 	}
 
 	// Catch-all so unmatched paths return the JSON error envelope
