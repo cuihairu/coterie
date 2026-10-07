@@ -19,13 +19,13 @@ among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
 > 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
-> underway** (provider plugin face with policy/admission/usage hooks,
+> complete** (provider plugin face with policy/admission/usage hooks,
 > sandbox payment channel registered via config, auto-billing
 > rollover scheduler, prorated (per-day) split, contribution
-> disputes with owner decisions, derived settlement reputation;
-> usage tracking,
-> quota, marketplace, provider catalog, payment adapter, and the
-> email/webhook notification channels all landed). The full REST API works
+> disputes with owner decisions, and derived settlement reputation —
+> on top of Phase 2's usage tracking, quota, marketplace, provider
+> catalog, payment adapter, and email/webhook notification channels).
+> The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
 > marketplace. Web and mobile clients have not started yet — the API is
@@ -129,14 +129,14 @@ Seats / Quota / Cost
 
 ## Roadmap
 
-- **Phase 1 — MVP**: users, providers, products, subscriptions, coteries,
+- **Phase 1 — MVP ✅**: users, providers, products, subscriptions, coteries,
   members, seats, contributions, invitations, notifications (manual settlement)
-- **Phase 2**: marketplace, provider catalog, payment adapters, email,
+- **Phase 2 ✅**: marketplace, provider catalog, payment adapters, email,
   webhooks, usage tracking, quotas
-- **Phase 3**: provider/payment/usage plugins, automation, advanced billing,
-  disputes, reputation
-- **Phase 4**: open-source marketplace and infrastructure for shared digital
-  services
+- **Phase 3 ✅**: provider/payment/usage plugins, automation (auto-billing
+  rollover), advanced billing (prorated split), disputes, reputation
+- **Phase 4 — vision**: open-source marketplace and infrastructure for shared
+  digital services
 
 ## Tech stack
 

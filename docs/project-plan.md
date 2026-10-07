@@ -254,16 +254,16 @@ Payment
 Join
 ```
 
-### Phase 3
+### Phase 3（已完成）
 
 ```text
-Provider Plugins
-Payment Plugins
-Usage Plugins
-Automation
-Advanced Billing
-Dispute
-Reputation
+Provider Plugins        ✅ PolicyValidator / AdmissionGuard / UsageValidator 插件面（D12）
+Payment Plugins         ✅ 配置注册渠道 + Sandbox 演示适配器（D11）
+Usage Plugins           ✅ D12 第三钩子（记账复验）
+Automation              ✅ auto_billing 调度器滚期（D13）
+Advanced Billing        ✅ prorated 按天比例分摊
+Dispute                 ✅ 争议账本 + Owner 单向裁决（D14）
+Reputation              ✅ 结算信誉派生只读投影（D15）
 ```
 
 ### Phase 4 — 愿景
