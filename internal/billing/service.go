@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strconv"
@@ -60,14 +61,12 @@ func (s *Service) CreatePeriod(ctx context.Context, actor *user.User, subscripti
 		return nil, api.Validation("invalid billing period", details...)
 	}
 
-	now := time.Now().UTC()
 	p := &BillingPeriod{
 		ID:             uuid.NewString(),
 		SubscriptionID: sub.ID,
 		StartDate:      start,
 		EndDate:        end,
 		Status:         PeriodOpen,
-		CreatedAt:      now,
 	}
 	if err := s.store.CreatePeriod(ctx, p); err != nil {
 		if database.IsUniqueViolation(err) {
@@ -421,7 +420,8 @@ func parseCents(v string) (int64, bool) {
 	return i*100 + f, true
 }
 
-// formatCents renders cents as a decimal string.
+// formatCents renders cents as a decimal string with exactly two
+// fraction digits, matching the numeric(12,2) column.
 func formatCents(c int64) string {
-	return strconv.FormatInt(c/100, 10) + "." + strconv.FormatInt(c%100, 10)
+	return fmt.Sprintf("%d.%02d", c/100, c%100)
 }

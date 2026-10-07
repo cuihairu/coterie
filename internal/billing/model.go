@@ -41,7 +41,6 @@ type BillingPeriod struct {
 	StartDate      database.Date `gorm:"column:start_date;not null" json:"start_date"`
 	EndDate        database.Date `gorm:"column:end_date;not null" json:"end_date"`
 	Status         string        `gorm:"column:status;not null" json:"status"`
-	CreatedAt      time.Time     `gorm:"column:created_at" json:"created_at"`
 }
 
 // TableName aligns the model with the hand-written migration schema.

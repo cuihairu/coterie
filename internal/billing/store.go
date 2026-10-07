@@ -83,6 +83,7 @@ func (s *Store) ActiveMembers(ctx context.Context, subscriptionID string) ([]Mem
 	var members []MemberRef
 	err := s.db.WithContext(ctx).
 		Table("members m").
+		Select("m.id, m.user_id, m.role").
 		Joins("JOIN coteries c ON c.id = m.coterie_id").
 		Where("c.subscription_id = ? AND m.status = ? AND m.left_at IS NULL", subscriptionID, "active").
 		Order("m.joined_at ASC, m.id ASC").
