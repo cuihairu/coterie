@@ -92,6 +92,84 @@ func RegisterAndLogin(t *testing.T, client *http.Client, baseURL, tag string) (s
 	return token, id
 }
 
+// Member is a joined coterie member as seen by the API tests.
+type Member struct {
+	Token    string // the member user's bearer token
+	UserID   string // platform user id
+	MemberID string // membership id inside the coterie
+}
+
+// SeedChain creates provider → product → subscription through the API,
+// owned by a freshly registered user, and returns the owner's bearer
+// token, owner user id, and subscription id.
+func SeedChain(t *testing.T, client *http.Client, baseURL, tag, price string, maxSeats int) (token, ownerID, subscriptionID string) {
+	t.Helper()
+	token, ownerID = RegisterAndLogin(t, client, baseURL, tag)
+
+	code, body := DoAuthJSON(t, client, http.MethodPost, baseURL+"/api/v1/providers",
+		fmt.Sprintf(`{"slug":"ts-%s","name":"Seed Provider %s","category":"video"}`, tag, tag), token)
+	if code != http.StatusCreated {
+		t.Fatalf("seed provider: status = %d: %v", code, body)
+	}
+	providerID, _ := body["id"].(string)
+
+	code, body = DoAuthJSON(t, client, http.MethodPost, baseURL+"/api/v1/products",
+		fmt.Sprintf(`{"provider_id":%q,"name":"Seed Product %s"}`, providerID, tag), token)
+	if code != http.StatusCreated {
+		t.Fatalf("seed product: status = %d: %v", code, body)
+	}
+	productID, _ := body["id"].(string)
+
+	code, body = DoAuthJSON(t, client, http.MethodPost, baseURL+"/api/v1/subscriptions",
+		fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":%q,"currency":"USD","start_date":"2026-10-01","max_seats":%d}`, productID, ownerID, price, maxSeats), token)
+	if code != http.StatusCreated {
+		t.Fatalf("seed subscription: status = %d: %v", code, body)
+	}
+	subscriptionID, _ = body["id"].(string)
+	return token, ownerID, subscriptionID
+}
+
+// SeedCircle builds a full sharing circle: SeedChain plus a coterie
+// with capacity seats, published open, and n extra members joined via
+// invitations. joined[i] corresponds to tag+"-m<i>".
+func SeedCircle(t *testing.T, client *http.Client, baseURL, tag, price string, maxSeats, capacity, members int) (ownerToken, ownerID, subscriptionID, coterieID string, joined []Member) {
+	t.Helper()
+	ownerToken, ownerID, subscriptionID = SeedChain(t, client, baseURL, tag, price, maxSeats)
+
+	code, body := DoAuthJSON(t, client, http.MethodPost, baseURL+"/api/v1/coteries",
+		fmt.Sprintf(`{"subscription_id":%q,"name":"Circle %s","capacity":%d}`, subscriptionID, tag, capacity), ownerToken)
+	if code != http.StatusCreated {
+		t.Fatalf("seed coterie: status = %d: %v", code, body)
+	}
+	coterieID, _ = body["id"].(string)
+
+	code, _ = DoAuthJSON(t, client, http.MethodPatch, baseURL+"/api/v1/coteries/"+coterieID,
+		`{"status":"open"}`, ownerToken)
+	if code != http.StatusOK {
+		t.Fatalf("publish coterie: status = %d", code)
+	}
+
+	joined = make([]Member, members)
+	for i := range joined {
+		mtag := fmt.Sprintf("%s-m%d", tag, i)
+		token, userID := RegisterAndLogin(t, client, baseURL, mtag)
+		code, inv := DoAuthJSON(t, client, http.MethodPost,
+			baseURL+"/api/v1/coteries/"+coterieID+"/invitations", `{"role":"member"}`, ownerToken)
+		if code != http.StatusCreated {
+			t.Fatalf("seed invitation: status = %d: %v", code, inv)
+		}
+		inviteToken, _ := inv["token"].(string)
+		code, mem := DoAuthJSON(t, client, http.MethodPost, baseURL+"/api/v1/invitations/accept",
+			fmt.Sprintf(`{"token":%q}`, inviteToken), token)
+		if code != http.StatusCreated {
+			t.Fatalf("seed member %s: status = %d: %v", mtag, code, mem)
+		}
+		memberID, _ := mem["id"].(string)
+		joined[i] = Member{Token: token, UserID: userID, MemberID: memberID}
+	}
+	return ownerToken, ownerID, subscriptionID, coterieID, joined
+}
+
 func do(t *testing.T, client *http.Client, method, url, body, token string) (int, map[string]any) {
 	t.Helper()
 	var reader io.Reader

@@ -345,6 +345,18 @@ Settlement
 - 月付 / 年付 / 自定义周期
 - 按席位 / 按比例 / 固定金额 / 按使用量
 
+Phase 1 落地状态（Manual Settlement，已实现）：
+
+- `POST /api/v1/subscriptions/{id}/billing-periods` 以显式起止日期开账期——月付、年付、自定义周期都是显式区间；同订阅同 `start_date` 唯一（409）；
+- `POST /api/v1/billing-periods/{id}/contributions/generate` 一次性生成分摊，`mode` 取：
+  - `equal`（默认）均摊订阅价格，整除余数按「先加入多一分」分币，总额精确守恒；
+  - `per_seat` 按占用席位分摊，无席位成员不产生分摊记录；
+  - `fixed` 由 Owner 显式指定成员金额（成员必须活跃且不重复）；
+  - `usage` 返回 422，随 Phase 2 Usage Tracking 落地；
+- 币种恒等于订阅币种（不变量 5）；每成员每账期至多一条 Contribution（不变量 6）；已生成的账期不可重复生成（409）；
+- `POST /api/v1/billing-periods/{id}/close` 单向关闭账期：关闭后禁止再生成与修改金额，但结算状态仍可更新（允许补记）；
+- `PATCH /api/v1/contributions/{id}` 由 Owner 标记 `paid / waived / pending / cancelled`（手动结算）；进入 `paid` 记 `paid_at`，离开即清除。
+
 ### 4.2 Payment 架构
 
 支付是 **Adapter**，不是核心业务模型（Principle 7）。
@@ -620,8 +632,7 @@ coterie/
 │   ├── subscription/    # ✅ M1：同上
 │   ├── seat/            # ✅ M2b：席位（容量管理、分配/释放/转移）
 │   ├── coterie/         # ✅ M2b：圈聚合（含 member 与 invitation，事务同聚合）
-│   ├── billing/
-│   ├── contribution/
+│   ├── billing/         # ✅ FR-9：账期 + 分摊（equal/per_seat/fixed）+ 手动结算
 │   ├── notification/
 │   ├── audit/
 │   └── secret/
@@ -645,7 +656,7 @@ coterie/
 | `subscription` | Subscription、Sharing Policy |
 | `seat` | Seat（订阅容量与分配） |
 | `coterie`（含 member、invitation） | Coterie、Member、Invitation |
-| `billing` / `contribution` | Contribution、Settlement |
+| `billing`（含 contribution） | BillingPeriod、Contribution、Settlement |
 | `notification` / `audit` / `secret` | 支撑能力 |
 | `auth` / `identity` / `user` | 平台账号与会话（D8）、外部身份（扩展点）、用户 |
 
@@ -670,6 +681,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/coteries
 /api/v1/members
 /api/v1/seats
+/api/v1/billing-periods
 /api/v1/contributions
 /api/v1/invitations
 /api/v1/notifications

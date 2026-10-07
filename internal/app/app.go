@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/auth"
+	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/coterie"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
@@ -45,6 +46,7 @@ func New(db *gorm.DB, log *slog.Logger) http.Handler {
 		seatSvc := seat.NewService(db)
 		seat.RegisterRoutes(mux, seatSvc, requireUser)
 		coterie.RegisterRoutes(mux, coterie.NewService(db, seatSvc), requireUser)
+		billing.RegisterRoutes(mux, billing.NewService(db), requireUser)
 	}
 
 	// Catch-all so unmatched paths return the JSON error envelope
