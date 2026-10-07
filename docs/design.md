@@ -202,6 +202,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D8** | 平台认证 | **Email + 密码（bcrypt）+ 不透明 Bearer 会话令牌** | 密码仅存 bcrypt 哈希（可空，为 OAuth/Passkey 留位）；会话令牌 32B 随机数、DB 只存 SHA-256 哈希，泄露数据库也无法冒用（[§6.1](#61-安全模型)）；OAuth / Passkey / OIDC 作为认证模块的扩展点接入，不写死在核心 |
 | **D10** | 圈曝光与加入请求 | **opt-in listing + JoinRequest** | 圈默认 `listing=private`，Owner 显式 `public` 才进入目录（FR-16 约束：圈不默认成为交易市场）；JoinRequest 单一活跃（每圈每用户至多一条 pending），Owner/Admin 决定，接受走与邀请一致的准入检查；Marketplace 本体是**只读目录 + 请求收件箱**，经导出的准入方法与核心解耦（[§12.3](#123-marketplace)） |
 | **D9** | Usage 记账 | **追加式账本 + 投影** | `usage_records` 只增不改（修正记负数记录），是用量唯一事实源；quota Seat 的 `metadata.used` 是其席位归集记录的 SUM 投影，写入时行锁重算，不做增量累加（无浮点漂移、可对账）；账期 `usage` 分摊按成员期内用量比例、最大余数法分币，总额精确守恒（[§4.1](#41-billing)） |
+| **D11** | Payment Adapter | **接口 + Manual 内置 + 只增账本** | `Adapter` 接口（`Charge→Receipt`）是唯一渠道接缝；`payments` 只增不改，金额/币种恒取自 Contribution（不变量 5），落账与 Contribution 置 `paid` 同事务；Owner 或付款成员可登记；真实渠道（Stripe 等）以新适配器接入，不改核心（[§4.2](#42-payment-架构)） |
 
 ---
 
@@ -401,6 +402,8 @@ Payment
 
 - Contribution 的 `status` 表示分摊记录的结算状态，与具体支付渠道解耦；
 - Payment Adapter 只负责把「应收」标记为「已收」，不反向驱动领域模型。
+
+Phase 2 落地（ADR D11）：`internal/payment` 定义 `Adapter` 接口（`Name` + `Charge(Charge) → Receipt`），MVP 仅内置 **Manual** 适配器（线下收款后登记，恒成功）；`payments` 表只增不改（金额/币种恒取自 Contribution，不变量 5），`POST /api/v1/contributions/{id}/payments` 在同一事务内完成「渠道应答 → 落账 → Contribution 置 `paid`/`paid_at`」；Owner 或付款成员本人可登记；已结算/不可支付（waived/cancelled）409；Stripe 等真实渠道后续以新适配器接入，Check 清单随迁移扩展。
 
 ---
 
@@ -705,6 +708,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/seats
 /api/v1/billing-periods
 /api/v1/contributions
+/api/v1/payments
 /api/v1/usage-records
 /api/v1/join-requests
 /api/v1/marketplace
@@ -844,13 +848,13 @@ Instance
 - **加入请求**：已认证用户对公开圈 `POST /api/v1/coteries/{id}/join-requests`（可附留言）——圈须 open/active 且未满、请求者不是活跃成员、每圈每用户至多一条 `pending`；Owner/Admin 经 `GET /api/v1/coteries/{id}/join-requests?status=pending` 查看，`POST /api/v1/join-requests/{id}/accept|decline` 决定，请求者可 `DELETE` 撤回自己的 pending；
 - **接受即准入**：accept 复用与邀请接受一致的检查（open/active、未满、未重复加入），角色固定 member；满员时 accept 以 409 失败，请求退回 pending；
 - **通知**：请求创建通知 Owner（`join_requested`），决定后通知请求者（`join_decided`）；
-- **Payment 门槛**：「Request Join → Payment → Join」链中的支付闸门随 Payment Adapter 落地，在此之前 accept 即入圈（Manual Settlement 语义）。
+- **Payment 门槛**：「Request Join → Payment → Join」链中的支付闸门需要**真实收费渠道**才有意义——Manual 适配器只做线下收款登记，无法在入圈前向用户收款；因此闸门继续推迟，接入真实渠道（Stripe 等）时一并落地，在那之前 accept 即入圈。
 
 ---
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter。
 
 实现阶段仍需确认的细节：
 

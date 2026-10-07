@@ -865,7 +865,7 @@ Notification
 | FR-6 | 共享模式 | Phase 1（Account / Seat / Family 基础支持）；Phase 2（Quota 用量记账与 usage 分摊，见设计 D9；Resource 共享后续扩展） |
 | FR-7 | Member | Phase 1 |
 | FR-8 | Seat | Phase 1 |
-| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1（Payment Adapter → Phase 2） |
+| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Payment Adapter 接口 + `payments` 账本已落地，Manual 渠道；真实渠道 → Phase 3 前后） |
 | FR-10 | Sharing Policy | Phase 1（基础限制；UsageLimit 等 → Phase 2） |
 | FR-11 | Invitation | Phase 1 |
 | FR-12 | Notification（Web + Email） | Phase 1（Push / Webhook → Phase 2） |

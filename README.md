@@ -18,12 +18,12 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> 🚧 **Status: Phase 1 backend complete, Phase 2 underway** (usage tracking
-> and the marketplace landed). The full REST API works end to end: auth →
-> catalog → subscription → coterie → seats → invitations → manual
-> settlement → notifications → usage records → marketplace. Web and mobile
-> clients have not started yet — the API is the product for now
-> ([design §9](docs/design.md#9-api-design)).
+> 🚧 **Status: Phase 1 backend complete, Phase 2 underway** (usage tracking,
+> marketplace, provider catalog, and the payment adapter landed). The full
+> REST API works end to end: auth → catalog → subscription → coterie →
+> seats → invitations → billing → payments → notifications → usage
+> records → marketplace. Web and mobile clients have not started yet —
+> the API is the product for now ([design §9](docs/design.md#9-api-design)).
 
 ## Quick start
 
@@ -64,6 +64,7 @@ scripts/smoke.sh http://localhost:8080
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage) · `/api/v1/contributions/{id}` |
+| Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual adapter) · `GET /api/v1/payments/{id}` |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |

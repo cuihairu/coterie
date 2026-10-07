@@ -83,10 +83,13 @@ PERID=$(jget "['id']" "$PER")
 GEN=$(api POST "/api/v1/billing-periods/$PERID/contributions/generate" "$TOK" '{}')
 expect "$(python3 -c "import sys,json;d=json.load(sys.stdin);print(sorted(c['amount'] for c in d['items']))" <<<"$GEN")" "['6.00', '6.00']" "12.00 split over 2 members"
 
-step "manual settlement: mark the member's share paid"
+step "manual settlement: record the member's payment"
 CONTRIB=$(python3 -c "import sys,json;d=json.load(sys.stdin);print([c['id'] for c in d['items'] if c['member_id']=='$MID'][0])" <<<"$GEN")
-PAID=$(api PATCH "/api/v1/contributions/$CONTRIB" "$TOK" '{"status":"paid"}')
-expect "$(jget "['status']" "$PAID")" paid "contribution settled"
+PAID=$(api POST "/api/v1/contributions/$CONTRIB/payments" "$TOK" '{"external_ref":"cash on Friday"}')
+expect "$(jget "['status']" "$PAID")" succeeded "payment recorded via manual adapter"
+expect "$(jget "['amount']" "$PAID")" 6.00 "payment echoes the contribution amount"
+STATUS=$(api GET "/api/v1/billing-periods/$PERID/contributions" "$TOK")
+expect "$(python3 -c "import sys,json;d=json.load(sys.stdin);print([c['status'] for c in d['items'] if c['id']=='$CONTRIB'][0])" <<<"$STATUS")" paid "contribution settled"
 
 step "member notifications"
 NOTIF=$(api GET /api/v1/notifications "$TOK2")
