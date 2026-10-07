@@ -40,22 +40,23 @@ func seedSubscription(t *testing.T, client *http.Client, base, tag, tok, ownerUs
 
 // seedCoterieWithMember inserts a coterie and an active member directly
 // (the coterie module itself ships in the next increment).
-func seedCoterieWithMember(t *testing.T, db *gorm.DB, subID, memberUserID string) string {
+func seedCoterieWithMember(t *testing.T, db *gorm.DB, subID, memberUserID string) (coterieID, memberID string) {
 	t.Helper()
-	coterieID := uuid.NewString()
+	coterieID = uuid.NewString()
 	if err := db.Exec(
 		"INSERT INTO coteries (id, subscription_id, name) VALUES (?, ?, ?)",
 		coterieID, subID, "Seat Test Circle",
 	).Error; err != nil {
 		t.Fatal(err)
 	}
+	memberID = uuid.NewString()
 	if err := db.Exec(
 		"INSERT INTO members (id, coterie_id, user_id, role) VALUES (?, ?, ?, 'member')",
-		uuid.NewString(), coterieID, memberUserID,
+		memberID, coterieID, memberUserID,
 	).Error; err != nil {
 		t.Fatal(err)
 	}
-	return coterieID
+	return coterieID, memberID
 }
 
 func TestSeatProvisionAndList(t *testing.T) {
@@ -128,7 +129,7 @@ func TestSeatAssignRelease(t *testing.T) {
 		t.Fatalf("seed member user: status = %d: %v", code, memberUser)
 	}
 	memberUserID, _ := memberUser["id"].(string)
-	seedCoterieWithMember(t, db, subID, memberUserID)
+	_, memberID := seedCoterieWithMember(t, db, subID, memberUserID)
 
 	// Assign to a non-member → 422.
 	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
@@ -138,21 +139,21 @@ func TestSeatAssignRelease(t *testing.T) {
 		t.Fatalf("assign non-member status = %d, want 422: %v", code, body)
 	}
 
-	// Assign the member → occupied with member_id.
+	// Assign the member → occupied with the member id.
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
 		srv.URL+"/api/v1/seats/"+seatAID+"/assign",
-		fmt.Sprintf(`{"member_id":%q}`, memberUserID), tok)
+		fmt.Sprintf(`{"member_id":%q}`, memberID), tok)
 	if code != http.StatusOK {
 		t.Fatalf("assign status = %d, want 200: %v", code, body)
 	}
-	if body["status"] != "occupied" || body["member_id"] != memberUserID {
+	if body["status"] != "occupied" || body["member_id"] != memberID {
 		t.Fatalf("assign result wrong: %v", body)
 	}
 
 	// Second assign → 409.
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
 		srv.URL+"/api/v1/seats/"+seatAID+"/assign",
-		fmt.Sprintf(`{"member_id":%q}`, memberUserID), tok)
+		fmt.Sprintf(`{"member_id":%q}`, memberID), tok)
 	if code != http.StatusConflict {
 		t.Fatalf("double assign status = %d, want 409: %v", code, body)
 	}

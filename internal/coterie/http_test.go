@@ -212,7 +212,7 @@ func TestInvitationJoinLeave(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("members = %d, want 2", len(items))
 	}
-	seatIDs := provisionSeats(t, client, srv.URL, tok, subID, 2)
+	seatIDs := freeSeats(t, client, srv.URL, tok, subID, 2)
 	assigned := 0
 	for _, raw := range items {
 		m, _ := raw.(map[string]any)
@@ -272,7 +272,7 @@ func TestMemberRemovalReleasesSeats(t *testing.T) {
 	m2ID, _ := m2["id"].(string)
 
 	// Give u2 the only seat, then verify removal frees it.
-	seatIDs := provisionSeats(t, client, srv.URL, tok, subID, 1)
+	seatIDs := freeSeats(t, client, srv.URL, tok, subID, 1)
 	if _, err := assignSeat(t, client, srv.URL, tok, seatIDs[0], m2ID); err != nil {
 		t.Fatal(err)
 	}
@@ -392,22 +392,29 @@ func TestInvitationValidationAndExpiry(t *testing.T) {
 	}
 }
 
-// provisionSeats provisions n seats and returns their ids.
-func provisionSeats(t *testing.T, client *http.Client, base, tok, subID string, n int) []string {
+// freeSeats lists the subscription's free seats and returns n ids —
+// creating a coterie already provisions its capacity in seats.
+func freeSeats(t *testing.T, client *http.Client, base, tok, subID string, n int) []string {
 	t.Helper()
-	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
-		base+"/api/v1/subscriptions/"+subID+"/seats", fmt.Sprintf(`{"count":%d}`, n), tok)
-	if code != http.StatusCreated {
-		t.Fatalf("provision seats: status = %d: %v", code, body)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/subscriptions/"+subID+"/seats", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list seats: status = %d: %v", code, body)
 	}
 	items, _ := body["items"].([]any)
-	ids := make([]string, 0, len(items))
+	ids := make([]string, 0, n)
 	for _, raw := range items {
 		s, _ := raw.(map[string]any)
+		if s["status"] != "free" {
+			continue
+		}
 		id, _ := s["id"].(string)
 		ids = append(ids, id)
 	}
-	return ids
+	if len(ids) < n {
+		t.Fatalf("free seats = %d, want %d: %v", len(ids), n, body)
+	}
+	return ids[:n]
 }
 
 // assignSeat assigns memberID to the seat and fails the test on error.

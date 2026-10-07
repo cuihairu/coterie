@@ -227,7 +227,7 @@ func TestPerSeatSplit(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)
 	client := srv.Client()
-	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, srv.URL, "bill-seat", "10.00", 2, 2, 2)
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, srv.URL, "bill-seat", "10.00", 4, 2, 2)
 
 	// Occupy both seats: one per joined member.
 	code, seats := testsupport.DoAuthJSON(t, client, http.MethodPost,
