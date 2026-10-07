@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -131,6 +132,40 @@ func (s *Store) SeatHolds(ctx context.Context, subscriptionID string) (map[strin
 		holds[r.MemberID] = r.N
 	}
 	return holds, nil
+}
+
+// UsageTotals returns each member's summed usage over the window
+// [start, end) and the number of distinct units recorded there, for the
+// usage split (design D9).
+func (s *Store) UsageTotals(ctx context.Context, subscriptionID string, start, end time.Time) (map[string]string, int, error) {
+	type row struct {
+		MemberID string
+		Total    string
+	}
+	var rows []row
+	err := s.db.WithContext(ctx).
+		Table("usage_records").
+		Select("member_id, SUM(amount) AS total").
+		Where("subscription_id = ? AND recorded_at >= ? AND recorded_at < ?", subscriptionID, start, end).
+		Group("member_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	totals := make(map[string]string, len(rows))
+	for _, r := range rows {
+		totals[r.MemberID] = r.Total
+	}
+
+	var units int64
+	err = s.db.WithContext(ctx).
+		Table("usage_records").
+		Where("subscription_id = ? AND recorded_at >= ? AND recorded_at < ?", subscriptionID, start, end).
+		Distinct("unit").Count(&units).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return totals, int(units), nil
 }
 
 // CountContributions returns how many contributions the period has.

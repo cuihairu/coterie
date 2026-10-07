@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -146,13 +148,9 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 	if mode == "" {
 		mode = SplitEqual
 	}
-	if mode == SplitUsage {
-		return nil, api.Validation("unsupported split mode",
-			api.Detail{Field: "mode", Message: "usage-based splitting arrives with Phase 2 usage tracking"})
-	}
-	if mode != SplitEqual && mode != SplitPerSeat && mode != SplitFixed {
+	if mode != SplitEqual && mode != SplitPerSeat && mode != SplitFixed && mode != SplitUsage {
 		return nil, api.Validation("invalid split mode",
-			api.Detail{Field: "mode", Message: "must be equal, per_seat, or fixed"})
+			api.Detail{Field: "mode", Message: "must be equal, per_seat, fixed, or usage"})
 	}
 
 	totalCents, ok := parseCents(sub.Price)
@@ -186,6 +184,12 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 
 	case SplitFixed:
 		shares, err = s.splitFixed(ctx, sub.ID, req.Items)
+		if err != nil {
+			return nil, err
+		}
+
+	case SplitUsage:
+		shares, err = s.splitUsage(ctx, sub, p, members)
 		if err != nil {
 			return nil, err
 		}
@@ -347,6 +351,77 @@ func splitPerSeat(total int64, members []MemberRef, holds map[string]int) (map[s
 	return shares, nil
 }
 
+// splitUsage shares the price proportionally to each active member's
+// recorded usage in the period window [start, end). The ledger must
+// speak a single unit and no member may be net-negative; cents go out
+// by largest remainder (ties → earliest joined) so the shares sum
+// exactly to the subscription price (design D9).
+func (s *Service) splitUsage(ctx context.Context, sub *subscription.Subscription, p *BillingPeriod, members []MemberRef) (map[string]int64, error) {
+	totals, units, err := s.store.UsageTotals(ctx, sub.ID, p.StartDate.Time, p.EndDate.Time)
+	if err != nil {
+		return nil, err
+	}
+	if units > 1 {
+		return nil, api.Validation("unsupported usage split",
+			api.Detail{Field: "mode", Message: "usage records in this period mix units; correct the ledger or split per unit"})
+	}
+
+	totalCents, ok := parseCents(sub.Price)
+	if !ok {
+		return nil, api.Internal()
+	}
+
+	sums := make(map[string]*big.Rat, len(members))
+	totalUsage := new(big.Rat)
+	for _, m := range members { // members are joined_at ASC — the tie order
+		raw, ok := totals[m.ID]
+		if !ok {
+			continue
+		}
+		r, ok := parseUsageDecimal(raw)
+		if !ok {
+			return nil, api.Internal()
+		}
+		if r.Sign() < 0 {
+			return nil, api.Validation("unsupported usage split",
+				api.Detail{Field: "mode", Message: "member has negative net usage; correct the ledger with offsetting records first"})
+		}
+		sums[m.ID] = r
+		totalUsage.Add(totalUsage, r)
+	}
+	if totalUsage.Sign() <= 0 {
+		return nil, api.Validation("nothing to split",
+			api.Detail{Field: "mode", Message: "no positive usage is recorded in this period's window"})
+	}
+
+	type remainder struct {
+		memberID string
+		rest     *big.Rat
+	}
+	price := new(big.Rat).SetInt64(totalCents)
+	shares := make(map[string]int64, len(sums))
+	assigned := int64(0)
+	var rems []remainder
+	for _, m := range members {
+		r, ok := sums[m.ID]
+		if !ok {
+			continue
+		}
+		exact := new(big.Rat).Mul(price, new(big.Rat).Quo(r, totalUsage))
+		floor := new(big.Int).Quo(exact.Num(), exact.Denom()) // exact ≥ 0
+		cents := floor.Int64()
+		assigned += cents
+		rems = append(rems, remainder{m.ID, new(big.Rat).Sub(exact, new(big.Rat).SetInt(floor))})
+		shares[m.ID] = cents
+	}
+	remCents := totalCents - assigned // 0..len(rems)-1
+	sort.SliceStable(rems, func(i, j int) bool { return rems[i].rest.Cmp(rems[j].rest) > 0 })
+	for i := 0; i < int(remCents) && i < len(rems); i++ {
+		shares[rems[i].memberID]++
+	}
+	return shares, nil
+}
+
 // splitFixed validates the explicit items: every member must be active
 // in this subscription's coterie and appear at most once.
 func (s *Service) splitFixed(ctx context.Context, subscriptionID string, items []FixedShare) (map[string]int64, error) {
@@ -418,6 +493,17 @@ func parseCents(v string) (int64, bool) {
 	i, _ := strconv.ParseInt(intPart, 10, 64)
 	f, _ := strconv.ParseInt(fracPart, 10, 64)
 	return i*100 + f, true
+}
+
+// usageAmountPattern accepts the text forms numeric sums render as.
+var usageAmountPattern = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// parseUsageDecimal converts a ledger sum into an exact rational.
+func parseUsageDecimal(v string) (*big.Rat, bool) {
+	if !usageAmountPattern.MatchString(v) {
+		return nil, false
+	}
+	return new(big.Rat).SetString(v)
 }
 
 // formatCents renders cents as a decimal string with exactly two

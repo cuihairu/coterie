@@ -137,12 +137,20 @@ func TestEqualSplit(t *testing.T) {
 	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
 	periodID, _ := period["id"].(string)
 
-	// Usage mode is Phase 2; unknown modes are rejected.
+	// Usage split with an empty ledger has nothing to split.
 	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
 		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions/generate",
 		`{"mode":"usage"}`, tok)
 	if code != http.StatusUnprocessableEntity {
-		t.Fatalf("usage mode status = %d, want 422: %v", code, body)
+		t.Fatalf("empty usage split status = %d, want 422: %v", code, body)
+	}
+
+	// Unknown modes are rejected.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions/generate",
+		`{"mode":"bogus"}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("bogus mode status = %d, want 422: %v", code, body)
 	}
 
 	resp := generate(t, client, srv.URL, tok, periodID, "")
@@ -311,5 +319,154 @@ func TestFixedSplit(t *testing.T) {
 	amounts := amountsOf(t, body)
 	if len(amounts) != 2 || amounts[0] != "10.00" || amounts[1] != "20.00" {
 		t.Fatalf("fixed amounts = %v, want [10.00 20.00]", amounts)
+	}
+}
+
+func TestUsageSplit(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _, subID, cotID, joined := testsupport.SeedCircle(t, client, srv.URL, "bill-usage", "10.00", 2, 0, 2)
+	owner := testsupport.Member{MemberID: testsupport.OwnerMemberID(t, client, srv.URL, cotID, tok)}
+	m1, m2 := joined[0], joined[1]
+
+	// Seed usage through the API: owner 1 credit, m1 3 credits.
+	for _, tc := range []struct{ member, amount string }{
+		{owner.MemberID, "1"}, {m1.MemberID, "3"},
+	} {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+			srv.URL+"/api/v1/subscriptions/"+subID+"/usage-records",
+			fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":"credits"}`, tc.member, tc.amount), tok)
+		if code != http.StatusCreated {
+			t.Fatalf("seed usage %s: status = %d: %v", tc.member, code, body)
+		}
+	}
+
+	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+	periodID, _ := period["id"].(string)
+	resp := generate(t, client, srv.URL, tok, periodID, "usage")
+	amounts := amountsOf(t, resp)
+	// 10.00 split 1:3 → 2.50 / 7.50, exact.
+	if len(amounts) != 2 || amounts[0] != "2.50" || amounts[1] != "7.50" {
+		t.Fatalf("usage amounts = %v, want [2.50 7.50]", amounts)
+	}
+
+	// Contributions point at the right members: m2 has no usage, so
+	// only two rows exist.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list contributions: status = %d", code)
+	}
+	byMember := map[string]string{}
+	for _, raw := range body["items"].([]any) {
+		c, _ := raw.(map[string]any)
+		mid, _ := c["member_id"].(string)
+		amt, _ := c["amount"].(string)
+		byMember[mid] = amt
+	}
+	if byMember[owner.MemberID] != "2.50" || byMember[m1.MemberID] != "7.50" {
+		t.Fatalf("per-member shares = %v, want owner 2.50 / m1 7.50", byMember)
+	}
+	if _, ok := byMember[m2.MemberID]; ok {
+		t.Fatalf("usage-less member got a contribution: %v", byMember)
+	}
+}
+
+func TestUsageSplitLargestRemainder(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _, subID, cotID, joined := testsupport.SeedCircle(t, client, srv.URL, "bill-urem", "1.00", 2, 0, 2)
+	owner := testsupport.Member{MemberID: testsupport.OwnerMemberID(t, client, srv.URL, cotID, tok)}
+	m1, m2 := joined[0], joined[1]
+
+	// 1.00 over three equal usages → 0.34 (earliest joined) + 0.33 + 0.33.
+	for _, member := range []string{owner.MemberID, m1.MemberID, m2.MemberID} {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+			srv.URL+"/api/v1/subscriptions/"+subID+"/usage-records",
+			fmt.Sprintf(`{"member_id":%q,"amount":"7","unit":"credits"}`, member), tok)
+		if code != http.StatusCreated {
+			t.Fatalf("seed usage: status = %d: %v", code, body)
+		}
+	}
+
+	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+	periodID, _ := period["id"].(string)
+	resp := generate(t, client, srv.URL, tok, periodID, "usage")
+	amounts := amountsOf(t, resp)
+	if len(amounts) != 3 || amounts[0] != "0.33" || amounts[1] != "0.33" || amounts[2] != "0.34" {
+		t.Fatalf("remainder amounts = %v, want [0.33 0.33 0.34]", amounts)
+	}
+	// The extra cent belongs to the earliest-joined member (the owner).
+	for _, raw := range resp["items"].([]any) {
+		c, _ := raw.(map[string]any)
+		mid, _ := c["member_id"].(string)
+		amt, _ := c["amount"].(string)
+		if mid == owner.MemberID && amt != "0.34" {
+			t.Fatalf("owner share = %s, want 0.34 (tie goes to earliest joined)", amt)
+		}
+	}
+}
+
+func TestUsageSplitValidation(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+
+	// Mixed units in one window → 422.
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, srv.URL, "bill-uval", "10.00", 2, 0, 1)
+	seed := func(tok, sub, member, amount, unit, at string) {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+			srv.URL+"/api/v1/subscriptions/"+sub+"/usage-records",
+			fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":%q,"recorded_at":%q}`, member, amount, unit, at), tok)
+		if code != http.StatusCreated {
+			t.Fatalf("seed usage: status = %d: %v", code, body)
+		}
+	}
+	seed(tok, subID, joined[0].MemberID, "1", "credits", "2026-10-05T10:00:00Z")
+	seed(tok, subID, joined[0].MemberID, "1", "GB", "2026-10-06T10:00:00Z")
+	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+	periodID, _ := period["id"].(string)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions/generate", `{"mode":"usage"}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("mixed units status = %d, want 422: %v", code, body)
+	}
+
+	// Records outside the window are invisible → nothing to split.
+	tok2, _, sub2, _, joined2 := testsupport.SeedCircle(t, client, srv.URL, "bill-uval2", "10.00", 2, 0, 1)
+	seed(tok2, sub2, joined2[0].MemberID, "5", "credits", "2026-09-30T23:59:59Z")
+	period = openPeriod(t, client, srv.URL, tok2, sub2, "2026-10-01", "2026-11-01")
+	periodID, _ = period["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions/generate", `{"mode":"usage"}`, tok2)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("out-of-window usage status = %d, want 422: %v", code, body)
+	}
+
+	// A net-negative member blocks the split even with a positive total.
+	tok3, _, sub3, cot3, joined3 := testsupport.SeedCircle(t, client, srv.URL, "bill-uval3", "10.00", 3, 0, 1)
+	seed(tok3, sub3, joined3[0].MemberID, "-3", "credits", "2026-10-02T10:00:00Z") // net negative
+	code, inv := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/coteries/"+cot3+"/invitations", `{"role":"member"}`, tok3)
+	if code != http.StatusCreated {
+		t.Fatalf("invite: status = %d: %v", code, inv)
+	}
+	inviteToken, _ := inv["token"].(string)
+	u3, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "bill-uval3-m2")
+	code, mem := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/invitations/accept", fmt.Sprintf(`{"token":%q}`, inviteToken), u3)
+	if code != http.StatusCreated {
+		t.Fatalf("accept: status = %d: %v", code, mem)
+	}
+	m3, _ := mem["id"].(string)
+	seed(tok3, sub3, m3, "2", "credits", "2026-10-04T10:00:00Z") // total +2 > 0, but m1 nets -3
+	period = openPeriod(t, client, srv.URL, tok3, sub3, "2026-11-01", "2026-12-01")
+	periodID, _ = period["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions/generate", `{"mode":"usage"}`, tok3)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("negative member net status = %d, want 422: %v", code, body)
 	}
 }
