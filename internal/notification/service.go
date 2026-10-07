@@ -16,8 +16,9 @@ import (
 // after their transaction commits; failures are logged, never fatal —
 // a lost notification must not roll back a seat assignment.
 type Service struct {
-	store *Store
-	log   *slog.Logger
+	store    *Store
+	log      *slog.Logger
+	channels []Channel
 }
 
 // NewService builds a Service.
@@ -40,7 +41,9 @@ func (s *Service) Notify(ctx context.Context, userID, typ, title, body, entityTy
 	}
 	if err := s.store.Create(ctx, n); err != nil {
 		s.log.Error("write notification failed", "user_id", userID, "type", typ, "err", err)
+		return
 	}
+	s.dispatchAsync(n)
 }
 
 // List returns the actor's notifications, optionally unread only.

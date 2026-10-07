@@ -868,7 +868,7 @@ Notification
 | FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Payment Adapter 接口 + `payments` 账本已落地，Manual 渠道；真实渠道 → Phase 3 前后） |
 | FR-10 | Sharing Policy | Phase 1（基础限制；UsageLimit 等 → Phase 2） |
 | FR-11 | Invitation | Phase 1 |
-| FR-12 | Notification（Web + Email） | Phase 1（Push / Webhook → Phase 2） |
+| FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook 已落地；Push 后续） |
 | FR-13 | Dashboard | Phase 1 |
 | FR-14 | Admin | Phase 1（基础） |
 | FR-15 | Audit Log | Phase 1 |

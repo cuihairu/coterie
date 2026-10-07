@@ -681,7 +681,7 @@ coterie/
 | `seat` | Seat（订阅容量与分配） |
 | `coterie`（含 member、invitation） | Coterie、Member、Invitation |
 | `billing`（含 contribution） | BillingPeriod、Contribution、Settlement |
-| `notification` | Notification（Web 站内信；Email/Push/Webhook 为 Phase 2 适配器） |
+| `notification` | Notification（Web 站内信 + 出站适配器：Email（SMTP）/ Webhook（HMAC 签名 POST）已落地，Push 后续） |
 | `audit` / `secret` | 支撑能力 |
 | `auth` / `identity` / `user` | 平台账号与会话（D8）、外部身份（扩展点）、用户 |
 
@@ -772,6 +772,8 @@ member.left
 ```
 
 内部同样建议以事件驱动的方式连接模块（如 `member.joined` 触发通知、`payment.completed` 触发 Contribution 状态变更），对应 `pkg/events` 模块。
+
+**出站 Webhook（Phase 2 已落地）**：`WEBHOOK_URL` 配置后，每条站内通知同步 POST 一份 JSON 到该地址（`X-Coterie-Event` = 通知类型；配置 `WEBHOOK_SECRET` 时以 `X-Coterie-Signature` 携带 HMAC-SHA256 签名供接收方验签）；投递异步、尽力而为，失败只记日志不回滚业务。Email 渠道经 `SMTP_*` 配置接入。
 
 ---
 

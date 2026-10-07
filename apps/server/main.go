@@ -15,6 +15,8 @@ import (
 	"github.com/cuihairu/coterie/internal/app"
 	"github.com/cuihairu/coterie/internal/config"
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/notification"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -25,6 +27,22 @@ func main() {
 		log.Error("server exited", "error", err)
 		os.Exit(1)
 	}
+}
+
+// channels builds the outbound notification channels that have
+// configuration present; unconfigured channels stay disabled (FR-12).
+func channels(db *gorm.DB, cfg config.Config) []notification.Channel {
+	var out []notification.Channel
+	email := notification.NewEmailChannel(db, cfg.SMTPHost, cfg.SMTPPort,
+		cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom)
+	if email.Enabled() {
+		out = append(out, email)
+	}
+	webhook := notification.NewWebhookChannel(cfg.WebhookURL, cfg.WebhookSecret)
+	if webhook.Enabled() {
+		out = append(out, webhook)
+	}
+	return out
 }
 
 func run(cfg config.Config, log *slog.Logger) error {
@@ -52,7 +70,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.New(db, log),
+		Handler:           app.New(db, log, app.WithNotificationChannels(channels(db, cfg)...)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

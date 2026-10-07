@@ -25,10 +25,28 @@ import (
 	"github.com/cuihairu/coterie/pkg/api"
 )
 
+// Option customizes the assembled handler.
+type Option func(*options)
+
+type options struct {
+	notificationChannels []notification.Channel
+}
+
+// WithNotificationChannels registers outbound delivery channels (FR-12);
+// production wires them from config in apps/server.
+func WithNotificationChannels(channels ...notification.Channel) Option {
+	return func(o *options) { o.notificationChannels = append(o.notificationChannels, channels...) }
+}
+
 // New assembles the server handler. Every module route sits behind the
-// auth middleware; only healthz and register/login are public. db must
-// not be nil in real runs; tests may pass nil to exercise healthz only.
-func New(db *gorm.DB, log *slog.Logger) http.Handler {
+// auth middleware; only healthz, register/login, the public catalog
+// reads, and the marketplace directory are open. db must not be nil in
+// real runs; tests may pass nil to exercise healthz only.
+func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
+	o := &options{}
+	for _, opt := range opts {
+		opt(o)
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -41,7 +59,7 @@ func New(db *gorm.DB, log *slog.Logger) http.Handler {
 	if db != nil {
 		authSvc := auth.NewService(db)
 		requireUser := authSvc.RequireUser()
-		notifier := notification.NewService(db)
+		notifier := notification.NewServiceWithChannels(db, log, o.notificationChannels...)
 
 		auth.RegisterRoutes(mux, authSvc)
 		user.RegisterRoutes(mux, user.NewService(db), requireUser)

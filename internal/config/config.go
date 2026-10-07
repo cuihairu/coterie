@@ -16,6 +16,16 @@ type Config struct {
 	MigrationsDir  string
 	MigrateOnStart bool
 	LogLevel       slog.Level
+
+	// Outbound notification channels (FR-12). A channel is enabled by
+	// its primary setting; both default to disabled.
+	SMTPHost      string
+	SMTPPort      string
+	SMTPUsername  string
+	SMTPPassword  string
+	SMTPFrom      string
+	WebhookURL    string
+	WebhookSecret string
 }
 
 // Load reads configuration from environment variables, applying defaults.
@@ -26,6 +36,14 @@ func Load() Config {
 		MigrationsDir:  envOr("MIGRATIONS_DIR", "migrations"),
 		MigrateOnStart: envBool("MIGRATE_ON_START", true),
 		LogLevel:       envLevel("LOG_LEVEL", slog.LevelInfo),
+
+		SMTPHost:      os.Getenv("SMTP_HOST"),
+		SMTPPort:      envOr("SMTP_PORT", "587"),
+		SMTPUsername:  os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:  os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:      os.Getenv("SMTP_FROM"),
+		WebhookURL:    os.Getenv("WEBHOOK_URL"),
+		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 	}
 }
 

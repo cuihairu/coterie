@@ -26,6 +26,7 @@ import (
 
 	"github.com/cuihairu/coterie/internal/app"
 	"github.com/cuihairu/coterie/internal/database"
+	"github.com/cuihairu/coterie/internal/notification"
 )
 
 var (
@@ -49,11 +50,18 @@ func NewDB(t *testing.T) *gorm.DB {
 
 // NewServer starts an httptest server around the fully assembled app
 // handler backed by db.
-func NewServer(t *testing.T, db *gorm.DB) *httptest.Server {
+func NewServer(t *testing.T, db *gorm.DB, opts ...app.Option) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(app.New(db, TestLogger()))
+	srv := httptest.NewServer(app.New(db, TestLogger(), opts...))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// NewServerWithChannels starts an httptest server with outbound
+// notification channels registered (FR-12 dispatch path).
+func NewServerWithChannels(t *testing.T, db *gorm.DB, channels ...notification.Channel) *httptest.Server {
+	t.Helper()
+	return NewServer(t, db, app.WithNotificationChannels(channels...))
 }
 
 // TestLogger returns a discard logger for handler assembly in tests.
