@@ -1,0 +1,17 @@
+# Development stack: PostgreSQL only for now.
+# The coterie service will be enabled once the first image is published
+# (see docs/design.md §11 — the target is coterie + postgres, nothing else).
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: coterie
+      POSTGRES_PASSWORD: coterie
+      POSTGRES_DB: coterie
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
