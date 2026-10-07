@@ -92,6 +92,30 @@ func RegisterAndLogin(t *testing.T, client *http.Client, baseURL, tag string) (s
 	return token, id
 }
 
+// OwnerMemberID returns the owner membership id of the coterie — the
+// member id usage records and seat assignments need, as opposed to the
+// owner's platform user id.
+func OwnerMemberID(t *testing.T, client *http.Client, baseURL, coterieID, token string) string {
+	t.Helper()
+	code, body := DoAuthJSON(t, client, http.MethodGet,
+		baseURL+"/api/v1/coteries/"+coterieID+"/members", "", token)
+	if code != http.StatusOK {
+		t.Fatalf("list members: status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	for _, raw := range items {
+		m, _ := raw.(map[string]any)
+		if m["role"] == "owner" {
+			id, _ := m["id"].(string)
+			if id != "" {
+				return id
+			}
+		}
+	}
+	t.Fatalf("no owner member found: %v", body)
+	return ""
+}
+
 // Member is a joined coterie member as seen by the API tests.
 type Member struct {
 	Token    string // the member user's bearer token

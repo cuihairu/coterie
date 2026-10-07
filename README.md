@@ -18,10 +18,11 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> 🚧 **Status: Phase 1 backend complete.** The full REST API works end to end:
-> auth → catalog → subscription → coterie → seats → invitations → manual
-> settlement → notifications. Web and mobile clients have not started yet —
-> the API is the product for now ([design §9](docs/design.md#9-api-design)).
+> 🚧 **Status: Phase 1 backend complete, Phase 2 underway** (usage tracking
+> landed). The full REST API works end to end: auth → catalog →
+> subscription → coterie → seats → invitations → manual settlement →
+> notifications → usage records. Web and mobile clients have not started
+> yet — the API is the product for now ([design §9](docs/design.md#9-api-design)).
 
 ## Quick start
 
@@ -59,7 +60,8 @@ scripts/smoke.sh http://localhost:8080
 | Seats | `/api/v1/seats/{id}` · `assign` · `release` |
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
-| Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` · `/api/v1/contributions/{id}` |
+| Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage) · `/api/v1/contributions/{id}` |
+| Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |
 
 Errors use a single envelope `{"error": {"code", "message", "details?}}`;

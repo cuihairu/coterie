@@ -55,6 +55,7 @@ Subscription ── Seats（容量切分）
 | **Seat** | Subscription 容量的**切分单元**，同时是**通用分配单元**（Quota 模式复用，见 D4） | 不是成员（可空闲），不是账号凭证 | subscription_id, label, status, metadata |
 | **BillingPeriod** | Subscription 的一个**计费区间**，Contribution 的归集单位 | — | subscription_id, start_date, end_date, status |
 | **Contribution** | 成员在某个计费周期内的**费用分摊记录** | 不是支付流水（支付是 Adapter，见 [§4.2](#42-payment-架构)） | billing_period_id, member_id, amount, currency, status |
+| **UsageRecord** | 一条**用量记录**（追加式账本）：订阅内某成员的一次计量消费，可归集到其占用的一个席位 | 不是支付流水，不是配额本身（配额是 Seat metadata，见 D4）；记录只增不改，修正记负数 | subscription_id, member_id, seat_id, amount, unit, recorded_at |
 | **SharingPolicy** | 挂在 Subscription 上的**共享规则**（模式 + 限制），数据驱动而非代码分支 | 不是业务逻辑里的 if-provider | mode, limits（JSONB） |
 | **Invitation** | 进入 Coterie 的**凭证**（token、过期时间、角色） | 不是成员记录，接受后才创建 Member | coterie_id, token, role, expire_at |
 
@@ -79,6 +80,9 @@ erDiagram
     User ||--o{ Member : participates
     BillingPeriod ||--o{ Contribution : aggregates
     Member ||--o{ Contribution : owes
+    Subscription ||--o{ UsageRecord : meters
+    Member ||--o{ UsageRecord : consumes
+    Seat ||--o{ UsageRecord : "attributes-to"
 ```
 
 基数一览（**加粗为关键决策**）：
@@ -96,6 +100,7 @@ erDiagram
 | **Member → Seat** | **0..1 : 0..N** | 一名成员可占多席；任一时刻每个 Seat 至多一名占用者，可空闲。MVP 用 `seats.member_id` 可空外键表达，历史靠 Audit Log |
 | BillingPeriod → Contribution | 1 : N | |
 | Member → Contribution | 1 : N | |
+| Subscription → UsageRecord | 1 : N | 用量账本（Phase 2 Usage Tracking），成员归因、可选席位归集（D9） |
 
 ### 1.3 聚合边界与所有权
 
@@ -108,6 +113,7 @@ Catalog（目录，弱事务）
 Subscription 聚合根（容量与费用的源头）
 ├── Seat[]
 ├── SharingPolicy
+├── UsageRecord[]
 └── BillingPeriod[]
 
 Coterie 聚合根（协作结构）
@@ -170,7 +176,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 - 状态机：`free / occupied / disabled`；
 - 分配：Seat ↔ Member（0..1 占用者），支持空闲、转移、回收（FR-8）；
 - Quota 调整 = 更新 metadata，不新增实体；
-- 使用量（`used`）字段的写入在 Phase 2 与 Usage Tracking 一起实现，本期只占位。
+- 使用量（`used`）的写入由 **Usage Record** 驱动（Phase 2 Usage Tracking）：账本记录落到席位归集后，`used` 重算为该席位归集记录的 SUM（投影，见 D9）；配额本身不被账本行修改。
 
 ### 1.7 各实体设计要点
 
@@ -194,6 +200,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D6** | 币种 | MVP 单币种、无换汇 | Contribution 币种恒等于订阅币种；FX 留待真实支付阶段（Phase 2+） |
 | **D7** | 数据访问层 | **GORM 做 CRUD；AutoMigrate 禁用** | schema 唯一来源仍是手写迁移（`migrations/`），DB 级不变量靠迁移约束保证（[§1.4](#14-关键不变量)）；GORM 只做查询/写入映射，schema 演进由 golang-migrate 在启动时执行 |
 | **D8** | 平台认证 | **Email + 密码（bcrypt）+ 不透明 Bearer 会话令牌** | 密码仅存 bcrypt 哈希（可空，为 OAuth/Passkey 留位）；会话令牌 32B 随机数、DB 只存 SHA-256 哈希，泄露数据库也无法冒用（[§6.1](#61-安全模型)）；OAuth / Passkey / OIDC 作为认证模块的扩展点接入，不写死在核心 |
+| **D9** | Usage 记账 | **追加式账本 + 投影** | `usage_records` 只增不改（修正记负数记录），是用量唯一事实源；quota Seat 的 `metadata.used` 是其席位归集记录的 SUM 投影，写入时行锁重算，不做增量累加（无浮点漂移、可对账）；账期 `usage` 分摊按成员期内用量比例、最大余数法分币，总额精确守恒（[§4.1](#41-billing)） |
 
 ---
 
@@ -352,10 +359,21 @@ Phase 1 落地状态（Manual Settlement，已实现）：
   - `equal`（默认）均摊订阅价格，整除余数按「先加入多一分」分币，总额精确守恒；
   - `per_seat` 按占用席位分摊，无席位成员不产生分摊记录；
   - `fixed` 由 Owner 显式指定成员金额（成员必须活跃且不重复）；
-  - `usage` 返回 422，随 Phase 2 Usage Tracking 落地；
+  - `usage` 按成员在账期窗口 `[start_date, end_date)` 内的用量记录比例分摊：
+    - 窗口内所有记录必须同一 `unit`（混合单位 422）；活跃成员用量合计 ≤ 0（无记录或净负）422；单个成员净用量为负 422（先补负数修正记录对平）；
+    - 席位分币用**最大余数法**（余数并列时先加入者优先），分摊总额精确等于订阅价格；用量为零的成员不产生分摊记录；
+    - 已离开成员的用量不计入分摊基数（与其它 mode 只对活跃成员分摊一致）；
 - 币种恒等于订阅币种（不变量 5）；每成员每账期至多一条 Contribution（不变量 6）；已生成的账期不可重复生成（409）；
 - `POST /api/v1/billing-periods/{id}/close` 单向关闭账期：关闭后禁止再生成与修改金额，但结算状态仍可更新（允许补记）；
 - `PATCH /api/v1/contributions/{id}` 由 Owner 标记 `paid / waived / pending / cancelled`（手动结算）；进入 `paid` 记 `paid_at`，离开即清除。
+
+用量记账（Phase 2 Usage Tracking，Phase 2 起）：
+
+- `POST /api/v1/subscriptions/{id}/usage-records` 由 Owner 记账：`member_id` 必须是订阅圈内活跃成员（不变量 4），`amount` 为十进制字符串、最多 4 位小数、允许负数（修正），`unit` 必填（自由文本，如 `credits` / `GB`），`recorded_at` 缺省为当前时刻；
+- 席位归集：显式给 `seat_id`（必须是该成员占用的本订阅席位）；不给时若成员恰好占用**一个**含 `quota` 的席位则自动归集到它，占多个时 422 要求显式指定；
+- 投影（D9）：归集席位 metadata 含 `quota` 时，事务内行锁重算 `used` = 该席位全部归集记录之 SUM；无 `quota` 的席位只记账不投影；
+- 账本只追加：无 PATCH/DELETE，修正一律记负数记录；
+- `GET /api/v1/subscriptions/{id}/usage-records?member_id=&unit=&from=&to=` 按成员/单位/日期窗口过滤（`from`/`to` 为 `YYYY-MM-DD`，含 to 当日）；`GET /api/v1/usage-records/{id}` 单条查询；读操作对所有已认证用户开放。
 
 ### 4.2 Payment 架构
 
@@ -684,7 +702,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/seats
 /api/v1/billing-periods
 /api/v1/contributions
-/api/v1/notifications
+/api/v1/usage-records
 /api/v1/invitations
 /api/v1/notifications
 ```
