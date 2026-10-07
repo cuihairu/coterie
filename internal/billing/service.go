@@ -148,9 +148,9 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 	if mode == "" {
 		mode = SplitEqual
 	}
-	if mode != SplitEqual && mode != SplitPerSeat && mode != SplitFixed && mode != SplitUsage {
+	if mode != SplitEqual && mode != SplitPerSeat && mode != SplitFixed && mode != SplitUsage && mode != SplitProrated {
 		return nil, api.Validation("invalid split mode",
-			api.Detail{Field: "mode", Message: "must be equal, per_seat, fixed, or usage"})
+			api.Detail{Field: "mode", Message: "must be equal, per_seat, fixed, usage, or prorated"})
 	}
 
 	totalCents, ok := parseCents(sub.Price)
@@ -192,6 +192,13 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 		shares, err = s.splitUsage(ctx, sub, p, members)
 		if err != nil {
 			return nil, err
+		}
+
+	case SplitProrated:
+		shares = splitProrated(totalCents, p, members)
+		if len(shares) == 0 {
+			return nil, api.Validation("nothing to split",
+				api.Detail{Field: "mode", Message: "no active member was in the coterie during this period"})
 		}
 	}
 
@@ -394,20 +401,72 @@ func (s *Service) splitUsage(ctx context.Context, sub *subscription.Subscription
 			api.Detail{Field: "mode", Message: "no positive usage is recorded in this period's window"})
 	}
 
+	// Members order is joined_at ASC — the remainder tie order.
+	weights := make(map[string]*big.Rat, len(sums))
+	for id, r := range sums {
+		weights[id] = r
+	}
+	return splitWeighted(totalCents, members, weights), nil
+}
+
+// splitProrated weights each active member by the days they were in the
+// coterie during the period: from max(joined_at, period start) through
+// the period end, inclusive. Members who joined after the period ended
+// get no share; the split conserves the total exactly.
+func splitProrated(totalCents int64, p *BillingPeriod, members []MemberRef) map[string]int64 {
+	start := p.StartDate.Time.Truncate(24 * time.Hour)
+	end := p.EndDate.Time.Truncate(24 * time.Hour)
+	weights := make(map[string]*big.Rat, len(members))
+	for _, m := range members {
+		from := m.JoinedAt.UTC().Truncate(24 * time.Hour)
+		if from.Before(start) {
+			from = start
+		}
+		if from.After(end) {
+			continue // joined after this period — not chargeable here
+		}
+		days := int64(end.Sub(from)/(24*time.Hour)) + 1
+		weights[m.ID] = big.NewRat(days, 1)
+	}
+	if len(weights) == 0 {
+		return nil
+	}
+	return splitWeighted(totalCents, members, weights)
+}
+
+// splitWeighted divides totalCents proportionally to the weights
+// (largest-remainder method): every member's exact share is floored and
+// the leftover cents go to the largest fractional remainders, ties
+// broken by the members slice order (joined_at ASC). The shares sum to
+// totalCents exactly.
+func splitWeighted(totalCents int64, members []MemberRef, weights map[string]*big.Rat) map[string]int64 {
+	var totalWeight *big.Rat
+	for _, m := range members {
+		if w, ok := weights[m.ID]; ok {
+			if totalWeight == nil {
+				totalWeight = new(big.Rat)
+			}
+			totalWeight.Add(totalWeight, w)
+		}
+	}
+	if totalWeight == nil || totalWeight.Sign() <= 0 {
+		return nil
+	}
+
 	type remainder struct {
 		memberID string
 		rest     *big.Rat
 	}
 	price := new(big.Rat).SetInt64(totalCents)
-	shares := make(map[string]int64, len(sums))
+	shares := make(map[string]int64, len(weights))
 	assigned := int64(0)
 	var rems []remainder
 	for _, m := range members {
-		r, ok := sums[m.ID]
+		w, ok := weights[m.ID]
 		if !ok {
 			continue
 		}
-		exact := new(big.Rat).Mul(price, new(big.Rat).Quo(r, totalUsage))
+		exact := new(big.Rat).Mul(price, new(big.Rat).Quo(w, totalWeight))
 		floor := new(big.Int).Quo(exact.Num(), exact.Denom()) // exact ≥ 0
 		cents := floor.Int64()
 		assigned += cents
@@ -419,7 +478,7 @@ func (s *Service) splitUsage(ctx context.Context, sub *subscription.Subscription
 	for i := 0; i < int(remCents) && i < len(rems); i++ {
 		shares[rems[i].memberID]++
 	}
-	return shares, nil
+	return shares
 }
 
 // splitFixed validates the explicit items: every member must be active

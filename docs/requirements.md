@@ -865,7 +865,7 @@ Notification
 | FR-6 | 共享模式 | Phase 1（Account / Seat / Family 基础支持）；Phase 2（Quota 用量记账与 usage 分摊，见设计 D9）；Phase 3（Provider 插件 UsageValidator 记账复验面，见 D12；Resource 共享后续扩展） |
 | FR-7 | Member | Phase 1 |
 | FR-8 | Seat | Phase 1 |
-| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；`auto_billing` 调度器滚期见设计 D13；真实渠道 → 后续） |
+| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；`auto_billing` 调度器滚期见设计 D13；`prorated` 按天比例分摊；真实渠道 → 后续） |
 | FR-10 | Sharing Policy | Phase 1（基础限制）；Phase 3（MemberLimit `max_members` 准入强制 + Provider 插件策略复验/准入守卫已落地，见设计 D12；其余 Limit 后续扩展） |
 | FR-11 | Invitation | Phase 1 |
 | FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook 已落地；Push 后续） |

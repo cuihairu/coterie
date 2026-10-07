@@ -21,7 +21,7 @@ services and more.
 > 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
 > underway** (provider plugin face with policy/admission/usage hooks,
 > sandbox payment channel registered via config, auto-billing
-> rollover scheduler; usage tracking,
+> rollover scheduler, prorated (per-day) split; usage tracking,
 > quota, marketplace, provider catalog, payment adapter, and the
 > email/webhook notification channels all landed). The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
@@ -67,7 +67,7 @@ scripts/smoke.sh http://localhost:8080
 | Seats | `/api/v1/seats/{id}` · `assign` · `release` |
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
-| Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage) · `/api/v1/contributions/{id}` |
+| Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage / prorated) · `/api/v1/contributions/{id}` |
 | Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual, plus configured channels) · `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |

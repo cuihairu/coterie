@@ -470,3 +470,51 @@ func TestUsageSplitValidation(t *testing.T) {
 		t.Fatalf("negative member net status = %d, want 422: %v", code, body)
 	}
 }
+
+// The prorated split (advanced billing) weights each active member by
+// the days they were in the coterie during the period: a member who
+// joined mid-period owes only their slice of the window.
+func TestProratedSplit(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, base, "bill-prorate", "30.00", 4, 0, 1)
+
+	// Backdate the join instants to stand in for time travel: the owner
+	// spans the whole September period (30 days), the member joined
+	// 2026-09-25 (6 days). joined_at is write-once over the API, so the
+	// raw handle does the backdating.
+	if err := db.Exec(`UPDATE members SET joined_at = '2026-08-01 10:00:00+00'`).Error; err != nil {
+		t.Fatalf("backdate owner join: %v", err)
+	}
+	if err := db.Exec(`UPDATE members SET joined_at = '2026-09-25 10:00:00+00' WHERE id = ?`, joined[0].MemberID).Error; err != nil {
+		t.Fatalf("backdate member join: %v", err)
+	}
+
+	p := openPeriod(t, client, base, tok, subID, "2026-09-01", "2026-09-30")
+	pid, _ := p["id"].(string)
+	resp := generate(t, client, base, tok, pid, "prorated")
+
+	// 30.00 splits 30:6 → 25.00 + 5.00 exactly (amountsOf sorts as
+	// strings, so 25.00 precedes 5.00).
+	if got := amountsOf(t, resp); len(got) != 2 || got[0] != "25.00" || got[1] != "5.00" {
+		t.Fatalf("prorated amounts = %v, want [25.00 5.00]", got)
+	}
+
+	// A period entirely before anyone joined has no chargeable days.
+	p = openPeriod(t, client, base, tok, subID, "2026-01-01", "2026-01-31")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/billing-periods/"+p["id"].(string)+"/contributions/generate",
+		`{"mode":"prorated"}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty window: status = %d, want 422: %v", code, body)
+	}
+
+	// A period starting after every join gives everyone full weight:
+	// an October period splits equally.
+	p = openPeriod(t, client, base, tok, subID, "2026-10-01", "2026-10-31")
+	resp = generate(t, client, base, tok, p["id"].(string), "prorated")
+	if got := amountsOf(t, resp); len(got) != 2 || got[0] != "15.00" || got[1] != "15.00" {
+		t.Fatalf("full-window amounts = %v, want [15.00 15.00]", got)
+	}
+}

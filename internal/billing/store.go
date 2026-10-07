@@ -84,7 +84,7 @@ func (s *Store) ActiveMembers(ctx context.Context, subscriptionID string) ([]Mem
 	var members []MemberRef
 	err := s.db.WithContext(ctx).
 		Table("members m").
-		Select("m.id, m.user_id, m.role").
+		Select("m.id, m.user_id, m.role, m.joined_at").
 		Joins("JOIN coteries c ON c.id = m.coterie_id").
 		Where("c.subscription_id = ? AND m.status = ? AND m.left_at IS NULL", subscriptionID, "active").
 		Order("m.joined_at ASC, m.id ASC").
@@ -92,11 +92,13 @@ func (s *Store) ActiveMembers(ctx context.Context, subscriptionID string) ([]Mem
 	return members, err
 }
 
-// MemberRef is the slice of a member row billing needs.
+// MemberRef is the slice of a member row billing needs. JoinedAt backs
+// the prorated split's day weights.
 type MemberRef struct {
-	ID     string
-	UserID string
-	Role   string
+	ID       string
+	UserID   string
+	Role     string
+	JoinedAt time.Time
 }
 
 // ActiveMember check for fixed-mode validation.

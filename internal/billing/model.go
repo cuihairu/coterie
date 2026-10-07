@@ -23,13 +23,13 @@ const (
 	ContributionCancelled = "cancelled"
 )
 
-// Split modes for generating contributions. Usage-based splitting
-// arrives with Phase 2 usage tracking.
+// Split modes for generating contributions.
 const (
-	SplitEqual   = "equal"
-	SplitPerSeat = "per_seat"
-	SplitFixed   = "fixed"
-	SplitUsage   = "usage"
+	SplitEqual    = "equal"
+	SplitPerSeat  = "per_seat"
+	SplitFixed    = "fixed"
+	SplitUsage    = "usage"
+	SplitProrated = "prorated"
 )
 
 // BillingPeriod is one chargeable window of a subscription. Periods

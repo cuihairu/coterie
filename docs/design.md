@@ -367,6 +367,7 @@ Phase 1 落地状态（Manual Settlement，已实现）：
     - 窗口内所有记录必须同一 `unit`（混合单位 422）；活跃成员用量合计 ≤ 0（无记录或净负）422；单个成员净用量为负 422（先补负数修正记录对平）；
     - 席位分币用**最大余数法**（余数并列时先加入者优先），分摊总额精确等于订阅价格；用量为零的成员不产生分摊记录；
     - 已离开成员的用量不计入分摊基数（与其它 mode 只对活跃成员分摊一致）；
+  - `prorated`（Phase 3 高级计费）按成员在账期内的**在圈天数**加权：权重 = `max(joined_at, start_date)` 至 `end_date` 的含端天数；期后才加入的成员不产生分摊记录，全部成员覆盖为零（如账期早于入圈）422；与 `usage` 共用最大余数法分币引擎，总额精确守恒——中期加入按天计费的语义落在 Owner 显式选择，auto_billing 滚期仍用 `equal`（D13）；
 - 币种恒等于订阅币种（不变量 5）；每成员每账期至多一条 Contribution（不变量 6）；已生成的账期不可重复生成（409）；
 - `POST /api/v1/billing-periods/{id}/close` 单向关闭账期：关闭后禁止再生成与修改金额，但结算状态仍可更新（允许补记）；
 - `PATCH /api/v1/contributions/{id}` 由 Owner 标记 `paid / waived / pending / cancelled`（手动结算）；进入 `paid` 记 `paid_at`，离开即清除。
