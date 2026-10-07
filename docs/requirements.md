@@ -860,7 +860,7 @@ Notification
 | 编号 | 需求 | 阶段 |
 |------|------|------|
 | FR-1 | 用户与认证 | Phase 1 |
-| FR-2 | Provider（含 Generic Provider） | Phase 1；Phase 2（目录公开读 + 种子注册表，见设计 §5.4/§6.1）；Phase 3（插件面 PolicyValidator/AdmissionGuard，见 D12） |
+| FR-2 | Provider（含 Generic Provider） | Phase 1；Phase 2（目录公开读 + 种子注册表，见设计 §5.4/§6.1）；Phase 3（插件面 PolicyValidator/AdmissionGuard，见 D12；真实插件样例 `claude` 绑定种子目录 slug，经 `PROVIDER_PLUGINS` 注册，见 D16） |
 | FR-3 | Product | Phase 1 |
 | FR-4 | Subscription | Phase 1 |
 | FR-5 | Coterie 与生命周期 | Phase 1 |

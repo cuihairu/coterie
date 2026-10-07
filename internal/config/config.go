@@ -33,6 +33,11 @@ type Config struct {
 	// with a warning at startup.
 	PaymentMethods []string
 
+	// Provider plugins to register on top of the always-empty registry
+	// (design §5.1/§5.2), comma-separated; unknown names are skipped
+	// with a warning at startup.
+	ProviderPlugins []string
+
 	// Cadence of the billing rollover scheduler (design D13); 0
 	// disables the scheduler entirely. Parses Go duration strings
 	// ("1h", "30s").
@@ -57,6 +62,8 @@ func Load() Config {
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 
 		PaymentMethods: envList("PAYMENT_METHODS"),
+
+		ProviderPlugins: envList("PROVIDER_PLUGINS"),
 
 		AutoBillingInterval: envDuration("AUTO_BILLING_INTERVAL", time.Hour),
 	}

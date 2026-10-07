@@ -207,6 +207,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D13** | 账务自动化 | **调度器滚期 + Owner 身份代办** | `auto_billing`（订阅级开关，默认关）开启后，进程内调度器（`AUTO_BILLING_INTERVAL`，默认 1h，0 关闭）在**前沿账期**（start_date 最大者）结束后以 **Owner 身份**走同一 billing 服务开下一期并按 `equal` 生成分摊——唯一约束/守恒/通知等全部不变量原样生效；monthly/yearly 可推算下期区间，`custom` 跳过（无法推算周期长度，保持手动）；首期恒手动（价格与起日是 Owner 决策）；滚期成功后 `subscription_renewal` 通知 Owner 及上期未结笔数（[§4.1](#41-billing)） |
 | **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
 | **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
+| **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
 
 ---
 
@@ -478,15 +479,27 @@ Phase 3 起插件面落地（ADR D12）：`internal/provider` 定义 `Plugin`（
 
 `Registry` 按 slug 索引插件，**空注册表 = 全 Generic 语义**（§5.3）：不注册任何插件时上述钩子全部旁路，现有行为不变。
 
-### 5.2 目录结构
+### 5.2 目录结构与真实样例
+
+每个 Provider 插件是独立包，按 slug 绑定目录条目（§5.4）：
 
 ```text
 providers/
-├── generic/
-├── netflix/
-├── spotify/
-└── ...
+└── claude/          # 真实样例（ADR D16）
+    ├── plugin.go    # Slug 常量 + 编译期接口断言
+    ├── policy.go    # PolicyValidator：region/plan 复验
+    ├── admission.go # AdmissionGuard：pro 拒绝加入、max 限 5 人
+    ├── usage.go     # UsageValidator：tokens/requests 单笔上限
+    └── plugin_test.go
 ```
+
+`claude` 样例的契约（迁移 `0006` 预置了 slug 为 `claude` 的目录条目与 Pro/Max 套餐）：
+
+- **策略（PolicyValidator）**：`sharing_policy.region` 必填且 ∈ `{us,eu}`（数据驻留约束）；可选 `plan ∈ {pro,max}`，缺省 `max`。其余字段（如 `mode`）仍由核心先校验；
+- **准入（AdmissionGuard）**：`plan=pro` 是个人套餐——拒绝一切成员加入（409）；`plan=max` 圈内总人数（含 Owner）至多 5 人（409）。核心的 `max_seats`/`max_members` 约束照常独立生效；
+- **记账（UsageValidator）**：仅接受 `tokens` / `requests` 单位，单笔记录上限 10,000,000 tokens / 100,000 requests；负数（修正记录）按绝对值同限放行。
+
+注册走环境变量 `PROVIDER_PLUGINS`（逗号分隔，与 `PAYMENT_METHODS` 同模式）：二进制内有一个 slug → 实现的映射表，未知名警告跳过——不注册任何插件时该 Provider 表现为 Generic（§5.3）。插件包只依赖 `internal/provider` 的接口与 `pkg/api` 的错误构造，反向依赖核心业务模块。
 
 ### 5.3 Generic Provider
 
@@ -901,7 +914,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）。
 
 实现阶段仍需确认的细节：
 

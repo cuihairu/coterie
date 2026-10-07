@@ -19,6 +19,8 @@ import (
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/payment"
+	"github.com/cuihairu/coterie/internal/provider"
+	"github.com/cuihairu/coterie/providers/claude"
 	"gorm.io/gorm"
 )
 
@@ -65,6 +67,23 @@ func paymentAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
 	return out
 }
 
+// providerPlugins maps configured plugin names to the implementations
+// the binary knows (design §5.2); the registry starts empty, so without
+// configuration every provider behaves Generic. Unknown names are
+// skipped with a warning so a typo doesn't kill the server.
+func providerPlugins(cfg config.Config, log *slog.Logger) []provider.Plugin {
+	var out []provider.Plugin
+	for _, name := range cfg.ProviderPlugins {
+		switch name {
+		case claude.Slug:
+			out = append(out, claude.Plugin{})
+		default:
+			log.Warn("unknown provider plugin in PROVIDER_PLUGINS, skipping", "plugin", name)
+		}
+	}
+	return out
+}
+
 func run(cfg config.Config, log *slog.Logger) error {
 	// Normalize the process to UTC: pgx decodes timestamptz into
 	// time.Local, so the host's local zone would otherwise leak into
@@ -92,7 +111,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Addr: ":" + cfg.Port,
 		Handler: app.New(db, log,
 			app.WithNotificationChannels(channels(db, cfg)...),
-			app.WithPaymentAdapters(paymentAdapters(cfg, log)...)),
+			app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
+			app.WithProviderPlugins(providerPlugins(cfg, log)...)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

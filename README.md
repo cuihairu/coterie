@@ -19,7 +19,8 @@ among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
 > 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
-> complete** (provider plugin face with policy/admission/usage hooks,
+> complete** (provider plugin face with policy/admission/usage hooks
+> plus a real `claude` plugin sample registered via `PROVIDER_PLUGINS`,
 > sandbox payment channel registered via config, auto-billing
 > rollover scheduler, prorated (per-day) split, contribution
 > disputes with owner decisions, and derived settlement reputation —
