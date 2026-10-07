@@ -873,5 +873,5 @@ Notification
 | FR-14 | Admin | Phase 1（基础） |
 | FR-15 | Audit Log | Phase 1 |
 | FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10；支付门槛随 Payment Adapter） |
-| FR-17 | Dispute | Phase 3 |
+| FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |

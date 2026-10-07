@@ -13,6 +13,7 @@ import (
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/coterie"
+	"github.com/cuihairu/coterie/internal/dispute"
 	"github.com/cuihairu/coterie/internal/marketplace"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/payment"
@@ -88,6 +89,7 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		coterie.RegisterRoutes(mux, coterieSvc, requireUser)
 		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier), requireUser)
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
+		dispute.RegisterRoutes(mux, dispute.NewService(db, notifier), requireUser)
 		// Manual stays registered no matter what's configured on top.
 		paymentAdapters := append([]payment.Adapter{payment.Manual{}}, o.paymentAdapters...)
 		payment.RegisterRoutes(mux, payment.NewServiceWithAdapters(db, notifier, paymentAdapters...), requireUser)

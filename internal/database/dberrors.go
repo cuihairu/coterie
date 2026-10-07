@@ -19,3 +19,22 @@ func IsFKViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
+
+// IsCheckViolation reports whether err is a PostgreSQL check constraint
+// violation (SQLSTATE 23514) on any of the named constraints; an empty
+// list matches any check violation.
+func IsCheckViolation(err error, constraints ...string) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		return false
+	}
+	if len(constraints) == 0 {
+		return true
+	}
+	for _, c := range constraints {
+		if pgErr.ConstraintName == c {
+			return true
+		}
+	}
+	return false
+}

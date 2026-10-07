@@ -205,6 +205,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D11** | Payment Adapter | **接口 + Manual 内置 + 只增账本** | `Adapter` 接口（`Charge→Receipt`）是唯一渠道接缝；`payments` 只增不改，金额/币种恒取自 Contribution（不变量 5），落账与 Contribution 置 `paid` 同事务；Owner 或付款成员可登记；真实渠道（Stripe 等）以新适配器接入，不改核心（[§4.2](#42-payment-架构)） |
 | **D12** | Provider 插件面 | **按 slug 绑定 + 可选能力接口** | `Plugin` + 可选 `PolicyValidator`（订阅策略复验）/ `AdmissionGuard`（准入拒绝）/ `UsageValidator`（用量记账复验）；Registry 为空时全 Generic 语义，核心零依赖特定 Provider（[§5.1](#51-原则)）；核心准入同时执行 `max_members`（MemberLimit） |
 | **D13** | 账务自动化 | **调度器滚期 + Owner 身份代办** | `auto_billing`（订阅级开关，默认关）开启后，进程内调度器（`AUTO_BILLING_INTERVAL`，默认 1h，0 关闭）在**前沿账期**（start_date 最大者）结束后以 **Owner 身份**走同一 billing 服务开下一期并按 `equal` 生成分摊——唯一约束/守恒/通知等全部不变量原样生效；monthly/yearly 可推算下期区间，`custom` 跳过（无法推算周期长度，保持手动）；首期恒手动（价格与起日是 Owner 决策）；滚期成功后 `subscription_renewal` 通知 Owner 及上期未结笔数（[§4.1](#41-billing)） |
+| **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
 
 ---
 
@@ -412,6 +413,19 @@ Payment
 Phase 2 落地（ADR D11）：`internal/payment` 定义 `Adapter` 接口（`Name` + `Charge(Charge) → Receipt`），MVP 仅内置 **Manual** 适配器（线下收款后登记，恒成功）；`payments` 表只增不改（金额/币种恒取自 Contribution，不变量 5），`POST /api/v1/contributions/{id}/payments` 在同一事务内完成「渠道应答 → 落账 → Contribution 置 `paid`/`paid_at`」；Owner 或付款成员本人可登记；已结算/不可支付（waived/cancelled）409；Stripe 等真实渠道后续以新适配器接入，Check 清单随迁移扩展。
 
 Phase 3 补充：适配器经 `app.WithPaymentAdapters` 注册（`PAYMENT_METHODS` 环境变量驱动，Manual 恒注册），`GET /api/v1/payments/methods` 列出已注册渠道；内置 **Sandbox** 演示渠道（离线确定性应答，外部单号 `sbx_` 前缀）作为插件接缝的端到端模板，`payments.method` CHECK 随迁移 0008 扩展为 `('manual','sandbox')`（D11「Check 清单随迁移扩展」的首次演练）。
+
+---
+
+### 4.3 Dispute
+
+争议是**独立账本**（ADR D14，FR-17）：成员对分摊提出异议，Owner 裁决，裁决本身不触碰资金——这是争议与结算的解耦边界。
+
+Phase 3 落地：
+
+- `POST /api/v1/contributions/{id}/disputes` 由 Owner 或圈内活跃成员发起：`reason` 必填（1–1000 字符），`evidence` 选填（≤2000）；每条分摊同时至多一个 open 争议（部分唯一索引兜底 409）；`cancelled` 分摊不可争议（无应收即无争议）；
+- `POST /api/v1/disputes/{id}/decide` 仅 Owner：`decision` 取 `resolved` / `rejected`，`note` 选填（≤1000）；单向裁决（`WHERE status='open'` 原子翻转，重复裁决 409），记 `decided_by`/`decided_at`；裁决不修改分摊状态，需退免时 Owner 经 `PATCH /api/v1/contributions/{id}` 自行操作；
+- `GET /api/v1/disputes/{id}` 对 Owner、发起人、付款成员开放；`GET /api/v1/subscriptions/{id}/disputes?status=` 仅 Owner（open/resolved/rejected 过滤）；
+- 通知：发起 → Owner `dispute_opened`；裁决 → 发起人 `dispute_decided`（类型清单随迁移 0010 扩展）。
 
 ---
 
@@ -726,6 +740,7 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/contributions
 /api/v1/payments
 /api/v1/payments/methods
+/api/v1/disputes
 /api/v1/usage-records
 /api/v1/join-requests
 /api/v1/marketplace
@@ -873,7 +888,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理。
 
 实现阶段仍需确认的细节：
 

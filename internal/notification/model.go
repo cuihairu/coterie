@@ -16,6 +16,8 @@ const (
 	TypeJoinRequested       = "join_requested"
 	TypeJoinDecided         = "join_decided"
 	TypePaymentReceived     = "payment_received"
+	TypeDisputeOpened       = "dispute_opened"
+	TypeDisputeDecided      = "dispute_decided"
 )
 
 // Notification is one in-app message for a user. Read state is a
