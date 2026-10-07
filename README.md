@@ -18,10 +18,53 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> ⚠️ **Status: early development.** Coterie is being rebuilt around a generic
-> domain model (it started as a streaming-account sharing app). The Phase 1 MVP
-> is not usable yet — see the [roadmap](#roadmap) and the planning docs below
-> to see where things are heading.
+> 🚧 **Status: Phase 1 backend complete.** The full REST API works end to end:
+> auth → catalog → subscription → coterie → seats → invitations → manual
+> settlement → notifications. Web and mobile clients have not started yet —
+> the API is the product for now ([design §9](docs/design.md#9-api-design)).
+
+## Quick start
+
+Requires Go 1.25+ and a PostgreSQL 15+ instance (migrations apply
+automatically on startup).
+
+```bash
+# 1. Configure (see .env.example for all variables)
+export DATABASE_URL=postgres://coterie:coterie@localhost:5432/coterie?sslmode=disable
+export PORT=8080
+
+# 2. Run
+go run ./apps/server
+```
+
+Every route except `GET /healthz`, `POST /api/v1/auth/register`, and
+`POST /api/v1/auth/login` needs `Authorization: Bearer <token>` (tokens are
+issued on register/login and live for 30 days).
+
+A complete smoke test of the MVP journey (register → provider → product →
+subscription → coterie → seats → invite → join → billing → settlement →
+notifications) against a running server:
+
+```bash
+scripts/smoke.sh http://localhost:8080
+```
+
+## API overview (v1)
+
+| Area | Endpoints |
+|------|-----------|
+| Auth | `POST /api/v1/auth/register` · `login` · `logout` · `GET me` |
+| Catalog | `/api/v1/providers` · `/api/v1/products` (CRUD) |
+| Subscription | `/api/v1/subscriptions` (CRUD) · `/api/v1/subscriptions/{id}/seats` |
+| Seats | `/api/v1/seats/{id}` · `assign` · `release` |
+| Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
+| Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
+| Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` · `/api/v1/contributions/{id}` |
+| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |
+
+Errors use a single envelope `{"error": {"code", "message", "details?}}`;
+lists use `{"items": [...], "meta": {total, limit, offset}}`. Details in the
+[design doc](docs/design.md).
 
 ## How it works
 
