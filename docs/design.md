@@ -613,16 +613,15 @@ coterie/
 │   ├── testsupport/     # testcontainers 测试基建（PG18 + 迁移）
 │   ├── app/             # 路由装配（healthz + 各模块），main 之外可测试
 │   ├── identity/
+│   ├── auth/            # ✅ M2a：注册/登录/会话 + RequireUser 中间件
 │   ├── user/            # ✅ M1：model/store/service/http + 集成测试
 │   ├── provider/        # ✅ M1：同上
 │   ├── product/         # ✅ M1：同上
 │   ├── subscription/    # ✅ M1：同上
-│   ├── coterie/
-│   ├── member/
-│   ├── seat/
+│   ├── seat/            # ✅ M2b：席位（容量管理、分配/释放/转移）
+│   ├── coterie/         # ✅ M2b：圈聚合（含 member 与 invitation，事务同聚合）
 │   ├── billing/
 │   ├── contribution/
-│   ├── invitation/
 │   ├── notification/
 │   ├── audit/
 │   └── secret/
@@ -644,10 +643,11 @@ coterie/
 |------|----------|
 | `provider` / `product` | Provider、Product |
 | `subscription` | Subscription、Sharing Policy |
-| `coterie` / `member` / `seat` | Coterie、Member、Seat |
+| `seat` | Seat（订阅容量与分配） |
+| `coterie`（含 member、invitation） | Coterie、Member、Invitation |
 | `billing` / `contribution` | Contribution、Settlement |
-| `invitation` / `notification` / `audit` / `secret` | 支撑能力 |
-| `identity` / `user` | 用户与认证 |
+| `notification` / `audit` / `secret` | 支撑能力 |
+| `auth` / `identity` / `user` | 平台账号与会话（D8）、外部身份（扩展点）、用户 |
 
 具体目录可根据实际代码调整。
 

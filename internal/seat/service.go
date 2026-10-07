@@ -36,9 +36,20 @@ func NewService(db *gorm.DB) *Service {
 // continuing from the existing ones. Total seats must stay within
 // subscription.max_seats.
 func (s *Service) Provision(ctx context.Context, actor *user.User, subscriptionID string, req ProvisionRequest) ([]Seat, error) {
-	sub, err := s.loadSubscription(ctx, subscriptionID)
+	return s.ProvisionOn(ctx, s.store.db, actor, subscriptionID, req)
+}
+
+// ProvisionOn is Provision against an explicit database handle so the
+// coterie module can include seat provisioning inside its own
+// transaction when bootstrapping a circle.
+func (s *Service) ProvisionOn(ctx context.Context, db *gorm.DB, actor *user.User, subscriptionID string, req ProvisionRequest) ([]Seat, error) {
+	store := NewStore(db)
+	sub, err := store.SubscriptionByID(ctx, subscriptionID)
 	if err != nil {
 		return nil, err
+	}
+	if sub == nil {
+		return nil, api.NotFound("subscription %s not found", subscriptionID)
 	}
 	if err := requireOwner(sub, actor); err != nil {
 		return nil, err
@@ -48,7 +59,7 @@ func (s *Service) Provision(ctx context.Context, actor *user.User, subscriptionI
 			api.Detail{Field: "count", Message: "must be greater than 0"})
 	}
 
-	existing, err := s.store.CountBySubscription(ctx, sub.ID)
+	existing, err := store.CountBySubscription(ctx, sub.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +82,20 @@ func (s *Service) Provision(ctx context.Context, actor *user.User, subscriptionI
 			UpdatedAt:      now,
 		}
 	}
-	if err := s.store.Create(ctx, seats); err != nil {
+	if err := store.Create(ctx, seats); err != nil {
 		if database.IsUniqueViolation(err) {
 			return nil, api.Conflict("seat label already exists for this subscription")
 		}
 		return nil, err
 	}
 	return seats, nil
+}
+
+// ReleaseMemberSeatsOn frees every seat the member occupies, on the
+// given database handle. Coterie membership removal calls this inside
+// its transaction so a departing member never keeps a seat.
+func (s *Service) ReleaseMemberSeatsOn(ctx context.Context, db *gorm.DB, memberID string) (int64, error) {
+	return NewStore(db).ReleaseByMember(ctx, memberID)
 }
 
 // Get returns the seat, mapping absence to 404.
