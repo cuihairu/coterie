@@ -811,6 +811,8 @@ Account Reputation
 Dispute
 ```
 
+Phase 3 进展：Dispute 已落地（FR-17，设计 D14）；Account Reputation 以**纯派生**形式落地（FR-18，设计 D15——从 contributions 账本聚合缴纳统计，无手工评分面）；Anti-spam / Fraud Detection 后续扩展。
+
 ---
 
 ## 6. MVP 范围
@@ -874,4 +876,5 @@ Notification
 | FR-15 | Audit Log | Phase 1 |
 | FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10；支付门槛随 Payment Adapter） |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
+| FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Marketplace 展示位后续扩展） |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |

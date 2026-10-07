@@ -206,6 +206,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D12** | Provider 插件面 | **按 slug 绑定 + 可选能力接口** | `Plugin` + 可选 `PolicyValidator`（订阅策略复验）/ `AdmissionGuard`（准入拒绝）/ `UsageValidator`（用量记账复验）；Registry 为空时全 Generic 语义，核心零依赖特定 Provider（[§5.1](#51-原则)）；核心准入同时执行 `max_members`（MemberLimit） |
 | **D13** | 账务自动化 | **调度器滚期 + Owner 身份代办** | `auto_billing`（订阅级开关，默认关）开启后，进程内调度器（`AUTO_BILLING_INTERVAL`，默认 1h，0 关闭）在**前沿账期**（start_date 最大者）结束后以 **Owner 身份**走同一 billing 服务开下一期并按 `equal` 生成分摊——唯一约束/守恒/通知等全部不变量原样生效；monthly/yearly 可推算下期区间，`custom` 跳过（无法推算周期长度，保持手动）；首期恒手动（价格与起日是 Owner 决策）；滚期成功后 `subscription_renewal` 通知 Owner 及上期未结笔数（[§4.1](#41-billing)） |
 | **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
+| **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
 
 ---
 
@@ -426,6 +427,18 @@ Phase 3 落地：
 - `POST /api/v1/disputes/{id}/decide` 仅 Owner：`decision` 取 `resolved` / `rejected`，`note` 选填（≤1000）；单向裁决（`WHERE status='open'` 原子翻转，重复裁决 409），记 `decided_by`/`decided_at`；裁决不修改分摊状态，需退免时 Owner 经 `PATCH /api/v1/contributions/{id}` 自行操作；
 - `GET /api/v1/disputes/{id}` 对 Owner、发起人、付款成员开放；`GET /api/v1/subscriptions/{id}/disputes?status=` 仅 Owner（open/resolved/rejected 过滤）；
 - 通知：发起 → Owner `dispute_opened`；裁决 → 发起人 `dispute_decided`（类型清单随迁移 0010 扩展）。
+
+---
+
+### 4.4 Reputation
+
+信誉（ADR D15，FR-18）是**账本投影，不是模型**：用户作为成员的结算表现完全由 contributions 历史派生。
+
+Phase 3 落地：
+
+- `GET /api/v1/users/{id}/reputation`（任意已认证用户可读，计费读基线）：状态计数（`paid`/`pending`/`waived`/`cancelled`）、各币种 `paid`/`pending` 金额、`payment_ratio`；
+- `payment_ratio` 只对「曾应收」的分摊（paid+pending）计算；waived/cancelled 从不入分母；无应收历史返回 `null` 而非虚假满分；
+- 无写入端点：信誉不可编辑、不可人工评分，随账本只增而更新。Marketplace 目录展示位（Owner/成员信誉徽标）留作后续增量。
 
 ---
 
@@ -888,7 +901,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉。
 
 实现阶段仍需确认的细节：
 

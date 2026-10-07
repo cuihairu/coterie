@@ -22,7 +22,8 @@ services and more.
 > underway** (provider plugin face with policy/admission/usage hooks,
 > sandbox payment channel registered via config, auto-billing
 > rollover scheduler, prorated (per-day) split, contribution
-> disputes with owner decisions; usage tracking,
+> disputes with owner decisions, derived settlement reputation;
+> usage tracking,
 > quota, marketplace, provider catalog, payment adapter, and the
 > email/webhook notification channels all landed). The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
@@ -71,6 +72,7 @@ scripts/smoke.sh http://localhost:8080
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage / prorated) · `/api/v1/contributions/{id}` |
 | Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual, plus configured channels) · `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` |
 | Disputes | `POST /api/v1/contributions/{id}/disputes` · `POST /api/v1/disputes/{id}/decide` (owner) · `GET /api/v1/subscriptions/{id}/disputes` |
+| Reputation | `GET /api/v1/users/{id}/reputation` (derived settlement stats) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |
