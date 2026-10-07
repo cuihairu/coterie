@@ -1,3 +1,4 @@
-// Package seat manages seats — the allocatable capacity units of a
-// subscription. Quota sharing reuses seats via metadata (design D4).
+// Package seat implements seat management for the subscription aggregate:
+// seats carry the shareable capacity of a subscription (design §1.6) and
+// are assigned to active members of the subscription's coterie.
 package seat

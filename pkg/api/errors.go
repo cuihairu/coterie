@@ -38,6 +38,11 @@ func Unauthorized(format string, args ...any) *APIError {
 	return &APIError{Status: http.StatusUnauthorized, Code: "unauthorized", Message: fmt.Sprintf(format, args...)}
 }
 
+// Forbidden reports an authenticated actor lacking the required role (403).
+func Forbidden(format string, args ...any) *APIError {
+	return &APIError{Status: http.StatusForbidden, Code: "forbidden", Message: fmt.Sprintf(format, args...)}
+}
+
 // NotFound reports a missing resource (404).
 func NotFound(format string, args ...any) *APIError {
 	return &APIError{Status: http.StatusNotFound, Code: "not_found", Message: fmt.Sprintf(format, args...)}
