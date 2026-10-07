@@ -17,11 +17,18 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
+
+// connectWait bounds how long Migrate retries connection failures. A
+// freshly started PostgreSQL (docker compose, testcontainers) publishes
+// its port before it can serve, so early attempts fail with connection
+// resets until the server is really up.
+const connectWait = 30 * time.Second
 
 // Open connects to PostgreSQL via GORM. PreferSimpleProtocol keeps value
 // transport text-based, so numeric columns (price, amount) scan cleanly
@@ -76,7 +83,26 @@ func Close(db *gorm.DB) error {
 
 // Migrate applies pending migrations from dir via golang-migrate.
 // It is idempotent: applied versions are recorded in schema_migrations.
+// Connection failures (server still starting) are retried for up to
+// connectWait; anything else fails immediately.
 func Migrate(databaseURL string, dir fs.FS) error {
+	deadline := time.Now().Add(connectWait)
+	for {
+		err := migrateUp(databaseURL, dir)
+		if err == nil {
+			return nil
+		}
+		var connErr *pgconn.ConnectError
+		if !errors.As(err, &connErr) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// migrateUp runs one migration pass; the migrator is not reusable, so
+// each attempt opens a fresh driver and source.
+func migrateUp(databaseURL string, dir fs.FS) error {
 	src, err := iofs.New(dir, ".")
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
