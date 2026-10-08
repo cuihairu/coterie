@@ -213,6 +213,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D19** | Rate Limit | **内存固定窗口** | Phase 1 只挡现实滥用面——未认证公开写端点按 (端点, 客户端 IP) 计数：register 5 次/分、login 10 次/分，超限 429 JSON 信封 + `Retry-After`；单实例内存、无 Redis（§7.4），配置 0 即关闭；公开读与已认证端点等真实流量画像再议（[§6.4](#64-rate-limit)） |
 | **D20** | 自定义计费周期 | **cycle_days 天数偏移** | 计费期的语义是「区间长度」（显式 `[start,end]`、同 start 唯一），cron 回答的是触发时刻且引入时区/表达式校验负担，故取**天数偏移**：`cycle_days`（1–365 整数）在 `billing_cycle='custom'` 时必填、非 custom 时必须为空，由行级 CHECK 双向强制；调度器（D13）按 `[end+1, end+cycle_days-1]` 推算下期，与 monthly/yearly 同一管线；变更入 `subscription_updated` 审计快照 |
 | **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409——判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
+| **D22** | Push 通知 | **Web Push（RFC 8291 + RFC 8292 VAPID）** | Push 渠道取 Web Push 标准而非 FCM/APNs 私有通道（自托管友好、无厂商凭据）：用户经认证 API 登记 `push_subscriptions`（endpoint + p256dh/auth 密钥，endpoint 全局唯一 upsert）；出站适配器对通知接收者的每个登记端点按 RFC 8291 `aes128gcm` 加密负载、RFC 8292 VAPID（ES256 JWT）签名 `Authorization` 头后 POST——纯 stdlib + x/crypto/hkdf 手写（加密与 JWT 均有 RFC 测试向量背书，不引第三方推送库）；推送服务 404/410 即剪除该订阅（端点已失效），其余失败按渠道惯例记日志不致命（FR-12）；VAPID 未配置则渠道不注册，行为与 Email/Webhook 一致（[§6.5](#65-web-push)） |
 
 ---
 
@@ -637,6 +638,20 @@ NFR-7 第一阶段的基础限速（ADR D19），只挡现实滥用面——批�
 | 测试 | 限速器单测走假时钟（窗口翻转/按键隔离）；测试套件默认关闭限速（不干扰既有集成测试的多次注册），限速集成测试显式注入小额度 |
 | 约束 | 单实例内存（§7.4：第一阶段不依赖 Redis）——进程重启即重置，多实例各计各的；共享计数留待 §11.3 扩展 |
 
+### 6.5 Web Push
+
+Push 渠道的落地（ADR D22，FR-12）：Web Push 标准（浏览器原生、自托管友好、无厂商凭据依赖）。
+
+| 项 | 决策 |
+|---|---|
+| 登记 | `POST /api/v1/push/subscriptions`（认证）：`{endpoint, keys:{p256dh, auth}}`——endpoint 必须 https 且全局唯一（重复即 upsert）；`GET` 列出自己的登记；`DELETE /api/v1/push/subscriptions/{id}` 只能删自己的 |
+| 存储 | `push_subscriptions` 表（0001 骨架 + 0013 建表，D7 惯例）：id、user_id、endpoint（UNIQUE）、p256dh、auth、created_at——密钥存 base64url 原文（服务端要原样用于加密） |
+| 发送 | 通知入站内信后异步出站（与 Email/Webhook 同一 Channel 面）：查接收者的全部登记端点，逐个按 RFC 8291 `aes128gcm` 加密（临时 P-256 ECDH + HKDF 派生 IKM/nonce，单记录零填充）+ RFC 8292 VAPID `Authorization`（ES256 JWT，`aud`=端点 origin、`exp`=12h、`sub`=配置的联系邮箱），POST 至推送服务 |
+| 剪除 | 推送服务返回 404/410（端点失效/已退订）即删除该行——失效登记不自清理会越积越多；其余错误记日志不重试（渠道 best-effort 惯例，FR-12） |
+| 配置 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`（base64url：未压缩 P-256 公钥点 / 私钥标量）+ `VAPID_SUBJECT`（`mailto:` 联系方式）；未配置则渠道不注册，`Enabled()` 惯例同 Email/Webhook |
+| 加密实现 | 纯 stdlib + x/crypto/hkdf 手写：加密/JWT 均按 RFC 测试向量对拍，不引第三方推送库（供应链最小化，§7.4 同源原则） |
+| 约束 | 推送负载只含通知的 title/body（不含金额等敏感明细——推送服务是第三方）；负载上限 ~4KB（RFC 8291 单记录） |
+
 ---
 
 ## 7. 技术架构
@@ -774,7 +789,7 @@ coterie/
 | `seat` | Seat（订阅容量与分配） |
 | `coterie`（含 member、invitation） | Coterie、Member、Invitation |
 | `billing`（含 contribution） | BillingPeriod、Contribution、Settlement |
-| `notification` | Notification（Web 站内信 + 出站适配器：Email（SMTP）/ Webhook（HMAC 签名 POST）已落地，Push 后续） |
+| `notification` / `push` | Notification（Web 站内信 + 出站适配器：Email（SMTP）/ Webhook（HMAC 签名 POST）/ Push（Web Push，D22）已落地）、PushSubscription 登记 |
 | `audit` / `secret` | 支撑能力 |
 | `auth` / `identity` / `user` | 平台账号与会话（D8）、外部身份（扩展点）、用户 |
 
@@ -953,7 +968,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道。
 
 实现阶段仍需确认的细节：
 
