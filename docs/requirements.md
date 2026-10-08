@@ -333,6 +333,9 @@ Cloud Storage
      └── Charlie
 ```
 
+> 建模方式：与 Quota 同机制（D23）——Seat 的 metadata 携带 `{"resource": <容量>,
+> "unit": "..."}`，`used` 由使用账本按席位归集投影；计费拆分照常选择。
+
 > **结论：Coterie 的核心不是 Account Sharing，而是 Resource / Subscription Sharing。**
 
 ### FR-7 Member

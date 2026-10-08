@@ -172,6 +172,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 |------|-----------|---------------|
 | Seat / Family / Account | 一个可用的独立位置 | `{"label": "Slot 1"}` |
 | Quota（D4） | 一份额度 | `{"quota": 300, "unit": "credits", "used": 0}` |
+| Resource（D23） | 一份资源池占用 | `{"resource": 1024, "unit": "GB", "used": 0}` |
 
 - 状态机：`free / occupied / disabled`；
 - 分配：Seat ↔ Member（0..1 占用者），支持空闲、转移、回收（FR-8）；
@@ -214,6 +215,8 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D20** | 自定义计费周期 | **cycle_days 天数偏移** | 计费期的语义是「区间长度」（显式 `[start,end]`、同 start 唯一），cron 回答的是触发时刻且引入时区/表达式校验负担，故取**天数偏移**：`cycle_days`（1–365 整数）在 `billing_cycle='custom'` 时必填、非 custom 时必须为空，由行级 CHECK 双向强制；调度器（D13）按 `[end+1, end+cycle_days-1]` 推算下期，与 monthly/yearly 同一管线；变更入 `subscription_updated` 审计快照 |
 | **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409——判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
 | **D22** | Push 通知 | **Web Push（RFC 8291 + RFC 8292 VAPID）** | Push 渠道取 Web Push 标准而非 FCM/APNs 私有通道（自托管友好、无厂商凭据）：用户经认证 API 登记 `push_subscriptions`（endpoint + p256dh/auth 密钥，endpoint 全局唯一 upsert）；出站适配器对通知接收者的每个登记端点按 RFC 8291 `aes128gcm` 加密负载、RFC 8292 VAPID（ES256 JWT）签名 `Authorization` 头后 POST——纯 stdlib + x/crypto/hkdf 手写（加密与 JWT 均有 RFC 测试向量背书，不引第三方推送库）；推送服务 404/410 即剪除该订阅（端点已失效），其余失败按渠道惯例记日志不致命（FR-12）；VAPID 未配置则渠道不注册，行为与 Email/Webhook 一致（[§6.5](#65-web-push)） |
+| **D23** | Resource 共享建模 | **复用 D4：Seat + metadata** | §2.5 的资源池共享不引入新实体：`sharing.mode = resource` 时 Seat 的 metadata 携带 `{"resource": <容量>, "unit": "...", "used": 0}`（与 quota 同构）；`used` 投影与 quota 完全同管线——账本按席位归集 SUM 重写（D9），席位归集发现与多席位歧义检查对 quota / resource 一视同仁；费用拆分（§4.3）与共享模式正交，资源模式照选 equal / usage 等拆分，无新增计费路径 |
+
 
 ---
 
@@ -287,6 +290,8 @@ Cloud Storage
      ├── Bob
      └── Charlie
 ```
+
+> 落地方式：与 Quota（D4）同机制——Seat 承载资源占用（`metadata.resource`），`used` 由账本按 unit 投影（D23）；费用拆分与共享模式正交，资源模式照选 equal / usage 等拆分。
 
 ### 2.6 结论
 
@@ -968,7 +973,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata。
 
 实现阶段仍需确认的细节：
 
