@@ -208,6 +208,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
 | **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
 | **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
+| **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)） |
 
 ---
 
@@ -600,6 +601,18 @@ Secret Store
 
 数据库只保存 `secret_id`，不存明文 Secret。
 
+### 6.3 Audit Log（ADR D17）
+
+共享资源与费用相关操作必须留痕（FR-15：Who / What / When / Where / Before / After）：
+
+| 项 | 设计 |
+|---|---|
+| 存储 | `audit_logs` 只增不改：`id`、`actor_id`（可空，系统/调度器动作）、`action`（CHECK 枚举，随迁移扩展）、`entity_type` + `entity_id`（被改对象）、`subscription_id` / `coterie_id`（可空查询枢纽）、`before` / `after`（JSONB 快照，更新类动作只带变更字段）、`created_at` |
+| 埋点 | 在**既有业务事务内**追加（`audit.Record(tx, entry)`）——审计写入失败即整体回滚，与 D11「落账与状态置位同事务」同一纪律；不入事务的埋点一律不设，杜绝「改了但没记」 |
+| 动作清单 | `coterie_created` / `coterie_updated`（含 listing 与状态流转，关闭即 `after.status=closed`）/ `member_removed` / `member_left` / `seat_assigned` / `seat_released` / `seat_updated` / `subscription_updated`（价格/策略/状态等变更字段快照）/ `contribution_updated`（金额与状态冻结规则照旧）/ `payment_recorded` / `period_closed`——覆盖 FR-15 重点操作（转移席位 = release + assign 两条记录） |
+| 读取面 | `GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`，均**仅订阅 Owner**；支持 `?action=` 过滤与分页。成员不开放审计读（结果在其自有视图可见），Admin 查询面留后续 |
+| 非目标 | 不记录任何 Secret（§6.2 边界）；无编辑/删除端点——账本不可篡改；不做导出 |
+
 ---
 
 ## 7. 技术架构
@@ -914,10 +927,13 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志。
 
 实现阶段仍需确认的细节：
 
-- 比例分摊的舍入与尾差归属（Owner 承担 / 最大份额者 / 轮转）；
-- 自定义计费周期的表达方式（cron 表达式 vs 天数偏移）；
-- Seat 分配历史是否需要独立表（MVP 依赖 Audit Log 回溯）。
+- 自定义计费周期的表达方式（cron 表达式 vs 天数偏移）——D13 调度器目前跳过 custom 周期，Phase 4 清单第 4 项决策；
+- 比例分摊的尾差归属已由最大余数法收敛（最早加入者得尾差），此处保留原问题编号供追溯。
+
+已解决的遗留：
+
+- ~~Seat 分配历史是否需要独立表~~ → 由 D17 审计日志回答：`seat_assigned` / `seat_released` 记录即历史，不建独立表。
