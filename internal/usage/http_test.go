@@ -382,3 +382,83 @@ func openPeriodForUsage(t *testing.T, client *http.Client, base, tok, subID, sta
 	id, _ := body["id"].(string)
 	return id
 }
+
+// TestRecordUsageProjectsResourceUsed covers D23: a resource seat
+// behaves like a quota seat — implicit attribution, used projection
+// from the ledger sum, correction included — but with its own unit.
+func TestRecordUsageProjectsResourceUsed(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, srv.URL, "use-resource", "10.00", 2, 2, 1)
+	m := joined[0]
+
+	// First seat becomes the resource claim.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+recordsPath+"/"+subID+"/seats", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list seats: %d %v", code, body)
+	}
+	seatID, _ := body["items"].([]any)[0].(map[string]any)["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/seats/"+seatID,
+		`{"metadata":{"resource":1024,"unit":"GB","used":0}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("patch resource seat: %d %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/seats/"+seatID+"/assign",
+		fmt.Sprintf(`{"member_id":%q}`, m.MemberID), tok)
+	if code != http.StatusOK {
+		t.Fatalf("assign resource seat: %d %v", code, body)
+	}
+
+	// The record attributes implicitly to the resource seat and the
+	// projection runs the same ledger-sum pipeline as quota.
+	code, body = record(t, client, srv.URL, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"700","unit":"GB"}`, m.MemberID))
+	if code != http.StatusCreated || body["seat_id"] != seatID {
+		t.Fatalf("record usage: status = %d body = %v", code, body)
+	}
+	if md := seatMetadata(t, client, srv.URL, tok, seatID); md["used"] != 700.0 {
+		t.Fatalf("used = %v, want 700", md)
+	}
+	code, body = record(t, client, srv.URL, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"-100","unit":"GB"}`, m.MemberID))
+	if code != http.StatusCreated {
+		t.Fatalf("correct usage: %d %v", code, body)
+	}
+	if md := seatMetadata(t, client, srv.URL, tok, seatID); md["used"] != 600.0 {
+		t.Fatalf("used after correction = %v, want 600", md)
+	}
+
+	// A quota seat on the same member makes implicit attribution
+	// ambiguous — the metered-seat discovery treats quota and resource
+	// uniformly.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+recordsPath+"/"+subID+"/seats", "", tok)
+	secondID, _ := body["items"].([]any)[1].(map[string]any)["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/seats/"+secondID,
+		`{"metadata":{"quota":100,"unit":"GB","used":0}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("patch second seat: %d %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/seats/"+secondID+"/assign",
+		fmt.Sprintf(`{"member_id":%q}`, m.MemberID), tok)
+	if code != http.StatusOK {
+		t.Fatalf("assign second seat: %d %v", code, body)
+	}
+	code, body = record(t, client, srv.URL, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"1","unit":"GB"}`, m.MemberID))
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("ambiguous attribution: status = %d, want 422: %v", code, body)
+	}
+	// Naming the seat resolves it.
+	code, body = record(t, client, srv.URL, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"1","unit":"GB","seat_id":%q}`, m.MemberID, secondID))
+	if code != http.StatusCreated {
+		t.Fatalf("explicit seat record: %d %v", code, body)
+	}
+}

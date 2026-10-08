@@ -121,7 +121,7 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 		}
 		attributed = st
 	} else {
-		quotaSeats, err := tstore.QuotaSeatsOfMember(ctx, sub.ID, req.MemberID)
+		quotaSeats, err := tstore.MeteredSeatsOfMember(ctx, sub.ID, req.MemberID)
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +162,7 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 		return nil, err
 	}
 	if attributed != nil {
-		if err := projectQuotaUsed(ctx, tstore, attributed.ID); err != nil {
+		if err := projectSeatUsed(ctx, tstore, attributed.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -344,10 +344,12 @@ func ParseFilters(memberID, unit, from, to string) (ListFilters, error) {
 	return f, nil
 }
 
-// projectQuotaUsed rewrites metadata.used as the ledger sum of the
-// seat's attributed records, preserving every other metadata key. The
-// caller must run inside the write transaction.
-func projectQuotaUsed(ctx context.Context, store *Store, seatID string) error {
+// projectSeatUsed rewrites metadata.used as the ledger sum of the
+// seat's attributed records, preserving every other metadata key. It
+// applies to metered seats only — quota (D4) and resource (D23);
+// anything else has no projection target. The caller must run inside
+// the write transaction.
+func projectSeatUsed(ctx context.Context, store *Store, seatID string) error {
 	st, err := store.SeatForUpdate(ctx, seatID)
 	if err != nil {
 		return err
@@ -360,7 +362,9 @@ func projectQuotaUsed(ctx context.Context, store *Store, seatID string) error {
 		return err
 	}
 	if _, ok := md["quota"]; !ok {
-		return nil // not a quota seat — nothing to project
+		if _, ok := md["resource"]; !ok {
+			return nil // not a metered seat — nothing to project
+		}
 	}
 	sum, err := store.SumBySeat(ctx, seatID)
 	if err != nil {

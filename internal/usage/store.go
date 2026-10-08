@@ -63,12 +63,16 @@ func (s *Store) Seat(ctx context.Context, id string) (*seat.Seat, error) {
 	return &st, nil
 }
 
-// QuotaSeatsOfMember returns the seats the member currently occupies in
-// the subscription whose metadata carries a "quota" key.
-func (s *Store) QuotaSeatsOfMember(ctx context.Context, subscriptionID, memberID string) ([]seat.Seat, error) {
+// MeteredSeatsOfMember returns the seats the member currently occupies
+// in the subscription whose metadata carries a metered allowance —
+// "quota" (D4) or "resource" (D23). Records without an explicit seat
+// attribute to one of these; zero or several matches decide between
+// seatless attribution and the ambiguity 422.
+func (s *Store) MeteredSeatsOfMember(ctx context.Context, subscriptionID, memberID string) ([]seat.Seat, error) {
 	var seats []seat.Seat
 	err := s.db.WithContext(ctx).
-		Where("subscription_id = ? AND member_id = ? AND status = ? AND metadata -> 'quota' IS NOT NULL",
+		Where(`subscription_id = ? AND member_id = ? AND status = ?
+			AND (metadata -> 'quota' IS NOT NULL OR metadata -> 'resource' IS NOT NULL)`,
 			subscriptionID, memberID, seat.StatusOccupied).
 		Order("label ASC, id ASC").
 		Find(&seats).Error
