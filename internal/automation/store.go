@@ -27,6 +27,7 @@ type DueSubscription struct {
 	ID           string
 	OwnerUserID  string
 	BillingCycle string
+	CycleDays    *int
 	PeriodID     string
 	EndDate      database.Date
 }
@@ -37,7 +38,7 @@ func (s *Store) Due(ctx context.Context, today time.Time) ([]DueSubscription, er
 	var out []DueSubscription
 	err := s.db.WithContext(ctx).
 		Table("subscriptions s").
-		Select("s.id, s.owner_user_id, s.billing_cycle, p.id AS period_id, p.end_date").
+		Select("s.id, s.owner_user_id, s.billing_cycle, s.cycle_days, p.id AS period_id, p.end_date").
 		Joins("JOIN billing_periods p ON p.subscription_id = s.id "+
 			"AND p.start_date = (SELECT MAX(p2.start_date) FROM billing_periods p2 WHERE p2.subscription_id = s.id)").
 		Where("s.auto_billing AND p.end_date < ?", today).

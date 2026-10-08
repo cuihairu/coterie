@@ -94,14 +94,10 @@ func (s *Scheduler) RunOnce(ctx context.Context) (int, error) {
 
 // rollSubscription opens the next period for one due subscription and
 // generates its equal shares, acting as the owner. It reports whether
-// a period was rolled; a custom cycle is skipped (the scheduler cannot
-// infer its length), as is a period that already exists.
+// a period was rolled; a custom cycle without cycle_days cannot be
+// inferred and is skipped (D20 makes the pairing a database invariant),
+// as is a period that already exists.
 func (s *Scheduler) rollSubscription(ctx context.Context, d DueSubscription) (bool, error) {
-	if d.BillingCycle != "monthly" && d.BillingCycle != "yearly" {
-		s.log.Warn("auto_billing on a custom cycle rolls nothing; manage periods manually",
-			"subscription", d.ID)
-		return false, nil
-	}
 	owner, err := s.users.Get(ctx, d.OwnerUserID)
 	if err != nil {
 		return false, err
@@ -111,9 +107,22 @@ func (s *Scheduler) rollSubscription(ctx context.Context, d DueSubscription) (bo
 	}
 
 	start := d.EndDate.Time.AddDate(0, 0, 1)
-	end := start.AddDate(0, 1, 0)
-	if d.BillingCycle == "yearly" {
+	var end time.Time
+	switch d.BillingCycle {
+	case "monthly":
+		end = start.AddDate(0, 1, 0)
+	case "yearly":
 		end = start.AddDate(1, 0, 0)
+	case "custom":
+		if d.CycleDays == nil {
+			s.log.Warn("auto_billing custom cycle without cycle_days rolls nothing; manage periods manually",
+				"subscription", d.ID)
+			return false, nil
+		}
+		end = start.AddDate(0, 0, *d.CycleDays)
+	default:
+		s.log.Warn("unknown billing cycle rolls nothing", "subscription", d.ID, "cycle", d.BillingCycle)
+		return false, nil
 	}
 	req := billing.CreatePeriodRequest{
 		StartDate: start.Format("2006-01-02"),

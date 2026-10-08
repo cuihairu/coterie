@@ -57,6 +57,9 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateSubscr
 	}
 	req.OwnerUserID = actor.ID
 	details := validateFields(req.BillingCycle, req.Price, req.Currency, req.MaxSeats, req.MaxMembers, req.SharingPolicy)
+	if d := detailCycleDays(req.BillingCycle, req.CycleDays); d != nil {
+		details = append(details, *d)
+	}
 
 	start, startErr := database.ParseDate(req.StartDate)
 	if startErr != nil {
@@ -111,6 +114,7 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateSubscr
 		Status:        StatusActive,
 		MaxSeats:      req.MaxSeats,
 		MaxMembers:    req.MaxMembers,
+		CycleDays:     req.CycleDays,
 		SharingPolicy: database.JSONB("{}"),
 		AutoBilling:   req.AutoBilling,
 	}
@@ -187,6 +191,13 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	if req.AutoBilling != nil {
 		before["auto_billing"] = sub.AutoBilling
 	}
+	if req.CycleDays != nil {
+		if sub.CycleDays == nil {
+			before["cycle_days"] = nil
+		} else {
+			before["cycle_days"] = *sub.CycleDays
+		}
+	}
 	if req.SharingPolicy != nil {
 		before["sharing_policy"] = json.RawMessage(sub.SharingPolicy)
 	}
@@ -210,6 +221,32 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	}
 	if req.MaxSeats != nil && *req.MaxSeats <= 0 {
 		details = append(details, detailSeats())
+	}
+	if req.CycleDays != nil && *req.CycleDays < 0 {
+		details = append(details, api.Detail{
+			Field:   "cycle_days",
+			Message: "must be 0 (clear) or 1..365",
+		})
+	} else {
+		// The pairing rule sees the post-patch values, so switching
+		// cycles without adjusting cycle_days is a 422, not a broken
+		// invariant (D20).
+		effCycle := sub.BillingCycle
+		if req.BillingCycle != nil {
+			effCycle = *req.BillingCycle
+		}
+		var effDays *int
+		if req.CycleDays != nil {
+			if *req.CycleDays > 0 {
+				d := *req.CycleDays
+				effDays = &d
+			}
+		} else {
+			effDays = sub.CycleDays
+		}
+		if d := detailCycleDays(effCycle, effDays); d != nil {
+			details = append(details, *d)
+		}
 	}
 	if req.MaxMembers != nil && *req.MaxMembers <= 0 {
 		details = append(details, detailMembers())
@@ -259,6 +296,14 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	if req.AutoBilling != nil {
 		sub.AutoBilling = *req.AutoBilling
 	}
+	if req.CycleDays != nil {
+		if *req.CycleDays == 0 {
+			sub.CycleDays = nil
+		} else {
+			d := *req.CycleDays
+			sub.CycleDays = &d
+		}
+	}
 	if req.SharingPolicy != nil {
 		if err := s.validatePolicyWithPlugin(ctx, sub.ProductID, *req.SharingPolicy); err != nil {
 			return nil, err
@@ -288,6 +333,12 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 			after[field] = sub.MaxMembers
 		case "auto_billing":
 			after[field] = sub.AutoBilling
+		case "cycle_days":
+			if sub.CycleDays == nil {
+				after[field] = nil
+			} else {
+				after[field] = *sub.CycleDays
+			}
 		case "sharing_policy":
 			after[field] = json.RawMessage(sub.SharingPolicy)
 		case "renewal_date":
@@ -383,6 +434,23 @@ func validateFields(cycle, price, currency string, maxSeats int, maxMembers *int
 
 func detailCycle() api.Detail {
 	return api.Detail{Field: "billing_cycle", Message: "must be one of monthly, yearly, custom"}
+}
+
+// detailCycleDays enforces the custom-cycle pairing (D20): custom
+// needs a 1..365 length, every other cycle needs the field absent.
+func detailCycleDays(cycle string, days *int) *api.Detail {
+	if cycle == "custom" {
+		if days == nil || *days < 1 || *days > 365 {
+			d := api.Detail{Field: "cycle_days", Message: "must be 1..365 when billing_cycle is custom"}
+			return &d
+		}
+		return nil
+	}
+	if days != nil {
+		d := api.Detail{Field: "cycle_days", Message: "must be absent unless billing_cycle is custom"}
+		return &d
+	}
+	return nil
 }
 
 func detailPrice() api.Detail {

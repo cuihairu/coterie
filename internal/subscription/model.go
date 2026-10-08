@@ -47,6 +47,7 @@ type Subscription struct {
 	Status        string         `gorm:"column:status;not null" json:"status"`
 	MaxSeats      int            `gorm:"column:max_seats;not null" json:"max_seats"`
 	MaxMembers    *int           `gorm:"column:max_members" json:"max_members,omitempty"`
+	CycleDays     *int           `gorm:"column:cycle_days" json:"cycle_days,omitempty"`
 	SharingPolicy database.JSONB `gorm:"column:sharing_policy;not null" json:"sharing_policy"`
 	AutoBilling   bool           `gorm:"column:auto_billing;not null;default:false" json:"auto_billing"`
 	CreatedAt     time.Time      `gorm:"column:created_at" json:"created_at"`
@@ -68,6 +69,7 @@ type CreateSubscriptionRequest struct {
 	RenewalDate   *string         `json:"renewal_date"`
 	MaxSeats      int             `json:"max_seats"`
 	MaxMembers    *int            `json:"max_members"`
+	CycleDays     *int            `json:"cycle_days"`
 	SharingPolicy json.RawMessage `json:"sharing_policy"`
 	AutoBilling   bool            `json:"auto_billing"`
 }
@@ -75,12 +77,15 @@ type CreateSubscriptionRequest struct {
 // UpdateSubscriptionRequest patches mutable fields; nil fields are left
 // unchanged. renewal_date "" clears the field.
 type UpdateSubscriptionRequest struct {
-	BillingCycle  *string          `json:"billing_cycle"`
-	Price         *string          `json:"price"`
-	Status        *string          `json:"status"`
-	RenewalDate   *string          `json:"renewal_date"`
-	MaxSeats      *int             `json:"max_seats"`
-	MaxMembers    *int             `json:"max_members"`
+	BillingCycle *string `json:"billing_cycle"`
+	Price        *string `json:"price"`
+	Status       *string `json:"status"`
+	RenewalDate  *string `json:"renewal_date"`
+	MaxSeats     *int    `json:"max_seats"`
+	MaxMembers   *int    `json:"max_members"`
+	// CycleDays patches the custom-cycle length (D20): 0 clears it,
+	// 1..365 sets it, nil leaves it unchanged.
+	CycleDays     *int             `json:"cycle_days"`
 	SharingPolicy *json.RawMessage `json:"sharing_policy"`
 	AutoBilling   *bool            `json:"auto_billing"`
 }

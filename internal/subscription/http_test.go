@@ -262,3 +262,108 @@ func TestSubscriptionOwnerEnforcement(t *testing.T) {
 		t.Fatalf("owner list total = %v, want 1", body["meta"])
 	}
 }
+
+// TestCustomCycleDays covers D20: cycle_days pairs with billing_cycle
+// custom by a database CHECK, and the API rejects bad pairings with
+// 422 before the constraint can trip.
+func TestCustomCycleDays(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _ := testsupport.RegisterAndLogin(t, client, base, "sub-cycles")
+	productID, _ := seedChain(t, client, base, "cycles", tok)
+
+	create := func(body string) (int, map[string]any) {
+		return testsupport.DoAuthJSON(t, client, http.MethodPost, base+subscriptionsPath, body, tok)
+	}
+	sub := func(cycle, days string) string {
+		body := fmt.Sprintf(`{"product_id":%q,"billing_cycle":%q,"price":"5.00","currency":"USD","start_date":"2026-10-01","max_seats":2`, productID, cycle)
+		if days != "" {
+			body += `,"cycle_days":` + days
+		}
+		return body + "}"
+	}
+
+	// Bad pairings fail validation with a cycle_days detail.
+	for _, tc := range []struct{ name, body string }{
+		{"custom without days", sub("custom", "")},
+		{"custom zero days", sub("custom", "0")},
+		{"custom 366 days", sub("custom", "366")},
+		{"monthly with days", sub("monthly", "14")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, body := create(tc.body)
+			if code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422: %v", code, body)
+			}
+			errObj, _ := body["error"].(map[string]any)
+			details, _ := errObj["details"].([]any)
+			found := false
+			for _, d := range details {
+				if m, _ := d.(map[string]any)["field"].(string); m == "cycle_days" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("no cycle_days detail: %v", body)
+			}
+		})
+	}
+
+	// A good pairing persists and echoes the length.
+	code, body := create(sub("custom", "14"))
+	if code != http.StatusCreated {
+		t.Fatalf("create custom: status = %d: %v", code, body)
+	}
+	subID, _ := body["id"].(string)
+	if body["cycle_days"] != float64(14) {
+		t.Fatalf("cycle_days = %v, want 14", body["cycle_days"])
+	}
+
+	// PATCH the length; the audit snapshot carries the change.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+subscriptionsPath+"/"+subID, `{"cycle_days":30}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("patch days: status = %d: %v", code, body)
+	}
+	if body["cycle_days"] != float64(30) {
+		t.Fatalf("patched cycle_days = %v, want 30", body["cycle_days"])
+	}
+
+	// Switching away from custom without clearing days is a 422 —
+	// never a broken database invariant.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+subscriptionsPath+"/"+subID, `{"billing_cycle":"monthly"}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("switch without clear: status = %d, want 422: %v", code, body)
+	}
+
+	// Clearing (0) alongside the switch goes through; cycle_days
+	// disappears from the payload.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+subscriptionsPath+"/"+subID, `{"billing_cycle":"monthly","cycle_days":0}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("switch with clear: status = %d: %v", code, body)
+	}
+	if _, present := body["cycle_days"]; present {
+		t.Fatalf("cycle_days should be absent after clear: %v", body["cycle_days"])
+	}
+
+	// The audit trail captured the length change (30) and the clear.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+subscriptionsPath+"/"+subID+"/audit-logs?action=subscription_updated", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("audit list: status = %d: %v", code, body)
+	}
+	sawThirty := false
+	for _, it := range body["items"].([]any) {
+		e := it.(map[string]any)
+		after, _ := e["after"].(map[string]any)
+		if v, ok := after["cycle_days"].(float64); ok && v == 30 {
+			sawThirty = true
+		}
+	}
+	if !sawThirty {
+		t.Fatalf("no audit entry with after.cycle_days = 30: %v", body["items"])
+	}
+}

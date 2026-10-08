@@ -150,24 +150,10 @@ func TestSchedulerSkips(t *testing.T) {
 		t.Fatalf("auto_billing off: rolled = %d, err = %v", n, err)
 	}
 
-	// Custom cycle: the scheduler cannot infer a length; it skips and
-	// leaves the periods untouched.
 	enableAutoBilling(t, client, base, tok, subID)
-	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
-		base+"/api/v1/subscriptions/"+subID, `{"billing_cycle":"custom"}`, tok)
-	if code != http.StatusOK {
-		t.Fatalf("set custom: status = %d: %v", code, body)
-	}
-	n, err = sched.RunOnce(context.Background())
-	if err != nil || n != 0 {
-		t.Fatalf("custom cycle: rolled = %d, err = %v", n, err)
-	}
-	if starts := periodStarts(t, client, base, tok, subID); len(starts) != 1 {
-		t.Fatalf("custom cycle periods = %v, want untouched", starts)
-	}
 
 	// A future frontier period is not due.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
 		base+"/api/v1/subscriptions/"+subID, `{"billing_cycle":"monthly"}`, tok)
 	if code != http.StatusOK {
 		t.Fatalf("set monthly: status = %d: %v", code, body)
@@ -176,5 +162,61 @@ func TestSchedulerSkips(t *testing.T) {
 	n, err = sched.RunOnce(context.Background())
 	if err != nil || n != 0 {
 		t.Fatalf("future frontier: rolled = %d, err = %v", n, err)
+	}
+}
+
+// TestSchedulerRollsCustomCycle covers D20: a custom subscription with
+// cycle_days rolls by the day-count offset, through the same pipeline
+// (equal split, idempotent second pass).
+func TestSchedulerRollsCustomCycle(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	sched := automation.NewScheduler(db, billing.NewService(db, nil), nil, slog.Default(), time.Hour)
+
+	tok, _, subID, _, _ := testsupport.SeedCircle(t, client, base, "auto-custom", "14.00", 4, 0, 1)
+	enableAutoBilling(t, client, base, tok, subID)
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+"/api/v1/subscriptions/"+subID, `{"billing_cycle":"custom","cycle_days":30}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("set custom: status = %d: %v", code, body)
+	}
+	// The ended September window is 30 days long; the rolled window
+	// must end in the future so the frontier is current afterwards.
+	openPeriod(t, client, base, tok, subID, "2026-09-01", "2026-09-30")
+
+	n, err := sched.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run once: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("rolled = %d, want 1", n)
+	}
+
+	// The next window is exactly cycle_days long.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/subscriptions/"+subID+"/billing-periods", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list periods: status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	var next map[string]any
+	for _, it := range items {
+		p := it.(map[string]any)
+		if p["start_date"] == "2026-10-01" {
+			next = p
+		}
+	}
+	if next == nil {
+		t.Fatalf("no rolled period in %v", body["items"])
+	}
+	if next["end_date"] != "2026-10-30" {
+		t.Fatalf("custom period end = %v, want 2026-10-30", next["end_date"])
+	}
+
+	// Idempotent: the frontier is current now, nothing further rolls.
+	n, err = sched.RunOnce(context.Background())
+	if err != nil || n != 0 {
+		t.Fatalf("second pass: rolled = %d, err = %v", n, err)
 	}
 }
