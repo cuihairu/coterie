@@ -209,6 +209,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
 | **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
 | **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)）；埋点需要可信 actor，同批把订阅资源面的 Owner 强制补齐——**owner 即认证用户**（`owner_user_id` 载荷只能确认不能指名，创建/读取/列表/修改/删除全表面校验，抹平 M1 遗留的越权缺口） |
+| **D18** | Marketplace 信誉展示位 | **纯派生徽标** | 目录条目附 Owner 结算信誉徽标（`owner`: user_id / username / 分摊计数 / `payment_ratio`），聚合复用 D15 同一派生（批量 SQL 与单用户报告同构），不另立评分路径；徽标是粗粒度公开投影——不含各币种金额（金额留在已认证报告端点），Owner 把圈发布为公开（`listing=public`）即接受展示位；无应收历史 ratio=null 不给虚假满分（[§4.4](#44-reputation)） |
 
 ---
 
@@ -440,7 +441,13 @@ Phase 3 落地：
 
 - `GET /api/v1/users/{id}/reputation`（任意已认证用户可读，计费读基线）：状态计数（`paid`/`pending`/`waived`/`cancelled`）、各币种 `paid`/`pending` 金额、`payment_ratio`；
 - `payment_ratio` 只对「曾应收」的分摊（paid+pending）计算；waived/cancelled 从不入分母；无应收历史返回 `null` 而非虚假满分；
-- 无写入端点：信誉不可编辑、不可人工评分，随账本只增而更新。Marketplace 目录展示位（Owner/成员信誉徽标）留作后续增量。
+- 无写入端点：信誉不可编辑、不可人工评分，随账本只增而更新。
+
+Phase 4 落地（ADR D18）——Marketplace 信誉展示位：
+
+- 目录条目附 `owner` 徽标：`user_id`、`username`、分摊计数（`contributions` 四态）、`payment_ratio`；聚合走 reputation 包的**批量派生**（`GROUP BY user_id` 与单用户报告同一 SQL 形状），目录只做投影，不产生第二种信誉口径；
+- 粗粒度公开：徽标不含各币种金额——金额留在已认证的 `GET /users/{id}/reputation`；Owner 把圈发布为公开目录（`listing=public`）即接受展示位；
+- 目录保持匿名可读（FR-18 展示位的价值在浏览时刻）；**成员级徽标暂不展示**——成员没有选择公开，隐私面比 Owner 更窄，待后续有明确诉求再议。
 
 ---
 
