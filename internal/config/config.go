@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cuihairu/coterie/internal/ratelimit"
 )
 
 // Config holds the server runtime configuration.
@@ -42,6 +44,11 @@ type Config struct {
 	// disables the scheduler entirely. Parses Go duration strings
 	// ("1h", "30s").
 	AutoBillingInterval time.Duration
+
+	// Public-endpoint rate limits per client address per minute
+	// (design D19); 0 disables a class.
+	RateLimitRegisterPerMin int
+	RateLimitLoginPerMin    int
 }
 
 // Load reads configuration from environment variables, applying defaults.
@@ -66,6 +73,9 @@ func Load() Config {
 		ProviderPlugins: envList("PROVIDER_PLUGINS"),
 
 		AutoBillingInterval: envDuration("AUTO_BILLING_INTERVAL", time.Hour),
+
+		RateLimitRegisterPerMin: envInt("RATE_LIMIT_REGISTER_PER_MIN", ratelimit.DefaultRegisterPerMin),
+		RateLimitLoginPerMin:    envInt("RATE_LIMIT_LOGIN_PER_MIN", ratelimit.DefaultLoginPerMin),
 	}
 }
 
@@ -89,6 +99,18 @@ func envList(key string) []string {
 		}
 	}
 	return out
+}
+
+func envInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func envOr(key, fallback string) string {

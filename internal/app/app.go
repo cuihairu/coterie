@@ -20,6 +20,7 @@ import (
 	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
+	"github.com/cuihairu/coterie/internal/ratelimit"
 	"github.com/cuihairu/coterie/internal/reputation"
 	"github.com/cuihairu/coterie/internal/seat"
 	"github.com/cuihairu/coterie/internal/subscription"
@@ -35,6 +36,7 @@ type options struct {
 	notificationChannels []notification.Channel
 	providerPlugins      []provider.Plugin
 	paymentAdapters      []payment.Adapter
+	rateLimits           map[string]int
 }
 
 // WithNotificationChannels registers outbound delivery channels (FR-12);
@@ -56,6 +58,19 @@ func WithPaymentAdapters(adapters ...payment.Adapter) Option {
 	return func(o *options) { o.paymentAdapters = append(o.paymentAdapters, adapters...) }
 }
 
+// WithRateLimits overrides the public-endpoint rate limits (design
+// D19), requests per client address per minute; 0 disables a limit.
+// The defaults apply when this option is absent; the test harness
+// disables limiting so existing suites are unaffected.
+func WithRateLimits(registerPerMin, loginPerMin int) Option {
+	return func(o *options) {
+		o.rateLimits = map[string]int{
+			ratelimit.ClassRegister: registerPerMin,
+			ratelimit.ClassLogin:    loginPerMin,
+		}
+	}
+}
+
 // New assembles the server handler. Every module route sits behind the
 // auth middleware; only healthz, register/login, the public catalog
 // reads, and the marketplace directory are open. db must not be nil in
@@ -65,6 +80,15 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(o)
 	}
+	limits := o.rateLimits
+	if limits == nil {
+		limits = map[string]int{
+			ratelimit.ClassRegister: ratelimit.DefaultRegisterPerMin,
+			ratelimit.ClassLogin:    ratelimit.DefaultLoginPerMin,
+		}
+	}
+	guard := ratelimit.New(limits, time.Minute).Guard()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -110,5 +134,6 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 	return api.Chain(mux,
 		api.Recover(log),
 		api.RequestLogger(log),
+		guard,
 	)
 }

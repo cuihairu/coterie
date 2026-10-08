@@ -292,7 +292,7 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 
 1. [x] **Audit Log**（FR-15 / NFR-7 Phase 1 基础）— append-only `audit_logs` 账本 + 资金/成员变更同事务埋点 + Owner 只读审计端点（设计 D17、§6.3）
 2. [x] **Marketplace 信誉展示位**（FR-18 后续）— 目录条目附 Owner 结算信誉徽标（§4.4 预留）
-3. [ ] **Rate Limit**（NFR-7 Phase 1 基础）— 注册/登录等公开端点限速
+3. [x] **Rate Limit**（NFR-7 Phase 1 基础）— 注册/登录等公开端点限速
 4. [ ] **自定义计费周期自动化**（§13 遗留）— custom 周期表达方式决策 + 调度器滚期支持（D13 扩展）
 5. [ ] **Sharing Policy UsageLimit**（FR-10 后续扩展）— 核心侧每成员每期用量上限
 6. [ ] **真实支付渠道**（FR-9 后续）— Stripe 等适配器（需外部凭据，接入时另派；Marketplace 支付闸门随此项落地）

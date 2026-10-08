@@ -112,7 +112,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Handler: app.New(db, log,
 			app.WithNotificationChannels(channels(db, cfg)...),
 			app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
-			app.WithProviderPlugins(providerPlugins(cfg, log)...)),
+			app.WithProviderPlugins(providerPlugins(cfg, log)...),
+			app.WithRateLimits(cfg.RateLimitRegisterPerMin, cfg.RateLimitLoginPerMin)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

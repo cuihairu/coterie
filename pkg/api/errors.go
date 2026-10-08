@@ -53,6 +53,12 @@ func Conflict(format string, args ...any) *APIError {
 	return &APIError{Status: http.StatusConflict, Code: "conflict", Message: fmt.Sprintf(format, args...)}
 }
 
+// TooManyRequests reports a request rejected by local rate limiting
+// (429). Handlers pair it with a Retry-After header.
+func TooManyRequests(format string, args ...any) *APIError {
+	return &APIError{Status: http.StatusTooManyRequests, Code: "rate_limited", Message: fmt.Sprintf(format, args...)}
+}
+
 // Internal reports an unexpected failure (500) without leaking details.
 func Internal() *APIError {
 	return &APIError{Status: http.StatusInternalServerError, Code: "internal", Message: "internal server error"}

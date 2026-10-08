@@ -52,6 +52,11 @@ func NewDB(t *testing.T) *gorm.DB {
 // handler backed by db.
 func NewServer(t *testing.T, db *gorm.DB, opts ...app.Option) *httptest.Server {
 	t.Helper()
+	// Rate limiting stays off by default (design D19) so the many
+	// registrations a suite makes from one address are untouched;
+	// callers re-enable it via WithRateLimits, which wins by coming
+	// later in the option order.
+	opts = append([]app.Option{app.WithRateLimits(0, 0)}, opts...)
 	srv := httptest.NewServer(app.New(db, TestLogger(), opts...))
 	t.Cleanup(srv.Close)
 	return srv
