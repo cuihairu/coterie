@@ -212,6 +212,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D18** | Marketplace 信誉展示位 | **纯派生徽标** | 目录条目附 Owner 结算信誉徽标（`owner`: user_id / username / 分摊计数 / `payment_ratio`），聚合复用 D15 同一派生（批量 SQL 与单用户报告同构），不另立评分路径；徽标是粗粒度公开投影——不含各币种金额（金额留在已认证报告端点），Owner 把圈发布为公开（`listing=public`）即接受展示位；无应收历史 ratio=null 不给虚假满分（[§4.4](#44-reputation)） |
 | **D19** | Rate Limit | **内存固定窗口** | Phase 1 只挡现实滥用面——未认证公开写端点按 (端点, 客户端 IP) 计数：register 5 次/分、login 10 次/分，超限 429 JSON 信封 + `Retry-After`；单实例内存、无 Redis（§7.4），配置 0 即关闭；公开读与已认证端点等真实流量画像再议（[§6.4](#64-rate-limit)） |
 | **D20** | 自定义计费周期 | **cycle_days 天数偏移** | 计费期的语义是「区间长度」（显式 `[start,end]`、同 start 唯一），cron 回答的是触发时刻且引入时区/表达式校验负担，故取**天数偏移**：`cycle_days`（1–365 整数）在 `billing_cycle='custom'` 时必填、非 custom 时必须为空，由行级 CHECK 双向强制；调度器（D13）按 `[end+1, end+cycle_days-1]` 推算下期，与 monthly/yearly 同一管线；变更入 `subscription_updated` 审计快照 |
+| **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409——判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
 
 ---
 
@@ -337,7 +338,8 @@ TimeLimit
 - `mode` 决定 Seat 的语义（account / seat / family / quota / resource），映射见 [§1.6](#16-seat通用分配单元)；
 - Sharing Policy 挂在 Subscription 上，Coterie 继承并可在更严格范围内收敛；
 - Policy 是合规信息的载体之一，配合 UI 提示（见 [需求文档 NFR-2](./requirements.md#nfr-2-合规与风险)）；
-- Provider-specific 字段不要建强结构列，用 JSONB 承载 metadata。
+- Provider-specific 字段不要建强结构列，用 JSONB 承载 metadata；
+- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21——每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；DeviceLimit / RegionLimit / ConcurrentLimit / QuotaLimit / TimeLimit 留插件策略面或后续扩展。
 
 ---
 
@@ -951,7 +953,7 @@ Instance
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制。
 
 实现阶段仍需确认的细节：
 
