@@ -10,6 +10,8 @@
   </p>
 </div>
 
+[English](README.md) | [中文](README.zh.md)
+
 ---
 
 **Organize subscriptions, seats, members, and shared costs in one place.**
