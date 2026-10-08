@@ -294,7 +294,7 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 2. [x] **Marketplace 信誉展示位**（FR-18 后续）— 目录条目附 Owner 结算信誉徽标（§4.4 预留）
 3. [x] **Rate Limit**（NFR-7 Phase 1 基础）— 注册/登录等公开端点限速
 4. [x] **自定义计费周期自动化**（§13 遗留）— custom 周期表达方式决策 + 调度器滚期支持（D13 扩展）
-5. [ ] **Sharing Policy UsageLimit**（FR-10 后续扩展）— 核心侧每成员每期用量上限
+5. [x] **Sharing Policy UsageLimit**（FR-10 后续扩展）— 核心侧每成员每期用量上限（D21）
 6. [ ] **真实支付渠道**（FR-9 后续）— Stripe 等适配器（需外部凭据，接入时另派；Marketplace 支付闸门随此项落地）
 7. [ ] **Push 通知**（FR-12 后续）
 8. [ ] **Resource 共享模式**（FR-6 后续，§2.5）

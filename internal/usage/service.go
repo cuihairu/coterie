@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -142,6 +144,9 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 	if err := s.validateUsageWithPlugin(ctx, tstore, sub.ID, req, seatID); err != nil {
 		return nil, err
 	}
+	if err := s.enforceUsageLimit(ctx, tstore, sub, req.MemberID, req.Unit, req.Amount, recordedAt); err != nil {
+		return nil, err
+	}
 	record := &UsageRecord{
 		ID:             uuid.NewString(),
 		SubscriptionID: sub.ID,
@@ -165,6 +170,99 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 		return nil, err
 	}
 	return record, nil
+}
+
+// enforceUsageLimit applies the sharing policy's usage_limit (D21):
+// per member, per billing period, per unit, the post-write ledger sum
+// must stay within per_period. Judging the new sum rather than the
+// increment lets negative corrections through naturally. A record the
+// window doesn't cover, or a unit the cap doesn't name, is not
+// constrained. All comparisons run on 1e4-scaled integers.
+func (s *Service) enforceUsageLimit(ctx context.Context, store *Store, sub *subscription.Subscription, memberID, unit, amount string, recordedAt time.Time) error {
+	var policy struct {
+		UsageLimit *struct {
+			Unit      string `json:"unit"`
+			PerPeriod string `json:"per_period"`
+		} `json:"usage_limit"`
+	}
+	if err := json.Unmarshal(sub.SharingPolicy, &policy); err != nil || policy.UsageLimit == nil {
+		return nil
+	}
+	lim := policy.UsageLimit
+	if lim.Unit != unit {
+		return nil
+	}
+	limit, ok := scaled(lim.PerPeriod)
+	if !ok {
+		return nil // policy structure is validated at write time; never block on a malformed value
+	}
+	window, err := store.PeriodCovering(ctx, sub.ID, recordedAt)
+	if err != nil {
+		return err
+	}
+	if window == nil {
+		return nil
+	}
+	sumStr, err := store.SumMemberUsage(ctx, sub.ID, memberID, unit, window)
+	if err != nil {
+		return err
+	}
+	sum, _ := scaled(sumStr)
+	amount4, _ := scaled(amount)
+	if sum+amount4 > limit {
+		return api.Conflict(
+			"usage limit exceeded: %s total for %s would pass %s %s in the covered billing period",
+			decimal4(sum+amount4), memberID, lim.PerPeriod, unit)
+	}
+	return nil
+}
+
+// scaled parses a decimal string into a 1e4-scaled integer. ok is
+// false for anything but a plain decimal — the ledger and policy
+// values are validated upstream, so a malformed value never blocks a
+// write through this path.
+func scaled(v string) (int64, bool) {
+	neg := false
+	s := strings.TrimSpace(v)
+	if strings.HasPrefix(s, "-") {
+		neg, s = true, s[1:]
+	}
+	intPart, fracPart := s, ""
+	if dot := strings.IndexByte(s, '.'); dot >= 0 {
+		intPart, fracPart = s[:dot], s[dot+1:]
+	}
+	if intPart == "" {
+		return 0, false
+	}
+	frac := fracPart
+	if len(frac) > 4 {
+		return 0, false
+	}
+	for len(frac) < 4 {
+		frac += "0"
+	}
+	i, err := strconv.ParseInt(intPart, 10, 64)
+	if err != nil || i < 0 {
+		return 0, false
+	}
+	f, err := strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	out := i*10_000 + f
+	if neg {
+		out = -out
+	}
+	return out, true
+}
+
+// decimal4 renders a 1e4-scaled integer back to a decimal string.
+func decimal4(v int64) string {
+	sign := ""
+	if v < 0 {
+		sign, v = "-", -v
+	}
+	return fmt.Sprintf("%s%d.%04d", sign, v/10_000, v%10_000)
 }
 
 // validateUsageWithPlugin consults the provider plugin's metering

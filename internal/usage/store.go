@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -164,4 +165,64 @@ func (s *Store) SetSeatMetadata(ctx context.Context, seatID string, metadata dat
 	return s.db.WithContext(ctx).Model(&seat.Seat{}).
 		Where("id = ?", seatID).
 		Update("metadata", metadata).Error
+}
+
+// PeriodCovering returns the billing period whose [start_date,
+// end_date] window contains the record's date, or nil when none does
+// (the ledger precedes periods; settlement needs the window, not the
+// record). Overlapping windows cannot exist per billing invariants,
+// but the earliest window wins deterministically regardless.
+func (s *Store) PeriodCovering(ctx context.Context, subscriptionID string, at time.Time) (*billingPeriodWindow, error) {
+	day := at.UTC().Format("2006-01-02")
+	var rows []struct {
+		Start string
+		End   string
+	}
+	err := s.db.WithContext(ctx).
+		Table("billing_periods").
+		Select("start_date::text AS start, end_date::text AS end").
+		Where("subscription_id = ? AND start_date <= ? AND end_date >= ?", subscriptionID, day, day).
+		Order("start_date ASC").
+		Limit(1).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	start, err := database.ParseDate(rows[0].Start)
+	if err != nil {
+		return nil, err
+	}
+	end, err := database.ParseDate(rows[0].End)
+	if err != nil {
+		return nil, err
+	}
+	return &billingPeriodWindow{Start: start, End: end}, nil
+}
+
+// billingPeriodWindow is a period's inclusive date bounds.
+type billingPeriodWindow struct {
+	Start database.Date
+	End   database.Date
+}
+
+// SumMemberUsage totals one member's ledger rows for a unit across the
+// period window: recorded_at in [start 00:00, end+1d 00:00).
+func (s *Store) SumMemberUsage(ctx context.Context, subscriptionID, memberID, unit string, w *billingPeriodWindow) (string, error) {
+	var total *string
+	err := s.db.WithContext(ctx).
+		Table("usage_records").
+		Select("SUM(amount)").
+		Where("subscription_id = ? AND member_id = ? AND unit = ? AND recorded_at >= ? AND recorded_at < ?",
+			subscriptionID, memberID, unit, w.Start.Time, w.End.Time.AddDate(0, 0, 1)).
+		Scan(&total).Error
+	if err != nil {
+		return "", err
+	}
+	if total == nil {
+		return "0", nil
+	}
+	return *total, nil
 }

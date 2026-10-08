@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -23,6 +24,10 @@ import (
 // 422s instead of database errors. The database additionally enforces
 // price >= 0.
 var pricePattern = regexp.MustCompile(`^\d{1,10}(\.\d{1,2})?$`)
+
+// perPeriodPattern accepts positive decimal strings with up to 4
+// fraction digits — the same precision usage amounts carry.
+var perPeriodPattern = regexp.MustCompile(`^\d{1,12}(\.\d{1,4})?$`)
 
 // currencyPattern matches ISO 4217 alpha-3 uppercase codes; the same
 // check exists as a database constraint.
@@ -506,7 +511,11 @@ func detailSharingPolicy(raw json.RawMessage) *api.Detail {
 		return &api.Detail{Field: "sharing_policy", Message: "must be valid JSON"}
 	}
 	var sp struct {
-		Mode string `json:"mode"`
+		Mode       string `json:"mode"`
+		UsageLimit *struct {
+			Unit      string `json:"unit"`
+			PerPeriod string `json:"per_period"`
+		} `json:"usage_limit"`
 	}
 	if err := json.Unmarshal(raw, &sp); err != nil {
 		return &api.Detail{Field: "sharing_policy", Message: "must be a JSON object"}
@@ -515,6 +524,16 @@ func detailSharingPolicy(raw json.RawMessage) *api.Detail {
 		return &api.Detail{
 			Field:   "sharing_policy",
 			Message: "unknown mode; want account, seat, family, quota, or resource",
+		}
+	}
+	// usage_limit carries the core-side per-member per-period cap (D21).
+	if ul := sp.UsageLimit; ul != nil {
+		unit := strings.TrimSpace(ul.Unit)
+		if unit == "" || len(unit) > 32 {
+			return &api.Detail{Field: "sharing_policy", Message: "usage_limit.unit must be 1-32 characters"}
+		}
+		if !perPeriodPattern.MatchString(ul.PerPeriod) {
+			return &api.Detail{Field: "sharing_policy", Message: `usage_limit.per_period must be a positive decimal string with at most 4 fraction digits (e.g. "100")`}
 		}
 	}
 	return nil

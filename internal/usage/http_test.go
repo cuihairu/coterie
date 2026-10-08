@@ -287,3 +287,98 @@ func TestUsageListFilters(t *testing.T) {
 		}
 	}
 }
+
+// TestUsageLimit covers D21: the sharing policy's usage_limit caps the
+// per-member, per-period ledger sum for its unit; corrections shrink
+// the judged total; uncovered windows and other units are free.
+func TestUsageLimit(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, coterieID, joined := testsupport.SeedCircle(t, client, base, "use-limit", "10.00", 2, 1, 1)
+	m := joined[0]
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+recordsPath+"/"+subID,
+		`{"sharing_policy":{"mode":"quota","usage_limit":{"unit":"credits","per_period":"100"}}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("set policy: status = %d: %v", code, body)
+	}
+	// The October window covers the default recorded_at of new records.
+	openPeriodForUsage(t, client, base, tok, subID, "2026-10-01", "2026-10-31")
+
+	post := func(amount, unit, at string) (int, map[string]any) {
+		payload := fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":%q`, m.MemberID, amount, unit)
+		if at != "" {
+			payload += `,"recorded_at":` + `"` + at + `"`
+		}
+		payload += "}"
+		return record(t, client, base, tok, subID, payload)
+	}
+
+	if code, body := post("60", "credits", ""); code != http.StatusCreated {
+		t.Fatalf("first record: status = %d: %v", code, body)
+	}
+	// Exactly at the cap is allowed; one more milli-credit is not.
+	if code, body := post("40", "credits", ""); code != http.StatusCreated {
+		t.Fatalf("record to the cap: status = %d: %v", code, body)
+	}
+	code, body = post("0.01", "credits", "")
+	if code != http.StatusConflict {
+		t.Fatalf("over-cap record: status = %d, want 409: %v", code, body)
+	}
+
+	// A correction shrinks the judged sum, so the budget reopens.
+	if code, body := post("-10", "credits", ""); code != http.StatusCreated {
+		t.Fatalf("correction: status = %d: %v", code, body)
+	}
+	if code, body := post("10", "credits", ""); code != http.StatusCreated {
+		t.Fatalf("record after correction: status = %d: %v", code, body)
+	}
+	if code, _ := post("0.01", "credits", ""); code != http.StatusConflict {
+		t.Fatal("cap must re-engage after the refill")
+	}
+
+	// Another unit is not capped.
+	if code, body := post("5000", "GB", ""); code != http.StatusCreated {
+		t.Fatalf("other unit: status = %d: %v", code, body)
+	}
+	// A record outside every period is not capped either.
+	if code, body := post("5000", "credits", "2026-11-15T10:00:00Z"); code != http.StatusCreated {
+		t.Fatalf("uncovered window: status = %d: %v", code, body)
+	}
+
+	// The cap is per member: the owner's ledger row has its own budget.
+	code, mems := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID+"/members", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list members: status = %d: %v", code, mems)
+	}
+	var ownerMember string
+	for _, it := range mems["items"].([]any) {
+		mm := it.(map[string]any)
+		if role, _ := mm["role"].(string); role == "owner" {
+			ownerMember, _ = mm["id"].(string)
+		}
+	}
+	if ownerMember == "" || ownerMember == m.MemberID {
+		t.Fatalf("owner member row = %q", ownerMember)
+	}
+	payload := fmt.Sprintf(`{"member_id":%q,"amount":"100","unit":"credits"}`, ownerMember)
+	if code, body := record(t, client, base, tok, subID, payload); code != http.StatusCreated {
+		t.Fatalf("owner budget: status = %d: %v", code, body)
+	}
+}
+
+// openPeriodForUsage opens a billing period (owner action).
+func openPeriodForUsage(t *testing.T, client *http.Client, base, tok, subID, start, end string) string {
+	t.Helper()
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+recordsPath+"/"+subID+"/billing-periods",
+		fmt.Sprintf(`{"start_date":%q,"end_date":%q}`, start, end), tok)
+	if code != http.StatusCreated {
+		t.Fatalf("open period: status = %d: %v", code, body)
+	}
+	id, _ := body["id"].(string)
+	return id
+}

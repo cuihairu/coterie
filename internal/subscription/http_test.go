@@ -144,6 +144,10 @@ func TestSubscriptionValidation(t *testing.T) {
 		{"missing start date", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","max_seats":2}`, productID, userID)},
 		{"renewal before start", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","renewal_date":"2026-09-01","max_seats":2}`, productID, userID)},
 		{"unknown sharing mode", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"mode":"fancy"}}`, productID, userID)},
+		{"usage limit without unit", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"per_period":"100"}}}`, productID, userID)},
+		{"usage limit per_period not a number", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"abc"}}}`, productID, userID)},
+		{"usage limit per_period negative", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"-1"}}}`, productID, userID)},
+		{"usage limit per_period too fine", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"1.12345"}}}`, productID, userID)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,6 +156,27 @@ func TestSubscriptionValidation(t *testing.T) {
 				t.Fatalf("status = %d, want 422: %v", code, body)
 			}
 		})
+	}
+}
+
+// TestSubscriptionUsageLimitPolicy covers D21 policy-side validation: a
+// well-formed usage_limit is accepted and echoed; the cap pins one unit.
+func TestSubscriptionUsageLimitPolicy(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, userID := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-ulimit")
+	productID, _ := seedChain(t, client, srv.URL, "ulimit", tok)
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath,
+		fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"mode":"quota","usage_limit":{"unit":"credits","per_period":"100.5"}}}`, productID, userID), tok)
+	if code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %v", code, body)
+	}
+	policy, _ := body["sharing_policy"].(map[string]any)
+	lim, _ := policy["usage_limit"].(map[string]any)
+	if lim == nil || lim["unit"] != "credits" || lim["per_period"] != "100.5" {
+		t.Fatalf("usage_limit not echoed: %v", policy)
 	}
 }
 

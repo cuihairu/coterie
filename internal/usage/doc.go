@@ -15,4 +15,9 @@
 //
 // The billing module consumes the same ledger for mode=usage splits
 // over the period window.
+//
+// The sharing policy may carry a usage_limit (design D21): per member,
+// per billing period, per unit, writes are rejected with 409 once the
+// post-write ledger sum would pass the cap. Corrections reduce the
+// sum, so they always pass when the resulting total fits.
 package usage
