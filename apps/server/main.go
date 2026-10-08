@@ -20,6 +20,7 @@ import (
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/provider"
+	"github.com/cuihairu/coterie/internal/push"
 	"github.com/cuihairu/coterie/providers/claude"
 	"gorm.io/gorm"
 )
@@ -46,6 +47,11 @@ func channels(db *gorm.DB, cfg config.Config) []notification.Channel {
 	webhook := notification.NewWebhookChannel(cfg.WebhookURL, cfg.WebhookSecret)
 	if webhook.Enabled() {
 		out = append(out, webhook)
+	}
+	pushCh := notification.NewPushChannel(push.NewService(db).Store(),
+		cfg.PushVapidPublicKey, cfg.PushVapidPrivateKey, cfg.PushVapidSubject)
+	if pushCh.Enabled() {
+		out = append(out, pushCh)
 	}
 	return out
 }

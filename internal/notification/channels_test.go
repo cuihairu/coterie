@@ -3,12 +3,18 @@ package notification_test
 import (
 	"bufio"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdh"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +22,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/hkdf"
+
 	"github.com/cuihairu/coterie/internal/notification"
+	"github.com/cuihairu/coterie/internal/push"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -242,4 +252,161 @@ func TestDispatchThroughApp(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("webhook channel delivered nothing")
 	}
+}
+
+// TestPushChannelDeliversAndPrunes covers the D22 channel: payloads
+// arrive encrypted (the fake push service decrypts with the client
+// key), and 410 endpoints are pruned from the registry.
+func TestPushChannelDeliversAndPrunes(t *testing.T) {
+	db := testsupport.NewDB(t)
+
+	// The channel resolves endpoints by the recipient's user id, so
+	// seed a real user through the API (uuid column).
+	srvAPI := testsupport.NewServer(t, db)
+	userID := func() string {
+		tok, id := testsupport.RegisterAndLogin(t, srvAPI.Client(), srvAPI.URL, "chan-push")
+		_ = tok
+		return id
+	}()
+
+	// Client-side keys the fake push service decrypts with.
+	priv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatal(err)
+	}
+	enc := base64.RawURLEncoding
+
+	type pushReq struct {
+		auth   string
+		ttl    string
+		encHdr string
+		body   []byte
+	}
+	seen := make(chan pushReq, 4)
+	gone := make(chan int, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen <- pushReq{auth: r.Header.Get("Authorization"), ttl: r.Header.Get("TTL"), encHdr: r.Header.Get("Content-Encoding"), body: body}
+		if strings.HasSuffix(r.URL.Path, "/gone") {
+			gone <- http.StatusGone
+			w.WriteHeader(http.StatusGone)
+			return
+		}
+		gone <- 0
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	pubB64, privB64 := vapidPair(t)
+	ch := notification.NewPushChannel(push.NewService(db).Store(),
+		pubB64, privB64, "mailto:ops@example.com")
+	if !ch.Enabled() {
+		t.Fatal("channel disabled with keys present")
+	}
+
+	// Register one healthy and one doomed endpoint for the user.
+	store := push.NewService(db).Store()
+	for _, ep := range []string{srv.URL + "/alive", srv.URL + "/gone"} {
+		if err := store.UpsertByEndpoint(context.Background(), &push.Subscription{
+			ID: uuid.NewString(), UserID: userID, Endpoint: ep,
+			P256dh: enc.EncodeToString(priv.PublicKey().Bytes()), Auth: enc.EncodeToString(authSecret),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	note := testNotification()
+	note.UserID = userID
+	if err := ch.Deliver(context.Background(), note); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		req := <-seen
+		if req.ttl == "" || req.encHdr != "aes128gcm" || !strings.HasPrefix(req.auth, "vapid t=") {
+			t.Fatalf("push request headers: %+v", req)
+		}
+		pt := decryptForTest(t, req.body, priv, authSecret)
+		var payload map[string]string
+		if err := json.Unmarshal(pt, &payload); err != nil {
+			t.Fatalf("payload not the notification json: %v (%q)", err, pt)
+		}
+		if payload["title"] != "Payment received" {
+			t.Fatalf("payload title: %v", payload)
+		}
+	}
+	if g1, g2 := <-gone, <-gone; g1 != http.StatusGone && g2 != http.StatusGone {
+		t.Fatalf("expected a 410 exchange, got %d and %d", g1, g2)
+	}
+	// The doomed endpoint must be pruned; the healthy one kept.
+	subs, err := store.ListByUser(context.Background(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(subs) != 1 || !strings.HasSuffix(subs[0].Endpoint, "/alive") {
+		t.Fatalf("prune left %d subs: %+v", len(subs), subs)
+	}
+}
+
+// vapidPair mints a valid VAPID key pair in the config encoding.
+func vapidPair(t *testing.T) (string, string) {
+	t.Helper()
+	priv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := base64.RawURLEncoding
+	return enc.EncodeToString(priv.PublicKey().Bytes()), enc.EncodeToString(priv.Bytes())
+}
+
+// decryptForTest is the receiver side of RFC 8291 for channel tests.
+func decryptForTest(t *testing.T, body []byte, priv *ecdh.PrivateKey, authSecret []byte) []byte {
+	t.Helper()
+	salt, rest := body[:16], body[16:]
+	rs := new(big.Int).SetBytes(rest[:4]).Uint64()
+	idlen := int(rest[4])
+	keyid := rest[5 : 5+idlen]
+	ct := rest[5+idlen:]
+	if int(rs) != len(body) {
+		t.Fatalf("rs = %d, body = %d", rs, len(body))
+	}
+	shared, err := priv.ECDH(mustECPub(t, keyid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := append([]byte("WebPush: info\x00"), priv.PublicKey().Bytes()...)
+	info = append(info, keyid...)
+	prkKey := hkdfRead(t, shared, authSecret, info, 32)
+	ikm := hkdfRead(t, prkKey, salt, []byte("Content-Encoding: aes128gcm\x00"), 16)
+	nonce := hkdfRead(t, prkKey, salt, []byte("Content-Encoding: nonce\x00"), 12)
+	block, _ := aes.NewCipher(ikm)
+	gcm, _ := cipher.NewGCM(block)
+	pt, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	return pt[:len(pt)-1]
+}
+
+func mustECPub(t *testing.T, raw []byte) *ecdh.PublicKey {
+	t.Helper()
+	p, err := ecdh.P256().NewPublicKey(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func hkdfRead(t *testing.T, secret, salt, info []byte, n int) []byte {
+	t.Helper()
+	out := make([]byte, n)
+	r := hkdf.New(sha256.New, secret, salt, info)
+	if _, err := r.Read(out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

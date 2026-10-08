@@ -30,6 +30,10 @@ type Config struct {
 	WebhookURL    string
 	WebhookSecret string
 
+	PushVapidPublicKey  string // Web Push VAPID identity (D22); empty disables the push channel
+	PushVapidPrivateKey string
+	PushVapidSubject    string
+
 	// Payment channels to register on top of the always-on manual
 	// adapter (design §4.2), comma-separated; unknown names are skipped
 	// with a warning at startup.
@@ -67,6 +71,10 @@ func Load() Config {
 		SMTPFrom:      os.Getenv("SMTP_FROM"),
 		WebhookURL:    os.Getenv("WEBHOOK_URL"),
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
+
+		PushVapidPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
+		PushVapidPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
+		PushVapidSubject:    os.Getenv("VAPID_SUBJECT"),
 
 		PaymentMethods: envList("PAYMENT_METHODS"),
 

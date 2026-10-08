@@ -20,6 +20,7 @@ import (
 	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/product"
 	"github.com/cuihairu/coterie/internal/provider"
+	"github.com/cuihairu/coterie/internal/push"
 	"github.com/cuihairu/coterie/internal/ratelimit"
 	"github.com/cuihairu/coterie/internal/reputation"
 	"github.com/cuihairu/coterie/internal/seat"
@@ -105,6 +106,8 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 
 		auth.RegisterRoutes(mux, authSvc)
 		user.RegisterRoutes(mux, user.NewService(db), requireUser)
+		pushSvc := push.NewService(db)
+		push.RegisterRoutes(mux, pushSvc, requireUser)
 		pluginRegistry := provider.NewRegistry(o.providerPlugins...)
 		provider.RegisterRoutes(mux, provider.NewService(db), requireUser)
 		product.RegisterRoutes(mux, product.NewService(db), requireUser)
