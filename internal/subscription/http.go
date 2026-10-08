@@ -3,6 +3,8 @@ package subscription
 import (
 	"net/http"
 
+	"github.com/cuihairu/coterie/internal/auth"
+	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
 )
 
@@ -22,13 +24,22 @@ func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware
 	mux.Handle("DELETE /api/v1/subscriptions/{id}", requireUser(http.HandlerFunc(h.remove)))
 }
 
+func actor(r *http.Request) (*user.User, bool) {
+	return auth.UserFrom(r.Context())
+}
+
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	var req CreateSubscriptionRequest
 	if err := api.DecodeJSON(r, &req); err != nil {
 		api.WriteError(w, err)
 		return
 	}
-	sub, err := h.svc.Create(r.Context(), req)
+	sub, err := h.svc.Create(r.Context(), u, req)
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -37,7 +48,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	sub, err := h.svc.Get(r.Context(), r.PathValue("id"))
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	sub, err := h.svc.Get(r.Context(), u, r.PathValue("id"))
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -46,9 +62,15 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	page := api.ParsePage(r)
 	subs, total, err := h.svc.List(
 		r.Context(),
+		u,
 		r.URL.Query().Get("owner_user_id"),
 		r.URL.Query().Get("product_id"),
 		page,
@@ -65,12 +87,17 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	var req UpdateSubscriptionRequest
 	if err := api.DecodeJSON(r, &req); err != nil {
 		api.WriteError(w, err)
 		return
 	}
-	sub, err := h.svc.Update(r.Context(), r.PathValue("id"), req)
+	sub, err := h.svc.Update(r.Context(), u, r.PathValue("id"), req)
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -79,7 +106,12 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Delete(r.Context(), r.PathValue("id")); err != nil {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	if err := h.svc.Delete(r.Context(), u, r.PathValue("id")); err != nil {
 		api.WriteError(w, err)
 		return
 	}

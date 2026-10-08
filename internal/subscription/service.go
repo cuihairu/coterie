@@ -9,8 +9,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/provider"
+	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
 
 	"github.com/google/uuid"
@@ -47,8 +49,13 @@ func NewServiceWithPlugins(db *gorm.DB, plugins *provider.Registry) *Service {
 
 // Create validates and inserts a subscription. Field-level rules fail
 // with 422 before referenced resources are checked; database uniqueness
-// or FK clashes surface as 409.
-func (s *Service) Create(ctx context.Context, req CreateSubscriptionRequest) (*Subscription, error) {
+// or FK clashes surface as 409. The owner is the authenticated user —
+// a payload owner_user_id may only confirm it, never name someone else.
+func (s *Service) Create(ctx context.Context, actor *user.User, req CreateSubscriptionRequest) (*Subscription, error) {
+	if req.OwnerUserID != "" && req.OwnerUserID != actor.ID {
+		return nil, api.Forbidden("only the subscription owner may create it; owner_user_id must be the authenticated user")
+	}
+	req.OwnerUserID = actor.ID
 	details := validateFields(req.BillingCycle, req.Price, req.Currency, req.MaxSeats, req.MaxMembers, req.SharingPolicy)
 
 	start, startErr := database.ParseDate(req.StartDate)
@@ -88,12 +95,6 @@ func (s *Service) Create(ctx context.Context, req CreateSubscriptionRequest) (*S
 		return nil, api.Validation("referenced resources missing",
 			api.Detail{Field: "product_id", Message: "product not found"})
 	}
-	if ok, err := s.store.UserExists(ctx, req.OwnerUserID); err != nil {
-		return nil, err
-	} else if !ok {
-		return nil, api.Validation("referenced resources missing",
-			api.Detail{Field: "owner_user_id", Message: "user not found"})
-	}
 	if err := s.validatePolicyWithPlugin(ctx, req.ProductID, req.SharingPolicy); err != nil {
 		return nil, err
 	}
@@ -126,32 +127,75 @@ func (s *Service) Create(ctx context.Context, req CreateSubscriptionRequest) (*S
 	return sub, nil
 }
 
-// Get returns the subscription, mapping absence to 404.
-func (s *Service) Get(ctx context.Context, id string) (*Subscription, error) {
+// Get returns the subscription to its owner, mapping absence to 404.
+func (s *Service) Get(ctx context.Context, actor *user.User, id string) (*Subscription, error) {
 	sub, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if sub == nil {
 		return nil, api.NotFound("subscription %s not found", id)
+	}
+	if sub.OwnerUserID != actor.ID {
+		return nil, api.Forbidden("only the subscription owner may view it")
 	}
 	return sub, nil
 }
 
-// List returns a page of subscriptions, optionally filtered by owner
-// and product.
-func (s *Service) List(ctx context.Context, ownerUserID, productID string, page api.Page) ([]Subscription, int64, error) {
-	return s.store.List(ctx, ownerUserID, productID, page)
+// List returns a page of the actor's subscriptions, optionally
+// filtered by product. An owner_user_id filter may only confirm the
+// actor's own id.
+func (s *Service) List(ctx context.Context, actor *user.User, ownerUserID, productID string, page api.Page) ([]Subscription, int64, error) {
+	if ownerUserID != "" && ownerUserID != actor.ID {
+		return nil, 0, api.Forbidden("only the subscription owner may list it; owner_user_id must be the authenticated user")
+	}
+	return s.store.List(ctx, actor.ID, productID, page)
 }
 
-// Update patches the subscription's mutable fields.
-func (s *Service) Update(ctx context.Context, id string, req UpdateSubscriptionRequest) (*Subscription, error) {
+// Update patches the subscription's mutable fields. Owner-only; the
+// change lands with an audit entry in the same transaction.
+func (s *Service) Update(ctx context.Context, actor *user.User, id string, req UpdateSubscriptionRequest) (*Subscription, error) {
 	sub, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if sub == nil {
 		return nil, api.NotFound("subscription %s not found", id)
+	}
+	if sub.OwnerUserID != actor.ID {
+		return nil, api.Forbidden("only the subscription owner may modify it")
+	}
+
+	// Snapshot the fields the request touches before mutating them —
+	// the audit entry carries only what actually changed.
+	before := map[string]any{}
+	if req.BillingCycle != nil {
+		before["billing_cycle"] = sub.BillingCycle
+	}
+	if req.Price != nil {
+		before["price"] = sub.Price
+	}
+	if req.Status != nil {
+		before["status"] = sub.Status
+	}
+	if req.MaxSeats != nil {
+		before["max_seats"] = sub.MaxSeats
+	}
+	if req.MaxMembers != nil {
+		before["max_members"] = sub.MaxMembers
+	}
+	if req.AutoBilling != nil {
+		before["auto_billing"] = sub.AutoBilling
+	}
+	if req.SharingPolicy != nil {
+		before["sharing_policy"] = json.RawMessage(sub.SharingPolicy)
+	}
+	if req.RenewalDate != nil {
+		if sub.RenewalDate == nil {
+			before["renewal_date"] = nil
+		} else {
+			before["renewal_date"] = sub.RenewalDate.String()
+		}
 	}
 
 	var details []api.Detail
@@ -229,15 +273,65 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateSubscriptionR
 		}
 	}
 
-	if err := s.store.Update(ctx, sub); err != nil {
+	after := map[string]any{}
+	for field := range before {
+		switch field {
+		case "billing_cycle":
+			after[field] = sub.BillingCycle
+		case "price":
+			after[field] = sub.Price
+		case "status":
+			after[field] = sub.Status
+		case "max_seats":
+			after[field] = sub.MaxSeats
+		case "max_members":
+			after[field] = sub.MaxMembers
+		case "auto_billing":
+			after[field] = sub.AutoBilling
+		case "sharing_policy":
+			after[field] = json.RawMessage(sub.SharingPolicy)
+		case "renewal_date":
+			if sub.RenewalDate == nil {
+				after[field] = nil
+			} else {
+				after[field] = sub.RenewalDate.String()
+			}
+		}
+	}
+
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(sub).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionSubscriptionUpdated,
+			EntityType:     "subscription",
+			EntityID:       sub.ID,
+			SubscriptionID: sub.ID,
+			Before:         before,
+			After:          after,
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return sub, nil
 }
 
-// Delete removes the subscription; subscriptions still referenced by
-// coteries or seats map to 409.
-func (s *Service) Delete(ctx context.Context, id string) error {
+// Delete removes the subscription (owner-only); subscriptions still
+// referenced by coteries or seats map to 409.
+func (s *Service) Delete(ctx context.Context, actor *user.User, id string) error {
+	sub, err := s.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sub == nil {
+		return api.NotFound("subscription %s not found", id)
+	}
+	if sub.OwnerUserID != actor.ID {
+		return api.Forbidden("only the subscription owner may delete it")
+	}
 	rows, err := s.store.Delete(ctx, id)
 	if err != nil {
 		if database.IsFKViolation(err) {

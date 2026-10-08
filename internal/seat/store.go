@@ -18,6 +18,9 @@ type Store struct {
 // NewStore builds a Store.
 func NewStore(db *gorm.DB) *Store { return &Store{db: db} }
 
+// DB exposes the handle for transactional composition.
+func (s *Store) DB() *gorm.DB { return s.db }
+
 // SubscriptionByID returns the owning subscription, or nil when absent.
 func (s *Store) SubscriptionByID(ctx context.Context, id string) (*subscription.Subscription, error) {
 	var sub subscription.Subscription
@@ -103,6 +106,19 @@ func (s *Store) ReleaseByMember(ctx context.Context, memberID string) (int64, er
 		Where("member_id = ?", memberID).
 		Updates(map[string]any{"member_id": nil, "status": StatusFree})
 	return res.RowsAffected, res.Error
+}
+
+// CoterieIDBySubscription returns the coterie bound to the
+// subscription (D1 strict 1:1), or "" when the circle does not exist
+// yet.
+func (s *Store) CoterieIDBySubscription(ctx context.Context, subscriptionID string) (string, error) {
+	var id string
+	err := s.db.WithContext(ctx).
+		Table("coteries").
+		Select("id").
+		Where("subscription_id = ?", subscriptionID).
+		Scan(&id).Error
+	return id, err
 }
 
 // ActiveMemberInCoterie reports whether the member is a current active

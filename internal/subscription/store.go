@@ -19,6 +19,9 @@ type Store struct {
 // NewStore builds a Store.
 func NewStore(db *gorm.DB) *Store { return &Store{db: db} }
 
+// DB exposes the handle for transactional composition.
+func (s *Store) DB() *gorm.DB { return s.db }
+
 // Create inserts s.
 func (s *Store) Create(ctx context.Context, sub *Subscription) error {
 	return s.db.WithContext(ctx).Create(sub).Error

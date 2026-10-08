@@ -208,7 +208,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
 | **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
 | **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
-| **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)） |
+| **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)）；埋点需要可信 actor，同批把订阅资源面的 Owner 强制补齐——**owner 即认证用户**（`owner_user_id` 载荷只能确认不能指名，创建/读取/列表/修改/删除全表面校验，抹平 M1 遗留的越权缺口） |
 
 ---
 
@@ -607,7 +607,7 @@ Secret Store
 
 | 项 | 设计 |
 |---|---|
-| 存储 | `audit_logs` 只增不改：`id`、`actor_id`（可空，系统/调度器动作）、`action`（CHECK 枚举，随迁移扩展）、`entity_type` + `entity_id`（被改对象）、`subscription_id` / `coterie_id`（可空查询枢纽）、`before` / `after`（JSONB 快照，更新类动作只带变更字段）、`created_at` |
+| 存储 | `audit_logs` 只增不改，骨架取自 0001_init（`id` 自增、`actor_user_id` 可空——系统/调度器动作、`action`、`entity_type` + `entity_id`、`before_state` / `after_state` JSONB 快照、`created_at`）；**0011 追加** `subscription_id` / `coterie_id` 查询枢纽（级联删除）与 `action` CHECK 枚举（随迁移扩展），更新类动作只带变更字段 |
 | 埋点 | 在**既有业务事务内**追加（`audit.Record(tx, entry)`）——审计写入失败即整体回滚，与 D11「落账与状态置位同事务」同一纪律；不入事务的埋点一律不设，杜绝「改了但没记」 |
 | 动作清单 | `coterie_created` / `coterie_updated`（含 listing 与状态流转，关闭即 `after.status=closed`）/ `member_removed` / `member_left` / `seat_assigned` / `seat_released` / `seat_updated` / `subscription_updated`（价格/策略/状态等变更字段快照）/ `contribution_updated`（金额与状态冻结规则照旧）/ `payment_recorded` / `period_closed`——覆盖 FR-15 重点操作（转移席位 = release + assign 两条记录） |
 | 读取面 | `GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`，均**仅订阅 Owner**；支持 `?action=` 过滤与分页。成员不开放审计读（结果在其自有视图可见），Admin 查询面留后续 |
@@ -786,6 +786,8 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/invitations
 /api/v1/notifications
 ```
+
+审计读取挂载于订阅与圈之下：`GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`（仅订阅 Owner，`?action=` 过滤 + 分页，D17/§6.3）。
 
 ### 9.3 示例
 

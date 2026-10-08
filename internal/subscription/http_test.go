@@ -10,8 +10,9 @@ import (
 
 const subscriptionsPath = "/api/v1/subscriptions"
 
-// seedChain creates provider → product → user through the API and
-// returns their ids, ready for subscription creation.
+// seedChain creates provider → product through the API and returns
+// the product id plus the authenticated user's id, ready for
+// subscription creation as that user.
 func seedChain(t *testing.T, client *http.Client, base, tag, tok string) (productID, userID string) {
 	t.Helper()
 	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/providers",
@@ -28,10 +29,11 @@ func seedChain(t *testing.T, client *http.Client, base, tag, tok string) (produc
 	}
 	productID, _ = body["id"].(string)
 
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/users",
-		fmt.Sprintf(`{"username":"owner-%s","email":"%s@example.com"}`, tag, tag), tok)
-	if code != http.StatusCreated {
-		t.Fatalf("seed user: status = %d: %v", code, body)
+	// The authenticated user is the only owner a subscription may
+	// have now that ownership is auth-enforced.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, base+"/api/v1/auth/me", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("me: status = %d: %v", code, body)
 	}
 	userID, _ = body["id"].(string)
 
@@ -132,7 +134,6 @@ func TestSubscriptionValidation(t *testing.T) {
 		body string
 	}{
 		{"unknown product", fmt.Sprintf(`{"product_id":"00000000-0000-0000-0000-000000000000","owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2}`, userID)},
-		{"unknown owner", fmt.Sprintf(`{"product_id":%q,"owner_user_id":"00000000-0000-0000-0000-000000000000","billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2}`, productID)},
 		{"bad currency", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"usd","start_date":"2026-10-01","max_seats":2}`, productID, userID)},
 		{"bad cycle", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"weekly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2}`, productID, userID)},
 		{"zero seats", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":0}`, productID, userID)},
@@ -205,5 +206,59 @@ func TestSubscriptionAggregateProtection(t *testing.T) {
 	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "", tok)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete after coterie removal status = %d, want 204", code)
+	}
+}
+
+// Ownership is enforced on every surface: only the authenticated owner
+// may create (owner_user_id may only confirm it), view, list, modify,
+// or delete a subscription.
+func TestSubscriptionOwnerEnforcement(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-own")
+	productID, userID := seedChain(t, client, srv.URL, "own", tok)
+	stranger, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-own-x")
+
+	// Creating for someone else is refused; the payload owner may only
+	// confirm the authenticated user.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath,
+		fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2}`, productID, userID), stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("create for another user: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath,
+		fmt.Sprintf(`{"product_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2}`, productID), tok)
+	if code != http.StatusCreated {
+		t.Fatalf("create without owner_user_id: status = %d, want 201: %v", code, body)
+	}
+	subID, _ := body["id"].(string)
+
+	// Stranger reads, writes, and deletes are 403.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+subscriptionsPath+"/"+subID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger get: status = %d, want 403", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPatch, srv.URL+subscriptionsPath+"/"+subID, `{"price":"9.99"}`, stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger patch: status = %d, want 403", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, srv.URL+subscriptionsPath+"/"+subID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger delete: status = %d, want 403", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+subscriptionsPath+"?owner_user_id="+userID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger list filter: status = %d, want 403", code)
+	}
+
+	// The owner's own list defaults to their subscriptions.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+subscriptionsPath, "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("owner list: status = %d", code)
+	}
+	if total, _ := body["meta"].(map[string]any)["total"].(float64); total != 1 {
+		t.Fatalf("owner list total = %v, want 1", body["meta"])
 	}
 }

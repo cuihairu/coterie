@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/subscription"
@@ -154,12 +155,30 @@ func (s *Service) Assign(ctx context.Context, actor *user.User, seatID string, r
 		return nil, api.Validation("referenced resources missing",
 			api.Detail{Field: "member_id", Message: "must be an active member of this subscription's coterie"})
 	}
-	changed, err := s.store.Occupy(ctx, seat.ID, req.MemberID)
+	coterieID, err := s.store.CoterieIDBySubscription(ctx, sub.ID)
 	if err != nil {
 		return nil, err
 	}
-	if !changed {
-		return nil, api.Conflict("seat %s is no longer free", seat.ID)
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		ok, err := NewStore(tx).Occupy(ctx, seat.ID, req.MemberID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return api.Conflict("seat %s is no longer free", seat.ID)
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionSeatAssigned,
+			EntityType:     "seat",
+			EntityID:       seat.ID,
+			SubscriptionID: seat.SubscriptionID,
+			CoterieID:      coterieID,
+			After:          map[string]any{"member_id": req.MemberID, "status": StatusOccupied},
+		})
+	})
+	if err != nil {
+		return nil, err
 	}
 	if s.notifier != nil {
 		if userID, err := s.store.MemberUser(ctx, req.MemberID); err == nil && userID != "" {
@@ -189,7 +208,30 @@ func (s *Service) Release(ctx context.Context, actor *user.User, seatID string) 
 	if seat.Status == StatusDisabled {
 		return nil, api.Conflict("seat %s is disabled", seat.ID)
 	}
-	if _, err := s.store.Release(ctx, seat.ID); err != nil {
+	coterieID, err := s.store.CoterieIDBySubscription(ctx, sub.ID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		changed, err := NewStore(tx).Release(ctx, seat.ID)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return nil // releasing a free seat is a no-op
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionSeatReleased,
+			EntityType:     "seat",
+			EntityID:       seat.ID,
+			SubscriptionID: seat.SubscriptionID,
+			CoterieID:      coterieID,
+			Before:         map[string]any{"member_id": seat.MemberID, "status": StatusOccupied},
+			After:          map[string]any{"member_id": nil, "status": StatusFree},
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, seat.ID)
@@ -233,6 +275,22 @@ func (s *Service) Update(ctx context.Context, actor *user.User, seatID string, r
 		return nil, api.Conflict("seat %s is occupied; release it before disabling", seat.ID)
 	}
 
+	// Snapshot what the request touches before mutating — the audit
+	// entry carries only the changed fields.
+	before := map[string]any{}
+	if req.Label != nil {
+		before["label"] = seat.Label
+	}
+	if req.Metadata != nil {
+		before["metadata"] = json.RawMessage(seat.Metadata)
+	}
+	if req.Status != nil {
+		before["status"] = seat.Status
+		if seat.Status == StatusOccupied {
+			before["member_id"] = seat.MemberID
+		}
+	}
+
 	if req.Label != nil {
 		seat.Label = *req.Label
 	}
@@ -245,10 +303,44 @@ func (s *Service) Update(ctx context.Context, actor *user.User, seatID string, r
 			seat.MemberID = nil
 		}
 	}
-	if err := s.store.Update(ctx, seat); err != nil {
-		if database.IsUniqueViolation(err) {
-			return nil, api.Conflict("seat label already exists for this subscription")
+
+	after := map[string]any{}
+	for field := range before {
+		switch field {
+		case "label":
+			after[field] = seat.Label
+		case "metadata":
+			after[field] = json.RawMessage(seat.Metadata)
+		case "status":
+			after[field] = seat.Status
+		case "member_id":
+			after[field] = seat.MemberID
 		}
+	}
+
+	coterieID, err := s.store.CoterieIDBySubscription(ctx, seat.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(seat).Error; err != nil {
+			if database.IsUniqueViolation(err) {
+				return api.Conflict("seat label already exists for this subscription")
+			}
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionSeatUpdated,
+			EntityType:     "seat",
+			EntityID:       seat.ID,
+			SubscriptionID: seat.SubscriptionID,
+			CoterieID:      coterieID,
+			Before:         before,
+			After:          after,
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return seat, nil

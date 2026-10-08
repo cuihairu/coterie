@@ -583,7 +583,9 @@ System
 
 ### FR-15 Audit Log
 
-由于涉及共享资源和费用，Audit Log **必须**记录：
+**已落地（Phase 4，设计 D17，见 design §6.3）**：`audit_logs` 只增账本（who/what/when/where + before/after 快照），资金与成员变更在同一业务事务内埋点（审计失败即回滚变更），订阅 Owner 只读端点 + `?action=` 过滤；成员不开放审计读，无编辑面。
+
+原始需求：由于涉及共享资源和费用，Audit Log **必须**记录：
 
 ```text
 Who
@@ -802,6 +804,8 @@ Block
 Audit Log
 ```
 
+进度：Audit Log 已落地（D17）；Rate Limit / Report / Block 为 Phase 4 后续条目。
+
 后续开放公共 Marketplace 时再增加：
 
 ```text
@@ -873,7 +877,7 @@ Notification
 | FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook 已落地；Push 后续） |
 | FR-13 | Dashboard | Phase 1 |
 | FR-14 | Admin | Phase 1（基础） |
-| FR-15 | Audit Log | Phase 1 |
+| FR-15 | Audit Log | Phase 1（已落地，D17） |
 | FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10；支付门槛随 Payment Adapter） |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
 | FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Marketplace 展示位后续扩展） |

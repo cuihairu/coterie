@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/provider"
@@ -112,10 +113,22 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateCoteri
 			return err
 		}
 		if req.Capacity > 0 {
-			_, err := s.seats.ProvisionOn(ctx, tx, actor, sub.ID, seat.ProvisionRequest{Count: req.Capacity})
-			return err
+			if _, err := s.seats.ProvisionOn(ctx, tx, actor, sub.ID, seat.ProvisionRequest{Count: req.Capacity}); err != nil {
+				return err
+			}
 		}
-		return nil
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionCoterieCreated,
+			EntityType:     "coterie",
+			EntityID:       c.ID,
+			SubscriptionID: sub.ID,
+			CoterieID:      c.ID,
+			After: map[string]any{
+				"name": c.Name, "status": c.Status,
+				"listing": c.Listing, "capacity": req.Capacity,
+			},
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -159,6 +172,20 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	if err != nil {
 		return nil, err
 	}
+
+	// Snapshot what the request touches before mutating — the audit
+	// entry carries only the changed fields.
+	before := map[string]any{}
+	if req.Name != nil {
+		before["name"] = c.Name
+	}
+	if req.Listing != nil {
+		before["listing"] = c.Listing
+	}
+	if req.Status != nil {
+		before["status"] = c.Status
+	}
+
 	if req.Name != nil {
 		if *req.Name == "" {
 			return nil, api.Validation("invalid coterie",
@@ -180,7 +207,33 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 		c.Status = *req.Status
 	}
 	c.UpdatedAt = time.Now().UTC()
-	if err := s.store.UpdateCoterie(ctx, c); err != nil {
+	after := map[string]any{}
+	for field := range before {
+		switch field {
+		case "name":
+			after[field] = c.Name
+		case "listing":
+			after[field] = c.Listing
+		case "status":
+			after[field] = c.Status
+		}
+	}
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(c).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionCoterieUpdated,
+			EntityType:     "coterie",
+			EntityID:       c.ID,
+			SubscriptionID: c.SubscriptionID,
+			CoterieID:      c.ID,
+			Before:         before,
+			After:          after,
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	if req.Status != nil && c.Status == StatusClosed && s.notifier != nil {
@@ -372,7 +425,7 @@ func (s *Service) Leave(ctx context.Context, actor *user.User, coterieID string)
 	if m.Role == RoleOwner {
 		return api.Conflict("the owner cannot leave; close the coterie instead")
 	}
-	return s.retireMember(ctx, m)
+	return s.retireMember(ctx, audit.ActionMemberLeft, actor.ID, c, m)
 }
 
 // RemoveMember ends a membership by id (owner only) and releases the
@@ -385,7 +438,8 @@ func (s *Service) RemoveMember(ctx context.Context, actor *user.User, memberID s
 	if m == nil {
 		return api.NotFound("member %s not found", memberID)
 	}
-	if _, err := s.loadForOwner(ctx, actor, m.CoterieID); err != nil {
+	c, err := s.loadForOwner(ctx, actor, m.CoterieID)
+	if err != nil {
 		return err
 	}
 	if m.LeftAt != nil {
@@ -394,18 +448,29 @@ func (s *Service) RemoveMember(ctx context.Context, actor *user.User, memberID s
 	if m.Role == RoleOwner {
 		return api.Conflict("the owner cannot be removed")
 	}
-	return s.retireMember(ctx, m)
+	return s.retireMember(ctx, audit.ActionMemberRemoved, actor.ID, c, m)
 }
 
-// retireMember soft-ends the membership and frees its seats atomically.
-func (s *Service) retireMember(ctx context.Context, m *Member) error {
+// retireMember soft-ends the membership, frees its seats, and records
+// the audit entry — all in the one transaction.
+func (s *Service) retireMember(ctx context.Context, action, actorID string, c *Coterie, m *Member) error {
 	now := time.Now().UTC()
 	return s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := SoftLeftMember(tx, m.ID, now); err != nil {
 			return err
 		}
-		_, err := s.seats.ReleaseMemberSeatsOn(ctx, tx, m.ID)
-		return err
+		if _, err := s.seats.ReleaseMemberSeatsOn(ctx, tx, m.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actorID,
+			Action:         action,
+			EntityType:     "member",
+			EntityID:       m.ID,
+			SubscriptionID: c.SubscriptionID,
+			CoterieID:      c.ID,
+			After:          map[string]any{"user_id": m.UserID, "role": m.Role},
+		})
 	})
 }
 

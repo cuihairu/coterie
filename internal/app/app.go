@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/coterie"
@@ -92,6 +93,7 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
 		dispute.RegisterRoutes(mux, dispute.NewService(db, notifier), requireUser)
 		reputation.RegisterRoutes(mux, reputation.NewService(db), requireUser)
+		audit.RegisterRoutes(mux, audit.NewService(db), requireUser)
 		// Manual stays registered no matter what's configured on top.
 		paymentAdapters := append([]payment.Adapter{payment.Manual{}}, o.paymentAdapters...)
 		payment.RegisterRoutes(mux, payment.NewServiceWithAdapters(db, notifier, paymentAdapters...), requireUser)

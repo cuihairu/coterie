@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/user"
@@ -127,14 +128,26 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 		if err := tx.Create(p).Error; err != nil {
 			return err
 		}
-		ok, err := s.store.SetContributionPaid(ctx, c.ID, paidAt)
+		// The paid flip must run on the transaction — the store's own
+		// handle would commit outside the settlement (invariant 5).
+		ok, err := NewStore(tx).SetContributionPaid(ctx, c.ID, paidAt)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			return api.Conflict("contribution %s is no longer payable", c.ID)
 		}
-		return nil
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionPaymentRecorded,
+			EntityType:     "payment",
+			EntityID:       p.ID,
+			SubscriptionID: c.SubscriptionID,
+			After: map[string]any{
+				"amount": p.Amount, "currency": p.Currency,
+				"method": method, "contribution_id": c.ID,
+			},
+		})
 	})
 	if err != nil {
 		return nil, err

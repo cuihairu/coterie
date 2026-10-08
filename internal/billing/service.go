@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/cuihairu/coterie/internal/audit"
 	"github.com/cuihairu/coterie/internal/database"
 	"github.com/cuihairu/coterie/internal/notification"
 	"github.com/cuihairu/coterie/internal/subscription"
@@ -113,12 +114,26 @@ func (s *Service) Close(ctx context.Context, actor *user.User, periodID string) 
 	if _, err := s.loadSubscriptionForOwner(ctx, actor, p.SubscriptionID); err != nil {
 		return nil, err
 	}
-	changed, err := s.store.ClosePeriod(ctx, p.ID)
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		ok, err := NewStore(tx).ClosePeriod(ctx, p.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return api.Conflict("billing period %s is already closed", p.ID)
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionPeriodClosed,
+			EntityType:     "billing_period",
+			EntityID:       p.ID,
+			SubscriptionID: p.SubscriptionID,
+			Before:         map[string]any{"status": PeriodOpen},
+			After:          map[string]any{"status": PeriodClosed},
+		})
+	})
 	if err != nil {
 		return nil, err
-	}
-	if !changed {
-		return nil, api.Conflict("billing period %s is already closed", p.ID)
 	}
 	return s.GetPeriod(ctx, p.ID)
 }
@@ -267,6 +282,16 @@ func (s *Service) UpdateContribution(ctx context.Context, actor *user.User, id s
 		return nil, err
 	}
 
+	// Snapshot what the request touches before mutating — the audit
+	// entry carries only the changed fields.
+	before := map[string]any{}
+	if req.Amount != nil {
+		before["amount"] = c.Amount
+	}
+	if req.Status != nil {
+		before["status"] = c.Status
+	}
+
 	if req.Amount != nil {
 		if !amountPattern.MatchString(*req.Amount) {
 			return nil, api.Validation("invalid contribution",
@@ -294,7 +319,30 @@ func (s *Service) UpdateContribution(ctx context.Context, actor *user.User, id s
 			c.PaidAt = nil
 		}
 	}
-	if err := s.store.UpdateContribution(ctx, c); err != nil {
+	after := map[string]any{}
+	for field := range before {
+		switch field {
+		case "amount":
+			after[field] = c.Amount
+		case "status":
+			after[field] = c.Status
+		}
+	}
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := NewStore(tx).UpdateContribution(ctx, c); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionContributionUpdated,
+			EntityType:     "contribution",
+			EntityID:       c.ID,
+			SubscriptionID: p.SubscriptionID,
+			Before:         before,
+			After:          after,
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return c, nil
