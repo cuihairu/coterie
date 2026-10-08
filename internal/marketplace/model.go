@@ -2,6 +2,8 @@ package marketplace
 
 import (
 	"time"
+
+	"github.com/cuihairu/coterie/internal/reputation"
 )
 
 // JoinRequest statuses. pending is the only live state; every decision
@@ -41,19 +43,34 @@ type CreateJoinRequestRequest struct {
 // subscription price floored over the active member count under the
 // equal split.
 type DirectoryEntry struct {
-	CoterieID     string `gorm:"column:id" json:"coterie_id"`
-	Name          string `gorm:"column:name" json:"name"`
-	Status        string `gorm:"column:status" json:"status"`
-	ProductID     string `gorm:"column:product_id" json:"product_id"`
-	ProductName   string `gorm:"column:product_name" json:"product_name"`
-	ProviderName  string `gorm:"column:provider_name" json:"provider_name"`
-	Price         string `gorm:"column:price" json:"price"`
-	Currency      string `gorm:"column:currency" json:"currency"`
-	MemberCount   int    `gorm:"column:member_count" json:"member_count"`
-	SeatsTotal    int    `gorm:"column:seats_total" json:"seats_total"`
-	SeatsFree     int    `gorm:"column:seats_free" json:"seats_free"`
-	Full          bool   `gorm:"-" json:"full"`
-	ShareEstimate string `gorm:"-" json:"share_estimate"`
+	CoterieID     string      `gorm:"column:id" json:"coterie_id"`
+	Name          string      `gorm:"column:name" json:"name"`
+	Status        string      `gorm:"column:status" json:"status"`
+	ProductID     string      `gorm:"column:product_id" json:"product_id"`
+	ProductName   string      `gorm:"column:product_name" json:"product_name"`
+	ProviderName  string      `gorm:"column:provider_name" json:"provider_name"`
+	Price         string      `gorm:"column:price" json:"price"`
+	Currency      string      `gorm:"column:currency" json:"currency"`
+	MemberCount   int         `gorm:"column:member_count" json:"member_count"`
+	SeatsTotal    int         `gorm:"column:seats_total" json:"seats_total"`
+	SeatsFree     int         `gorm:"column:seats_free" json:"seats_free"`
+	OwnerID       string      `gorm:"column:owner_id" json:"-"`
+	OwnerUsername string      `gorm:"column:owner_username" json:"-"`
+	Owner         *OwnerBadge `gorm:"-" json:"owner"`
+	Full          bool        `gorm:"-" json:"full"`
+	ShareEstimate string      `gorm:"-" json:"share_estimate"`
+}
+
+// OwnerBadge is the directory's owner reputation display slot (design
+// D18): a coarse, derived projection of the owner's settlement ledger
+// from the same aggregation as the authenticated reputation report.
+// Per-currency amounts stay behind that report; publishing the circle
+// publicly is the owner's opt-in to this slot.
+type OwnerBadge struct {
+	UserID        string                        `json:"user_id"`
+	Username      string                        `json:"username"`
+	Contributions reputation.ContributionCounts `json:"contributions"`
+	PaymentRatio  *string                       `json:"payment_ratio"`
 }
 
 // JoinRequestView is a join request plus the requester's display name,

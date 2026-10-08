@@ -29,3 +29,9 @@ func (s *Service) For(ctx context.Context, userID string) (*Report, error) {
 	}
 	return s.store.Aggregate(ctx, userID)
 }
+
+// Reports batch-derives reputation for the given user ids (D18 badge
+// projection). Callers dedup; absent users map to empty reports.
+func (s *Service) Reports(ctx context.Context, userIDs []string) (map[string]Report, error) {
+	return s.store.Reports(ctx, userIDs)
+}

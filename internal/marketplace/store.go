@@ -40,9 +40,11 @@ func (s *Store) Directory(ctx context.Context, productID string, page api.Page) 
 	err := q.
 		Select(`c.id, c.name, c.status, s.product_id, p.name AS product_name,
 			pr.name AS provider_name, s.price, s.currency,
+			s.owner_user_id AS owner_id, u.username AS owner_username,
 			(SELECT COUNT(*) FROM members m WHERE m.coterie_id = c.id AND m.left_at IS NULL) AS member_count,
 			(SELECT COUNT(*) FROM seats st WHERE st.subscription_id = c.subscription_id) AS seats_total,
 			(SELECT COUNT(*) FROM seats st WHERE st.subscription_id = c.subscription_id AND st.status = 'free') AS seats_free`).
+		Joins("JOIN users u ON u.id = s.owner_user_id").
 		Order("c.created_at ASC, c.id ASC").
 		Limit(page.Limit).
 		Offset(page.Offset).

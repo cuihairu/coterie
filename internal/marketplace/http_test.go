@@ -458,3 +458,120 @@ func TestJoinRequestFullConflict(t *testing.T) {
 		t.Fatalf("requester not a member after retry accept")
 	}
 }
+
+func TestDirectoryOwnerBadge(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, ownerID, subID, coterieID, joined := testsupport.SeedCircle(t, client, base, "dir-badge", "12.00", 4, 2, 1)
+	publish(t, client, base, tok, coterieID, "public")
+
+	// No billing history yet: counts at zero, ratio null (never a
+	// fake 100%), and the slot is visible to anonymous browsers.
+	badge := entryByID(t, directory(t, client, base, ""), coterieID)["owner"].(map[string]any)
+	if badge["user_id"] != ownerID {
+		t.Fatalf("badge owner = %v, want %v", badge["user_id"], ownerID)
+	}
+	if u, _ := badge["username"].(string); u == "" {
+		t.Fatalf("badge missing username: %v", badge)
+	}
+	counts := badge["contributions"].(map[string]any)
+	for _, k := range []string{"paid", "pending", "waived", "cancelled"} {
+		if counts[k] != float64(0) {
+			t.Fatalf("empty-history %s = %v", k, counts[k])
+		}
+	}
+	if badge["payment_ratio"] != nil {
+		t.Fatalf("empty-history ratio = %v, want null", badge["payment_ratio"])
+	}
+	if _, leaked := badge["currencies"]; leaked {
+		t.Fatalf("amounts leaked into the public badge: %v", badge)
+	}
+
+	// Generate the split: owner and member each owe one share. The
+	// member pays; the owner still owes → owner ratio 0.00.
+	code, period := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/subscriptions/"+subID+"/billing-periods",
+		`{"start_date":"2026-10-01","end_date":"2026-10-31"}`, tok)
+	if code != http.StatusCreated {
+		t.Fatalf("create period: status = %d: %v", code, period)
+	}
+	periodID, _ := period["id"].(string)
+	code, gen := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/billing-periods/"+periodID+"/contributions/generate",
+		`{"mode":"equal"}`, tok)
+	if code != http.StatusCreated {
+		t.Fatalf("generate: status = %d: %v", code, gen)
+	}
+	pay := map[string]string{}
+	for _, it := range gen["items"].([]any) {
+		row := it.(map[string]any)
+		pay[row["member_id"].(string)] = row["id"].(string)
+	}
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/contributions/"+pay[joined[0].MemberID]+"/payments",
+		`{}`, joined[0].Token)
+	if code != http.StatusCreated {
+		t.Fatalf("pay: status = %d: %v", code, body)
+	}
+
+	badge = entryByID(t, directory(t, client, base, ""), coterieID)["owner"].(map[string]any)
+	counts = badge["contributions"].(map[string]any)
+	if counts["paid"] != float64(0) || counts["pending"] != float64(1) {
+		t.Fatalf("owner counts = %v", counts)
+	}
+	if badge["payment_ratio"] != "0.00" {
+		t.Fatalf("owner ratio = %v, want 0.00", badge["payment_ratio"])
+	}
+
+	// The owner settles their own share → ratio 1.00.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list contributions: status = %d: %v", code, body)
+	}
+	ownerMemberID := memberUserIDs(t, client, base, tok, coterieID)
+	var ownerContribution string
+	for _, it := range body["items"].([]any) {
+		row := it.(map[string]any)
+		if ownerMemberID[ownerID] && row["member_id"] == ownerMemberIDOf(t, client, base, tok, coterieID, ownerID) {
+			ownerContribution, _ = row["id"].(string)
+		}
+	}
+	if ownerContribution == "" {
+		t.Fatalf("owner contribution not found")
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/contributions/"+ownerContribution+"/payments", `{}`, tok)
+	if code != http.StatusCreated {
+		t.Fatalf("owner pay: status = %d: %v", code, body)
+	}
+
+	badge = entryByID(t, directory(t, client, base, ""), coterieID)["owner"].(map[string]any)
+	if badge["payment_ratio"] != "1.00" {
+		t.Fatalf("owner ratio = %v, want 1.00", badge["payment_ratio"])
+	}
+	counts = badge["contributions"].(map[string]any)
+	if counts["paid"] != float64(1) || counts["pending"] != float64(0) {
+		t.Fatalf("owner counts after settle = %v", counts)
+	}
+}
+
+// ownerMemberIDOf returns the member row id behind the owner's user
+// account in the coterie.
+func ownerMemberIDOf(t *testing.T, client *http.Client, base, tok, coterieID, ownerID string) string {
+	t.Helper()
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID+"/members", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list members: status = %d: %v", code, body)
+	}
+	for _, it := range body["items"].([]any) {
+		m := it.(map[string]any)
+		if m["user_id"] == ownerID {
+			id, _ := m["id"].(string)
+			return id
+		}
+	}
+	t.Fatalf("owner member row not found in %v", body["items"])
+	return ""
+}

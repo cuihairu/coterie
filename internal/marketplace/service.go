@@ -17,6 +17,7 @@ import (
 
 	"github.com/cuihairu/coterie/internal/coterie"
 	"github.com/cuihairu/coterie/internal/notification"
+	"github.com/cuihairu/coterie/internal/reputation"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
 )
@@ -29,6 +30,7 @@ type Service struct {
 	store    *Store
 	coteries *coterie.Service
 	users    *user.Store
+	rep      *reputation.Service
 	notifier *notification.Service
 	log      *slog.Logger
 }
@@ -39,15 +41,29 @@ func NewService(db *gorm.DB, coteries *coterie.Service, notifier *notification.S
 		store:    NewStore(db),
 		coteries: coteries,
 		users:    user.NewStore(db),
+		rep:      reputation.NewService(db),
 		notifier: notifier,
 		log:      slog.Default(),
 	}
 }
 
 // Directory lists publicly listed, recruiting coteries; the product
-// filter is optional. Public endpoint — no auth.
+// filter is optional. Public endpoint — no auth. Each entry carries
+// the owner's derived reputation badge (D18).
 func (s *Service) Directory(ctx context.Context, productID string, page api.Page) ([]DirectoryEntry, int64, error) {
 	entries, total, err := s.store.Directory(ctx, strings.TrimSpace(productID), page)
+	if err != nil {
+		return nil, 0, err
+	}
+	ownerIDs := make([]string, 0, len(entries))
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e.OwnerID != "" && !seen[e.OwnerID] {
+			seen[e.OwnerID] = true
+			ownerIDs = append(ownerIDs, e.OwnerID)
+		}
+	}
+	reports, err := s.rep.Reports(ctx, ownerIDs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -55,6 +71,14 @@ func (s *Service) Directory(ctx context.Context, productID string, page api.Page
 		e := &entries[i]
 		e.Full = e.SeatsTotal > 0 && e.SeatsFree == 0
 		e.ShareEstimate = shareEstimate(e.Price, e.MemberCount)
+		if rep, ok := reports[e.OwnerID]; ok {
+			e.Owner = &OwnerBadge{
+				UserID:        rep.UserID,
+				Username:      e.OwnerUsername,
+				Contributions: rep.Contributions,
+				PaymentRatio:  rep.PaymentRatio,
+			}
+		}
 	}
 	return entries, total, nil
 }

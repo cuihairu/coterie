@@ -25,8 +25,11 @@ func (s *Store) UserExists(ctx context.Context, userID string) (bool, error) {
 	return n > 0, err
 }
 
-// statusRow is one (status, currency) bucket of the aggregation.
+// statusRow is one (user, status, currency) bucket of the aggregation.
+// The user_id column is only selected by the batch query; the
+// single-user fill leaves it empty and passes the id directly.
 type statusRow struct {
+	UserID   string
 	Status   string
 	Currency string
 	N        int64
@@ -48,7 +51,44 @@ func (s *Store) Aggregate(ctx context.Context, userID string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
+	return fold(userID, rows), nil
+}
 
+// Reports batch-derives reputation for several users with one
+// aggregate — the same joins, buckets, and ratio as Aggregate, so the
+// marketplace badge (D18) can never drift from the authenticated
+// report. Users without history map to empty reports.
+func (s *Store) Reports(ctx context.Context, userIDs []string) (map[string]Report, error) {
+	out := make(map[string]Report, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	var rows []statusRow
+	err := s.db.WithContext(ctx).
+		Table("contributions co").
+		Select("m.user_id AS user_id, co.status AS status, s.currency AS currency, COUNT(*) AS n, SUM(co.amount) AS total").
+		Joins("JOIN billing_periods bp ON bp.id = co.billing_period_id").
+		Joins("JOIN subscriptions s ON s.id = bp.subscription_id").
+		Joins("JOIN members m ON m.id = co.member_id").
+		Where("m.user_id IN ?", userIDs).
+		Group("m.user_id, co.status, s.currency").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	byUser := map[string][]statusRow{}
+	for _, r := range rows {
+		byUser[r.UserID] = append(byUser[r.UserID], r)
+	}
+	for _, id := range userIDs {
+		out[id] = *fold(id, byUser[id])
+	}
+	return out, nil
+}
+
+// fold turns aggregation rows into a Report. Both the single-user and
+// batch queries funnel through here so the derivation stays single.
+func fold(userID string, rows []statusRow) *Report {
 	rep := &Report{UserID: userID}
 	byCur := map[string]*CurrencyStats{}
 	for _, r := range rows {
@@ -91,7 +131,7 @@ func (s *Store) Aggregate(ctx context.Context, userID string) (*Report, error) {
 		ratio := fmtRatio(float64(rep.Contributions.Paid) / float64(chargeable))
 		rep.PaymentRatio = &ratio
 	}
-	return rep, nil
+	return rep
 }
 
 // fmtRatio renders the settled share with two decimals ("0.75").
