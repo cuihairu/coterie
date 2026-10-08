@@ -804,7 +804,7 @@ Block
 Audit Log
 ```
 
-进度：Audit Log 已落地（D17）；Rate Limit / Report / Block 为 Phase 4 后续条目。
+进度：Audit Log 已落地（D17）；Rate Limit 已落地（D19，注册/登录公开端点固定窗口限速）；Report / Block 为 Phase 4 后续条目。
 
 后续开放公共 Marketplace 时再增加：
 

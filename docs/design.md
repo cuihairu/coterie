@@ -210,6 +210,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
 | **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)）；埋点需要可信 actor，同批把订阅资源面的 Owner 强制补齐——**owner 即认证用户**（`owner_user_id` 载荷只能确认不能指名，创建/读取/列表/修改/删除全表面校验，抹平 M1 遗留的越权缺口） |
 | **D18** | Marketplace 信誉展示位 | **纯派生徽标** | 目录条目附 Owner 结算信誉徽标（`owner`: user_id / username / 分摊计数 / `payment_ratio`），聚合复用 D15 同一派生（批量 SQL 与单用户报告同构），不另立评分路径；徽标是粗粒度公开投影——不含各币种金额（金额留在已认证报告端点），Owner 把圈发布为公开（`listing=public`）即接受展示位；无应收历史 ratio=null 不给虚假满分（[§4.4](#44-reputation)） |
+| **D19** | Rate Limit | **内存固定窗口** | Phase 1 只挡现实滥用面——未认证公开写端点按 (端点, 客户端 IP) 计数：register 5 次/分、login 10 次/分，超限 429 JSON 信封 + `Retry-After`；单实例内存、无 Redis（§7.4），配置 0 即关闭；公开读与已认证端点等真实流量画像再议（[§6.4](#64-rate-limit)） |
 
 ---
 
@@ -619,6 +620,19 @@ Secret Store
 | 动作清单 | `coterie_created` / `coterie_updated`（含 listing 与状态流转，关闭即 `after.status=closed`）/ `member_removed` / `member_left` / `seat_assigned` / `seat_released` / `seat_updated` / `subscription_updated`（价格/策略/状态等变更字段快照）/ `contribution_updated`（金额与状态冻结规则照旧）/ `payment_recorded` / `period_closed`——覆盖 FR-15 重点操作（转移席位 = release + assign 两条记录） |
 | 读取面 | `GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`，均**仅订阅 Owner**；支持 `?action=` 过滤与分页。成员不开放审计读（结果在其自有视图可见），Admin 查询面留后续 |
 | 非目标 | 不记录任何 Secret（§6.2 边界）；无编辑/删除端点——账本不可篡改；不做导出 |
+
+### 6.4 Rate Limit
+
+NFR-7 第一阶段的基础限速（ADR D19），只挡现实滥用面——批量注册与口令暴力破解：
+
+| 项 | 决策 |
+|---|---|
+| 范围 | `POST /api/v1/auth/register`（默认 5 次/分）、`POST /api/v1/auth/login`（默认 10 次/分），两路独立计数。公开读（目录/分类）与已认证端点不限——读面是另一层防护（连接/带宽），等真实流量画像再议 |
+| 算法 | 内存**固定窗口**计数器：键 = (端点类, 客户端地址)；客户端地址取 `RemoteAddr` 主机位（反代头 `X-Forwarded-For` 待部署拓扑明确后再信任）。窗口过期条目按窗口节奏清扫，内存有界 |
+| 超限 | `429` + 标准 JSON 信封（`code: "rate_limited"`）+ `Retry-After` 秒数（到窗口结束的剩余时间）；计数失败不阻塞业务请求 |
+| 配置 | `RATE_LIMIT_REGISTER_PER_MIN` / `RATE_LIMIT_LOGIN_PER_MIN`，`0` = 关闭该端点限速；`app.WithRateLimits` 注入 |
+| 测试 | 限速器单测走假时钟（窗口翻转/按键隔离）；测试套件默认关闭限速（不干扰既有集成测试的多次注册），限速集成测试显式注入小额度 |
+| 约束 | 单实例内存（§7.4：第一阶段不依赖 Redis）——进程重启即重置，多实例各计各的；共享计数留待 §11.3 扩展 |
 
 ---
 
