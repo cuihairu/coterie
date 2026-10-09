@@ -20,14 +20,19 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> 🚧 **Status: Phase 1 backend complete, Phase 2 complete, Phase 3
-> complete** (provider plugin face with policy/admission/usage hooks
-> plus a real `claude` plugin sample registered via `PROVIDER_PLUGINS`,
-> sandbox payment channel registered via config, auto-billing
-> rollover scheduler, prorated (per-day) split, contribution
-> disputes with owner decisions, and derived settlement reputation —
-> on top of Phase 2's usage tracking, quota, marketplace, provider
-> catalog, payment adapter, and email/webhook notification channels).
+> 🚧 **Status: Phase 4 backend complete.** Provider plugin face with
+> policy/admission/usage hooks plus a real `claude` plugin sample,
+> sandbox payment channel, auto-billing rollover (monthly, yearly, and
+> custom day-count cycles), prorated (per-day) split, contribution
+> disputes with owner decisions, derived settlement reputation (own
+> endpoint plus an owner badge in the marketplace directory),
+> append-only audit log, rate limiting on the public auth endpoints,
+> per-member per-period usage limits from the sharing policy, Web Push
+> notifications, and resource-pool sharing — on top of Phase 2's usage
+> tracking, quota, marketplace, provider catalog, payment adapter, and
+> email/webhook notification channels. Still open from the vision:
+> real payment channels (Stripe) — the adapter interface is in place,
+> live credentials pending.
 > The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
@@ -77,8 +82,9 @@ scripts/smoke.sh http://localhost:8080
 | Disputes | `POST /api/v1/contributions/{id}/disputes` · `POST /api/v1/disputes/{id}/decide` (owner) · `GET /api/v1/subscriptions/{id}/disputes` |
 | Reputation | `GET /api/v1/users/{id}/reputation` (derived settlement stats) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
-| Marketplace | `GET /api/v1/marketplace/coteries` (public) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
-| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` |
+| Marketplace | `GET /api/v1/marketplace/coteries` (public; entries carry a derived owner reputation badge) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
+| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · push endpoints `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
+| Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs` (owner, read-only) |
 
 Errors use a single envelope `{"error": {"code", "message", "details?}}`;
 lists use `{"items": [...], "meta": {total, limit, offset}}`. Details in the
@@ -138,8 +144,10 @@ Seats / Quota / Cost
   webhooks, usage tracking, quotas
 - **Phase 3 ✅**: provider/payment/usage plugins, automation (auto-billing
   rollover), advanced billing (prorated split), disputes, reputation
-- **Phase 4 — vision**: open-source marketplace and infrastructure for shared
-  digital services
+- **Phase 4 ✅**: audit log, owner reputation badge in the marketplace,
+  rate limiting, custom billing cycles, per-member usage limits,
+  Web Push notifications, resource sharing mode. Still open: real
+  payment channels (Stripe) — pending external credentials
 
 ## Tech stack
 
