@@ -57,3 +57,40 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+  smoke:
+    # Full-stack smoke: build the image from this push, boot the compose
+    # stack, and walk the whole MVP journey against it (scripts/smoke.sh).
+    # Building the compose image tag locally keeps compose from pulling
+    # GHCR — the code under test is what gets smoked.
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ghcr.io/cuihairu/coterie:nightly .
+
+      - name: Boot the stack
+        run: docker compose -f deployments/docker-compose.yml up -d --wait
+
+      - name: Wait for the API
+        run: |
+          code=0
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/healthz || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          if [ "$code" != 200 ]; then
+            docker compose -f deployments/docker-compose.yml logs
+            exit 1
+          fi
+
+      - name: Smoke the MVP journey
+        run: scripts/smoke.sh
+
+      - name: Stack logs
+        if: failure()
+        run: docker compose -f deployments/docker-compose.yml logs
