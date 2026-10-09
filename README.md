@@ -12,6 +12,8 @@
 
 [English](README.md) | [中文](README.zh.md)
 
+Docs: https://cuihairu.github.io/coterie/
+
 ---
 
 **Organize subscriptions, seats, members, and shared costs in one place.**

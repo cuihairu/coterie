@@ -12,6 +12,8 @@
 
 [English](README.md) | [中文](README.zh.md)
 
+文档站：https://cuihairu.github.io/coterie/
+
 ---
 
 **把订阅、席位、成员和共享开销集中在一处管理。**
