@@ -32,3 +32,7 @@ apps/web/dist/
 .vscode/
 *.swp
 .DS_Store
+
+# VitePress docs site
+docs/.vitepress/cache/
+docs/.vitepress/dist/
