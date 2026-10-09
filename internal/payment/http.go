@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/cuihairu/coterie/internal/auth"
@@ -15,13 +16,39 @@ type Handler struct {
 
 // RegisterRoutes wires the payment endpoints onto mux. Reads are open
 // to authenticated users (billing read baseline); recording is owner or
-// paying member in the service.
+// paying member in the service. The channel webhook (D24) is public —
+// the channel can't hold a session, so the adapter's signature check is
+// the only gate.
 func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware) {
 	h := &Handler{svc: svc}
 	mux.Handle("GET /api/v1/payments/methods", requireUser(http.HandlerFunc(h.methods)))
 	mux.Handle("POST /api/v1/contributions/{id}/payments", requireUser(http.HandlerFunc(h.record)))
 	mux.Handle("GET /api/v1/contributions/{id}/payments", requireUser(http.HandlerFunc(h.list)))
 	mux.Handle("GET /api/v1/payments/{id}", requireUser(http.HandlerFunc(h.get)))
+	mux.HandleFunc("POST /api/v1/payments/webhooks/{method}", h.webhook)
+}
+
+// webhook receives a channel's outbound confirmation (D24). The body is
+// read raw — the signature covers the exact bytes — and handed to the
+// adapter; an uninteresting event is still a 200 so the channel stops
+// retrying.
+func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
+	if err != nil {
+		api.WriteError(w, api.Validation("invalid webhook",
+			api.Detail{Field: "body", Message: "payload too large or unreadable"}))
+		return
+	}
+	p, err := h.svc.ConfirmWebhook(r.Context(), r.PathValue("method"), r.Header, body)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	if p == nil {
+		api.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, p)
 }
 
 func actor(r *http.Request) (*user.User, bool) {

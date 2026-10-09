@@ -34,6 +34,12 @@ type Config struct {
 	PushVapidPrivateKey string
 	PushVapidSubject    string
 
+	// Stripe channel credentials (D24). The secret key enables the
+	// stripe method; the webhook secret verifies its confirmations.
+	StripeSecretKey     string
+	StripeWebhookSecret string
+	StripeAPIBase       string
+
 	// Payment channels to register on top of the always-on manual
 	// adapter (design §4.2), comma-separated; unknown names are skipped
 	// with a warning at startup.
@@ -75,6 +81,10 @@ func Load() Config {
 		PushVapidPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
 		PushVapidPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		PushVapidSubject:    os.Getenv("VAPID_SUBJECT"),
+
+		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		StripeAPIBase:       envOr("STRIPE_API_BASE", "https://api.stripe.com"),
 
 		PaymentMethods: envList("PAYMENT_METHODS"),
 

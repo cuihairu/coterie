@@ -1,10 +1,13 @@
 package payment_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cuihairu/coterie/internal/app"
 	"github.com/cuihairu/coterie/internal/payment"
@@ -297,4 +300,189 @@ func TestPaymentMethodsListing(t *testing.T) {
 	if len(items) != 2 || items[0] != "manual" || items[1] != "sandbox" {
 		t.Fatalf("methods = %v, want [manual sandbox]", items)
 	}
+}
+
+// The Stripe channel settles asynchronously (design D24): the charge
+// starts an intent and lands a pending row, the signed webhook flips it
+// and settles the contribution, replays stay idempotent, and failures
+// leave the contribution untouched.
+func TestStripeAsyncChannel(t *testing.T) {
+	// The fake channel resolves intents by counter and hands the
+	// signature test a secret of our choosing.
+	secret := "whsec_async"
+	var intents int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		intents++
+		fmt.Fprintf(w, `{"id":"pi_async_%d","client_secret":"pi_async_%d_secret"}`, intents, intents)
+	}))
+	t.Cleanup(fake.Close)
+
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithPaymentAdapters(payment.Stripe{
+			SecretKey: "sk_test_x", WebhookSecret: secret, APIBase: fake.URL,
+		}))
+	client, base := srv.Client(), srv.URL
+	tok, _, periodID, joined, contributions := seedDebt(t, client, base, "pay-async", "30.00", 1)
+	memberTok := joined[0].Token
+	c := contributionOf(t, contributions, joined[0].MemberID)
+	cid, _ := c["id"].(string)
+
+	// The member starts a stripe charge: 201, pending, client_secret,
+	// contribution untouched.
+	code, body := pay(t, client, base, memberTok, cid, `{"method":"stripe"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("stripe charge: status = %d: %v", code, body)
+	}
+	if body["status"] != "pending" || body["method"] != "stripe" {
+		t.Fatalf("payment body = %v", body)
+	}
+	if body["client_secret"] != "pi_async_1_secret" {
+		t.Fatalf("client_secret = %v", body["client_secret"])
+	}
+	ref, _ := body["external_ref"].(string)
+	if ref != "pi_async_1" {
+		t.Fatalf("external_ref = %q", ref)
+	}
+	paid := func() bool {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+			base+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
+		if code != http.StatusOK {
+			t.Fatalf("list contributions: status = %d: %v", code, body)
+		}
+		for _, it := range body["items"].([]any) {
+			if row := it.(map[string]any); row["id"] == cid {
+				return row["status"] == "paid"
+			}
+		}
+		return false
+	}
+	if paid() {
+		t.Fatal("contribution settled before the webhook")
+	}
+
+	// A bad signature is rejected and changes nothing.
+	code, body = testsupport.DoJSON(t, client, http.MethodPost,
+		base+"/api/v1/payments/webhooks/stripe", `{"type":"payment_intent.succeeded"}`)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("unsigned webhook: status = %d, want 422: %v", code, body)
+	}
+
+	// The signed success webhook settles the row and the contribution.
+	succeeded := fmt.Sprintf(`{"id":"evt_1","type":"payment_intent.succeeded","data":{"object":{"id":%q,"object":"payment_intent"}}}`, ref)
+	code, body = postWebhook(t, client, base, "stripe", secret, succeeded)
+	if code != http.StatusOK {
+		t.Fatalf("success webhook: status = %d: %v", code, body)
+	}
+	if body["status"] != "succeeded" || body["paid_at"] == nil {
+		t.Fatalf("payment after webhook = %v", body)
+	}
+	if !paid() {
+		t.Fatal("contribution not settled by the success webhook")
+	}
+
+	// The owner is notified exactly the way a manual payment would.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, base+"/api/v1/notifications", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("owner notifications: status = %d: %v", code, body)
+	}
+	notified := false
+	for _, it := range body["items"].([]any) {
+		if it.(map[string]any)["type"] == "payment_received" {
+			notified = true
+		}
+	}
+	if !notified {
+		t.Fatalf("owner notifications missing payment_received: %v", body)
+	}
+
+	// Replaying the same webhook is idempotent: 200 with the stored row.
+	code, body = postWebhook(t, client, base, "stripe", secret, succeeded)
+	if code != http.StatusOK || body["id"] != body["id"] || body["status"] != "succeeded" {
+		t.Fatalf("replay: status = %d: %v", code, body)
+	}
+
+	// An unknown intent is a 404 — we never lose money silently.
+	ghost := `{"id":"evt_9","type":"payment_intent.succeeded","data":{"object":{"id":"pi_ghost","object":"payment_intent"}}}`
+	code, body = postWebhook(t, client, base, "stripe", secret, ghost)
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown intent: status = %d, want 404: %v", code, body)
+	}
+
+	// Uninteresting events still 200 so the channel stops retrying.
+	other := `{"id":"evt_10","type":"charge.refunded","data":{"object":{"id":"ch_1"}}}`
+	code, body = postWebhook(t, client, base, "stripe", secret, other)
+	if code != http.StatusOK {
+		t.Fatalf("unrelated event: status = %d, want 200: %v", code, body)
+	}
+}
+
+// TestStripeAsyncFailure covers payment_intent.payment_failed: the row
+// flips to failed and the contribution stays pending (retryable).
+func TestStripeAsyncFailure(t *testing.T) {
+	var attempts int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		fmt.Fprintf(w, `{"id":"pi_fail_%d","client_secret":"pi_fail_%d_secret"}`, attempts, attempts)
+	}))
+	t.Cleanup(fake.Close)
+
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithPaymentAdapters(payment.Stripe{
+			SecretKey: "sk_test_x", WebhookSecret: "whsec_fail", APIBase: fake.URL,
+		}))
+	client, base := srv.Client(), srv.URL
+	tok, _, periodID, joined, contributions := seedDebt(t, client, base, "pay-async-fail", "5.00", 1)
+	cid, _ := contributionOf(t, contributions, joined[0].MemberID)["id"].(string)
+
+	code, body := pay(t, client, base, joined[0].Token, cid, `{"method":"stripe"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("stripe charge: status = %d: %v", code, body)
+	}
+	ref, _ := body["external_ref"].(string)
+
+	failed := fmt.Sprintf(`{"id":"evt_f","type":"payment_intent.payment_failed","data":{"object":{"id":%q,"object":"payment_intent"}}}`, ref)
+	code, body = postWebhook(t, client, base, "stripe", "whsec_fail", failed)
+	if code != http.StatusOK || body["status"] != "failed" {
+		t.Fatalf("failure webhook: status = %d: %v", code, body)
+	}
+
+	// The contribution is still pending — the member may retry.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list contributions: status = %d: %v", code, body)
+	}
+	for _, it := range body["items"].([]any) {
+		if row := it.(map[string]any); row["id"] == cid && row["status"] != "pending" {
+			t.Fatalf("contribution status = %v, want pending after failure", row["status"])
+		}
+	}
+
+	// A retry is allowed: the failed row is not a receivable anymore,
+	// so a fresh charge must succeed. Reuse the same receipt-free path
+	// by charging again — the contribution was never settled.
+	code, body = pay(t, client, base, joined[0].Token, cid, `{"method":"stripe"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("retry charge: status = %d: %v", code, body)
+	}
+}
+
+// postWebhook delivers a signed channel webhook to the public endpoint.
+func postWebhook(t *testing.T, client *http.Client, base, method, secret, payload string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost,
+		base+"/api/v1/payments/webhooks/"+method, strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Stripe-Signature", signStripe(t, secret, time.Now(), []byte(payload)))
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
 }

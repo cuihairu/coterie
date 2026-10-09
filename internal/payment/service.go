@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -92,6 +93,14 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 			api.Detail{Field: "external_ref", Message: "must be at most 200 characters"})
 	}
 
+	// Async channels (D24) start the charge with the channel and land
+	// a pending row; the channel's webhook later flips the outcome. No
+	// contribution flip and no payment-received notice yet — nothing
+	// has been received.
+	if async, ok := adapter.(AsyncAdapter); ok {
+		return s.recordAsync(ctx, actor, c, async, externalRef)
+	}
+
 	paidAt := time.Now().UTC()
 	p := &Payment{
 		ID:             uuid.NewString(),
@@ -102,7 +111,7 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 		Currency:       c.Currency,
 		Method:         method,
 		Status:         StatusSucceeded,
-		PaidAt:         paidAt,
+		PaidAt:         &paidAt,
 	}
 	if externalRef != "" {
 		ref := externalRef
@@ -158,6 +167,156 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 			"Payment received",
 			fmt.Sprintf("A payment of %s %s was recorded for your sharing circle.", p.Amount, p.Currency),
 			"contribution", c.ID)
+	}
+	return p, nil
+}
+
+// recordAsync starts an async channel's charge: a pending payment row
+// carrying the channel's external reference. The audit entry marks the
+// initiation; the confirmation lands its own audit entry later.
+func (s *Service) recordAsync(ctx context.Context, actor *user.User, c *contributionSettled, async AsyncAdapter, externalRef string) (*Payment, error) {
+	pending, err := async.ChargeAsync(ctx, Charge{
+		ContributionID: c.ID,
+		PayerUserID:    c.MemberUserID,
+		Amount:         c.Amount,
+		Currency:       c.Currency,
+	})
+	if err != nil {
+		return nil, err
+	}
+	p := &Payment{
+		ID:             uuid.NewString(),
+		ContributionID: c.ID,
+		SubscriptionID: c.SubscriptionID,
+		PayerUserID:    c.MemberUserID,
+		Amount:         c.Amount,
+		Currency:       c.Currency,
+		Method:         async.Name(),
+		Status:         StatusPending,
+	}
+	ref := pending.ExternalRef
+	p.ExternalRef = &ref
+	if externalRef != "" {
+		note := externalRef
+		// The channel reference is authoritative for async rows; the
+		// caller's free text rides along in the external_ref only when
+		// the channel produced none.
+		if ref == "" {
+			p.ExternalRef = &note
+		}
+	}
+	if err := s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(p).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        actor.ID,
+			Action:         audit.ActionPaymentRecorded,
+			EntityType:     "payment",
+			EntityID:       p.ID,
+			SubscriptionID: c.SubscriptionID,
+			After: map[string]any{
+				"amount": p.Amount, "currency": p.Currency,
+				"method": p.Method, "contribution_id": c.ID,
+				"status": StatusPending, "external_ref": ref,
+			},
+		})
+	}); err != nil {
+		return nil, err
+	}
+	p.ClientSecret = pending.ClientSecret
+	return p, nil
+}
+
+// ConfirmWebhook consumes a channel's outbound confirmation (D24): the
+// adapter verifies authenticity, the service flips the pending payment
+// row in one transaction — succeeded also flips the contribution and
+// notifies the owner. Replays (row already terminal) return the stored
+// state; an unknown external reference is a 404.
+func (s *Service) ConfirmWebhook(ctx context.Context, method string, header http.Header, payload []byte) (*Payment, error) {
+	adapter, ok := s.adapters[method]
+	if !ok {
+		return nil, api.NotFound("unknown payment method %s", method)
+	}
+	async, ok := adapter.(AsyncAdapter)
+	if !ok {
+		return nil, api.Validation("invalid webhook",
+			api.Detail{Field: "method", Message: "channel does not confirm asynchronously"})
+	}
+	event, ok, err := async.ParseWebhook(header, payload)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil // uninteresting event kind — 200, nothing to do
+	}
+	if event.ExternalRef == "" {
+		return nil, api.Validation("invalid webhook",
+			api.Detail{Field: "payload", Message: "event carries no external reference"})
+	}
+
+	p, err := s.store.PaymentByExternalRef(ctx, event.ExternalRef)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, api.NotFound("no payment for external reference %s", event.ExternalRef)
+	}
+	if p.Status != StatusPending {
+		return p, nil // replay — already settled
+	}
+
+	now := time.Now().UTC()
+	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		locked, err := NewStore(tx).PaymentByExternalRefForUpdate(ctx, event.ExternalRef)
+		if err != nil {
+			return err
+		}
+		if locked == nil || locked.Status != StatusPending {
+			return nil // raced with a concurrent webhook — nothing to do
+		}
+		p = locked
+		if event.Succeeded {
+			p.Status = StatusSucceeded
+			p.PaidAt = &now
+			ok, err := NewStore(tx).SetContributionPaid(ctx, p.ContributionID, now)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return api.Conflict("contribution %s is no longer payable", p.ContributionID)
+			}
+		} else {
+			p.Status = StatusFailed
+		}
+		if err := tx.Save(p).Error; err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Input{
+			ActorID:        p.PayerUserID,
+			Action:         audit.ActionPaymentRecorded,
+			EntityType:     "payment",
+			EntityID:       p.ID,
+			SubscriptionID: p.SubscriptionID,
+			After: map[string]any{
+				"amount": p.Amount, "currency": p.Currency,
+				"method": p.Method, "contribution_id": p.ContributionID,
+				"status": p.Status, "external_ref": event.ExternalRef,
+			},
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	if event.Succeeded && s.notifier != nil {
+		c, err := s.store.ContributionForPayment(ctx, p.ContributionID)
+		if err == nil && c != nil && p.PayerUserID != c.OwnerUserID {
+			s.notifier.Notify(ctx, c.OwnerUserID,
+				notification.TypePaymentReceived,
+				"Payment received",
+				fmt.Sprintf("A payment of %s %s was confirmed by %s.", p.Amount, p.Currency, p.Method),
+				"contribution", p.ContributionID)
+		}
 	}
 	return p, nil
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/cuihairu/coterie/internal/billing"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -65,6 +66,36 @@ func (s *Store) Create(ctx context.Context, p *Payment) error {
 }
 
 // PaymentByID returns the payment, or nil when absent.
+// PaymentByExternalRef returns the payment started for a channel
+// transaction id (the async webhook's lookup key), or nil when absent.
+func (s *Store) PaymentByExternalRef(ctx context.Context, ref string) (*Payment, error) {
+	var p Payment
+	err := s.db.WithContext(ctx).First(&p, "external_ref = ?", ref).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// PaymentByExternalRefForUpdate loads the payment with a row lock for
+// the webhook's flip; the caller must run inside its transaction.
+func (s *Store) PaymentByExternalRefForUpdate(ctx context.Context, ref string) (*Payment, error) {
+	var p Payment
+	err := s.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&p, "external_ref = ?", ref).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 func (s *Store) PaymentByID(ctx context.Context, id string) (*Payment, error) {
 	var p Payment
 	err := s.db.WithContext(ctx).First(&p, "id = ?", id).Error

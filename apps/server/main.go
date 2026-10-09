@@ -66,6 +66,16 @@ func paymentAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
 		switch name {
 		case payment.Sandbox{}.Name():
 			out = append(out, payment.Sandbox{})
+		case payment.Stripe{}.Name():
+			if cfg.StripeSecretKey == "" {
+				log.Warn("PAYMENT_METHODS lists stripe without STRIPE_SECRET_KEY, skipping", "method", name)
+				continue
+			}
+			out = append(out, payment.Stripe{
+				SecretKey:     cfg.StripeSecretKey,
+				WebhookSecret: cfg.StripeWebhookSecret,
+				APIBase:       cfg.StripeAPIBase,
+			})
 		default:
 			log.Warn("unknown payment method in PAYMENT_METHODS, skipping", "method", name)
 		}
