@@ -31,8 +31,10 @@ services and more.
 > append-only audit log, rate limiting on the public auth endpoints,
 > per-member per-period usage limits from the sharing policy, Web Push
 > notifications, resource-pool sharing, the Stripe payment channel
-> (async adapter with a signed public webhook), and the marketplace
-> payment gate (admission charged before joining) — on top of Phase 2's
+> (async adapter with a signed public webhook), the marketplace payment
+> gate (admission charged before joining), and abuse controls (platform
+> admin role, coterie blocks, abuse reports with an admin inbox) — on
+> top of Phase 2's
 > usage tracking, quota, marketplace, provider catalog, payment
 > adapter, and email/webhook notification channels. Live Stripe
 > credentials are all that remains to take real money.
@@ -150,7 +152,8 @@ Seats / Quota / Cost
 - **Phase 4 ✅**: audit log, owner reputation badge in the marketplace,
   rate limiting, custom billing cycles, per-member usage limits,
   Web Push notifications, resource sharing mode, the Stripe payment
-  channel (D24), and the marketplace payment gate (D25)
+  channel (D24), the marketplace payment gate (D25), and abuse
+  controls — platform admin, reports, and coterie blocks (D26)
 
 ## Tech stack
 
