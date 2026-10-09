@@ -216,6 +216,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409——判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
 | **D22** | Push 通知 | **Web Push（RFC 8291 + RFC 8292 VAPID）** | Push 渠道取 Web Push 标准而非 FCM/APNs 私有通道（自托管友好、无厂商凭据）：用户经认证 API 登记 `push_subscriptions`（endpoint + p256dh/auth 密钥，endpoint 全局唯一 upsert）；出站适配器对通知接收者的每个登记端点按 RFC 8291 `aes128gcm` 加密负载、RFC 8292 VAPID（ES256 JWT）签名 `Authorization` 头后 POST——纯 stdlib + x/crypto/hkdf 手写（加密与 JWT 均有 RFC 测试向量背书，不引第三方推送库）；推送服务 404/410 即剪除该订阅（端点已失效），其余失败按渠道惯例记日志不致命（FR-12）；VAPID 未配置则渠道不注册，行为与 Email/Webhook 一致（[§6.5](#65-web-push)） |
 | **D23** | Resource 共享建模 | **复用 D4：Seat + metadata** | §2.5 的资源池共享不引入新实体：`sharing.mode = resource` 时 Seat 的 metadata 携带 `{"resource": <容量>, "unit": "...", "used": 0}`（与 quota 同构）；`used` 投影与 quota 完全同管线——账本按席位归集 SUM 重写（D9），席位归集发现与多席位歧义检查对 quota / resource 一视同仁；费用拆分（§4.3）与共享模式正交，资源模式照选 equal / usage 等拆分，无新增计费路径 |
+| **D24** | 真实支付渠道（Stripe） | **异步适配器 facet + 公开 Webhook + pending/failed 状态** | 同步 `Charge`（事务内成功即落账）无法表达 Stripe 的确认-回调流，故适配器面增加**可选异步 facet**：`AsyncAdapter`（`ChargeAsync → 渠道单号` + `ParseWebhook → 事件`），同步适配器自动满足（零改动）；`payments.status` 经迁移 0014 扩为 `('pending','succeeded','failed')`（付款先行落 `pending`，`paid_at` 于确认时回填）；Stripe 适配器用**纯 net/http + HMAC-SHA256**（不引 stripe-go：只需 `/v1/payment_intents` 一个表单 POST + webhook 签名验证，供应商 SDK 带不进价值）；`POST /api/v1/payments/webhooks/stripe` 为**公开端点**（唯一签名鉴权，无会话），验签→翻译为规范化事件→服务层在同一事务内回写 `payments`（succeeded 置 `paid`/`paid_at` 并翻 Contribution，failed 仅落状态）——不反向驱动领域模型；配置 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_API_BASE`（后者供测试指向假服务），未配置则渠道不注册（渠道惯例） |
 
 
 ---
@@ -427,6 +428,16 @@ Payment
 Phase 2 落地（ADR D11）：`internal/payment` 定义 `Adapter` 接口（`Name` + `Charge(Charge) → Receipt`），MVP 仅内置 **Manual** 适配器（线下收款后登记，恒成功）；`payments` 表只增不改（金额/币种恒取自 Contribution，不变量 5），`POST /api/v1/contributions/{id}/payments` 在同一事务内完成「渠道应答 → 落账 → Contribution 置 `paid`/`paid_at`」；Owner 或付款成员本人可登记；已结算/不可支付（waived/cancelled）409；Stripe 等真实渠道后续以新适配器接入，Check 清单随迁移扩展。
 
 Phase 3 补充：适配器经 `app.WithPaymentAdapters` 注册（`PAYMENT_METHODS` 环境变量驱动，Manual 恒注册），`GET /api/v1/payments/methods` 列出已注册渠道；内置 **Sandbox** 演示渠道（离线确定性应答，外部单号 `sbx_` 前缀）作为插件接缝的端到端模板，`payments.method` CHECK 随迁移 0008 扩展为 `('manual','sandbox')`（D11「Check 清单随迁移扩展」的首次演练）。
+
+Phase 4 落地（ADR D24）：新增 **Stripe** 真实适配器，走**异步确认**语义。适配器面引入可选 facet `AsyncAdapter`——同步适配器（Manual / Sandbox）天然满足，异步渠道实现 `ChargeAsync`（建 payment intent → 返回渠道单号）与 `ParseWebhook`（验签 + 归一化事件）。写路径据此分叉：同步渠道仍「事务内 Charge → 落账 → 翻 Contribution」；异步渠道先落 `pending` 行（外部单号即 Stripe payment intent），Contribution 保持 `pending`，确认由公开 Webhook 端点驱动：
+
+| 项 | 决策 |
+|---|---|
+| 状态 | `payments.status` 扩为 `('pending','succeeded','failed')`（迁移 0014）；`paid_at` 可空——仅确认时回填；pending→succeeded 回写外部单号与 `paid_at` 并翻 Contribution 为 `paid`；pending→failed 仅落状态，Contribution 留在 pending 供重试 |
+| 端点 | `POST /api/v1/payments/webhooks/stripe`——**公开**（无 `Authorization`），唯一鉴权是 Stripe-Signature HMAC；验签失败 400；重放（已非 pending）幂等返回 200 |
+| 实现 | 纯 `net/http` + `crypto/hmac`：表单向 `/v1/payment_intents` 下单（`amount`=分、`currency` 小写、`metadata[contribution_id]`），webhook 验签用 `Stripe-Signature: t=…,v1=…` 的 HMAC-SHA256(t + "." + body) 定时比较 |
+| 配置 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET`、`STRIPE_API_BASE`（默认 `https://api.stripe.com`，测试指向假服务）；任一缺失则适配器不注册，行为同 Email/Webhook/Push 渠道 |
+| 测试 | 对假 Stripe（httptest）跑完整链：建 intent → pending 行 → 投递签名 webhook → 行转 succeeded + Contribution 翻 paid；验签失败 400、未知 intent 404、重复投递幂等 |
 
 ---
 
@@ -969,13 +980,13 @@ Instance
 - **加入请求**：已认证用户对公开圈 `POST /api/v1/coteries/{id}/join-requests`（可附留言）——圈须 open/active 且未满、请求者不是活跃成员、每圈每用户至多一条 `pending`；Owner/Admin 经 `GET /api/v1/coteries/{id}/join-requests?status=pending` 查看，`POST /api/v1/join-requests/{id}/accept|decline` 决定，请求者可 `DELETE` 撤回自己的 pending；
 - **接受即准入**：accept 复用与邀请接受一致的检查（open/active、未满、未重复加入、`max_members` 上限、Provider 插件 AdmissionGuard），角色固定 member；满员时 accept 以 409 失败，请求退回 pending；
 - **通知**：请求创建通知 Owner（`join_requested`），决定后通知请求者（`join_decided`）；
-- **Payment 门槛**：「Request Join → Payment → Join」链中的支付闸门需要**真实收费渠道**才有意义——Manual 适配器只做线下收款登记，无法在入圈前向用户收款；因此闸门继续推迟，接入真实渠道（Stripe 等）时一并落地，在那之前 accept 即入圈。
+- **Payment 门槛**：「Request Join → Payment → Join」链中的支付闸门——**渠道已就位**（D24：Stripe 异步适配器 + 公开 Webhook 已落地），闸门本身的编排（入圈前发起 charge、以 webhook 确认驱动 accept）留作下一增量，仍需真实 Stripe 凭据端到端打通；在那之前 accept 即入圈。
 
 ---
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook。
 
 实现阶段仍需确认的细节：
 

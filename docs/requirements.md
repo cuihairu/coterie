@@ -878,14 +878,14 @@ Notification
 | FR-6 | 共享模式 | Phase 1（Account / Seat / Family 基础支持）；Phase 2（Quota 用量记账与 usage 分摊，见设计 D9）；Phase 3（Provider 插件 UsageValidator 记账复验面，见 D12）；Phase 4（Resource 共享已落地：复用 Seat+metadata，见设计 D23） |
 | FR-7 | Member | Phase 1 |
 | FR-8 | Seat | Phase 1 |
-| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；`auto_billing` 调度器滚期见设计 D13；`prorated` 按天比例分摊；真实渠道 → 后续） |
+| FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；`auto_billing` 调度器滚期见设计 D13；`prorated` 按天比例分摊）；Phase 4（Stripe 真实渠道已落地：异步确认 + 公开 Webhook，见设计 D24） |
 | FR-10 | Sharing Policy | Phase 1（基础限制）；Phase 3（MemberLimit `max_members` 准入强制 + Provider 插件策略复验/准入守卫已落地，见设计 D12）；Phase 4（UsageLimit 核心强制已落地：每成员每账期用量上限，见设计 D21；其余 Limit 后续扩展） |
 | FR-11 | Invitation | Phase 1 |
 | FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook + Push 已落地——Push 为 Web Push 标准，D22） |
 | FR-13 | Dashboard | Phase 1 |
 | FR-14 | Admin | Phase 1（基础） |
 | FR-15 | Audit Log | Phase 1（已落地，D17） |
-| FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10；支付门槛随 Payment Adapter） |
+| FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10）；支付门槛的真实渠道已就位（Stripe，D24），闸门编排留后续增量 |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
 | FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Phase 4 补齐 Marketplace 展示位——目录条目附 Owner 派生徽标，见设计 D18） |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |
