@@ -175,6 +175,28 @@ func TestPaymentPermissions(t *testing.T) {
 	}
 }
 
+func TestPaymentDuplicateExternalRef(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	_, _, _, joined, contributions := seedDebt(t, client, base, "pay-dupref", "10.00", 2)
+	if len(joined) < 2 {
+		t.Fatalf("seed joined = %d, want 2", len(joined))
+	}
+	cid1 := contributionOf(t, contributions, joined[0].MemberID)["id"].(string)
+	cid2 := contributionOf(t, contributions, joined[1].MemberID)["id"].(string)
+
+	// Two contributions paid with the same free-text ref: the manual
+	// ledger's unique constraint must surface as a 409, not a 500.
+	code, body := pay(t, client, base, joined[0].Token, cid1, `{"external_ref":"receipt 42"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("first payment: status = %d: %v", code, body)
+	}
+	code, body = pay(t, client, base, joined[1].Token, cid2, `{"external_ref":"receipt 42"}`)
+	if code != http.StatusConflict {
+		t.Fatalf("duplicate ref: status = %d, want 409: %v", code, body)
+	}
+}
+
 func TestPaymentValidation(t *testing.T) {
 	srv := testsupport.NewServer(t, testsupport.NewDB(t))
 	client, base := srv.Client(), srv.URL

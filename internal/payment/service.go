@@ -7,6 +7,7 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 
 	"github.com/cuihairu/coterie/internal/audit"
@@ -26,6 +29,19 @@ import (
 
 // maxExternalRefLen bounds the free-text channel reference.
 const maxExternalRefLen = 200
+
+// duplicateRef turns the unique violation on payments.external_ref
+// into a 409. The webhook path is idempotent by lookup, but the
+// manual adapter takes free-text refs, so a repeat surfaces here.
+func duplicateRef(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) &&
+		pgErr.Code == pgerrcode.UniqueViolation &&
+		pgErr.ConstraintName == "payments_external_ref_key" {
+		return api.Conflict("external ref is already used")
+	}
+	return err
+}
 
 // Service records payments through the configured adapters.
 type Service struct {
@@ -135,7 +151,7 @@ func (s *Service) Record(ctx context.Context, actor *user.User, contributionID s
 			p.ExternalRef = &ref
 		}
 		if err := tx.Create(p).Error; err != nil {
-			return err
+			return duplicateRef(err)
 		}
 		// The paid flip must run on the transaction — the store's own
 		// handle would commit outside the settlement (invariant 5).
