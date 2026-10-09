@@ -22,6 +22,7 @@ import (
 	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/push"
 	"github.com/cuihairu/coterie/internal/ratelimit"
+	"github.com/cuihairu/coterie/internal/report"
 	"github.com/cuihairu/coterie/internal/reputation"
 	"github.com/cuihairu/coterie/internal/seat"
 	"github.com/cuihairu/coterie/internal/subscription"
@@ -135,6 +136,9 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		// same channels, but a webhook secret of its own endpoint's.
 		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier, o.marketplaceAdapters...), requireUser)
 		usage.RegisterRoutes(mux, usage.NewServiceWithPlugins(db, pluginRegistry), requireUser)
+		// Reports: anyone can flag a listed coterie; the inbox and the
+		// decisions are the platform admin's (design D26).
+		report.RegisterRoutes(mux, report.NewService(db), requireUser, auth.RequireAdmin(requireUser))
 		notification.RegisterRoutes(mux, notifier, requireUser)
 	}
 

@@ -26,6 +26,7 @@ const (
 	ActionContributionUpdated = "contribution_updated"
 	ActionPaymentRecorded     = "payment_recorded"
 	ActionPeriodClosed        = "period_closed"
+	ActionReportDecided       = "report_decided"
 )
 
 // Actions is the known action set, keyed for filter checks.
@@ -41,6 +42,7 @@ var Actions = map[string]bool{
 	ActionContributionUpdated: true,
 	ActionPaymentRecorded:     true,
 	ActionPeriodClosed:        true,
+	ActionReportDecided:       true,
 }
 
 // Entry is one immutable audit record. The table's shape comes from
