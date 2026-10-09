@@ -182,6 +182,9 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	if req.Listing != nil {
 		before["listing"] = c.Listing
 	}
+	if req.PaymentGate != nil {
+		before["payment_gate"] = c.PaymentGate
+	}
 	if req.Status != nil {
 		before["status"] = c.Status
 	}
@@ -200,6 +203,9 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 		}
 		c.Listing = *req.Listing
 	}
+	if req.PaymentGate != nil {
+		c.PaymentGate = *req.PaymentGate
+	}
 	if req.Status != nil && *req.Status != c.Status {
 		if !transitions[c.Status][*req.Status] {
 			return nil, api.Conflict("cannot transition coterie from %s to %s", c.Status, *req.Status)
@@ -214,6 +220,8 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 			after[field] = c.Name
 		case "listing":
 			after[field] = c.Listing
+		case "payment_gate":
+			after[field] = c.PaymentGate
 		case "status":
 			after[field] = c.Status
 		}
@@ -322,6 +330,14 @@ func (s *Service) AdmitMember(ctx context.Context, operator *user.User, coterieI
 		return nil, api.NotFound("coterie %s not found", coterieID)
 	}
 	return s.admitUser(ctx, s.store.DB().WithContext(ctx), c, admitted.ID, RoleMember)
+}
+
+// AdmitUserInTx admits a user inside a caller-owned transaction — the
+// payment-gate webhook (D25) flips a charge and inserts the member
+// atomically. The user must already be authorized to admit (the owner's
+// accept is recorded on the join request).
+func (s *Service) AdmitUserInTx(ctx context.Context, db *gorm.DB, c *Coterie, userID, role string) (*Member, error) {
+	return s.admitUser(ctx, db, c, userID, role)
 }
 
 // admitUser runs the shared admission checks and inserts the active

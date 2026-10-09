@@ -6,13 +6,15 @@ import (
 	"github.com/cuihairu/coterie/internal/reputation"
 )
 
-// JoinRequest statuses. pending is the only live state; every decision
-// is terminal and keeps the row for history.
+// JoinRequest statuses. pending and awaiting_payment are the live
+// states (the latter is the payment gate's hold, design D25); every
+// decided state keeps the row for history.
 const (
-	RequestPending   = "pending"
-	RequestAccepted  = "accepted"
-	RequestDeclined  = "declined"
-	RequestCancelled = "cancelled"
+	RequestPending         = "pending"
+	RequestAwaitingPayment = "awaiting_payment"
+	RequestAccepted        = "accepted"
+	RequestDeclined        = "declined"
+	RequestCancelled       = "cancelled"
 )
 
 // JoinRequest is a user's ask to join a listed coterie (design D10).
@@ -78,4 +80,41 @@ type OwnerBadge struct {
 type JoinRequestView struct {
 	JoinRequest
 	Username string `json:"username"`
+}
+
+// AdmissionCharge statuses — same lifecycle words as payments.
+const (
+	ChargePending   = "pending"
+	ChargeSucceeded = "succeeded"
+	ChargeFailed    = "failed"
+)
+
+// AdmissionCharge is a pre-membership receipt (design D25): the payment
+// gate takes the requester's estimated share before they join. It lives
+// outside the payments ledger on purpose — contributions require
+// membership, the gate deliberately precedes it — and covers the
+// current period by estimate; real shares keep coming from billing.
+type AdmissionCharge struct {
+	ID            string     `gorm:"column:id;primaryKey;type:uuid" json:"id"`
+	CoterieID     string     `gorm:"column:coterie_id;not null" json:"coterie_id"`
+	UserID        string     `gorm:"column:user_id;not null" json:"user_id"`
+	JoinRequestID string     `gorm:"column:join_request_id;not null" json:"join_request_id"`
+	Amount        string     `gorm:"column:amount" json:"amount"`
+	Currency      string     `gorm:"column:currency" json:"currency"`
+	Method        string     `gorm:"column:method;not null" json:"method"`
+	Status        string     `gorm:"column:status;not null" json:"status"`
+	ExternalRef   *string    `gorm:"column:external_ref" json:"external_ref,omitempty"`
+	ClientSecret  string     `gorm:"-" json:"client_secret,omitempty"` // async channels only, never stored
+	CreatedAt     time.Time  `gorm:"column:created_at;not null" json:"created_at"`
+	ConfirmedAt   *time.Time `gorm:"column:confirmed_at" json:"confirmed_at,omitempty"`
+}
+
+// TableName aligns the model with the hand-written migration schema.
+func (AdmissionCharge) TableName() string { return "admission_charges" }
+
+// StartAdmissionChargeRequest is the payload for POST
+// /join-requests/{id}/payments; the amount is computed by the platform.
+type StartAdmissionChargeRequest struct {
+	Method      string `json:"method"`
+	ExternalRef string `json:"external_ref"`
 }

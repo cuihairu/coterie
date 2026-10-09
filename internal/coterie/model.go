@@ -29,6 +29,7 @@ type Coterie struct {
 	Name           string    `gorm:"column:name;not null" json:"name"`
 	Status         string    `gorm:"column:status;not null" json:"status"`
 	Listing        string    `gorm:"column:listing;not null" json:"listing"`
+	PaymentGate    bool      `gorm:"column:payment_gate;not null" json:"payment_gate"`
 	CreatedAt      time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt      time.Time `gorm:"column:updated_at" json:"updated_at"`
 }
@@ -90,9 +91,10 @@ type CreateCoterieRequest struct {
 // UpdateCoterieRequest patches the name and drives the lifecycle via
 // status (illegal transitions are rejected with 409).
 type UpdateCoterieRequest struct {
-	Name    *string `json:"name"`
-	Status  *string `json:"status"`
-	Listing *string `json:"listing"` // private or public (design D10)
+	Name        *string `json:"name"`
+	Status      *string `json:"status"`
+	Listing     *string `json:"listing"`      // private or public (design D10)
+	PaymentGate *bool   `json:"payment_gate"` // require payment before admission (design D25)
 }
 
 // Listing values. Public coteries appear in the marketplace directory

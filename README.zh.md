@@ -25,9 +25,10 @@ Coterie 面向一切可以在多人之间合法共享的数字服务——从流
 > 带有所有者裁决的出资争议、结算声誉(独立端点 + 市场目录中的
 > Owner 信誉徽标)、只追加的审计日志、公开认证端点限速、
 > 共享策略驱动的每成员每账期用量上限、Web Push 通知、
-> 资源池共享——在 Phase 2 的用量跟踪、配额、市场、provider
-> 目录、支付适配器与邮件/网页通知渠道之上。愿景中尚未闭合的:
-> 真实支付渠道(Stripe)——适配器接口已就位,等待外部凭据。
+> 资源池共享、Stripe 支付渠道(异步适配器 + 签名公开 Webhook)
+> 与市场支付闸门(入圈先付费)——在 Phase 2 的用量跟踪、配额、市场、
+> provider 目录、支付适配器与邮件/网页通知渠道之上。
+> 距离真实收款只差可用的 Stripe 生产凭据。
 > 完整的 REST API 已端到端可用:auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
 > marketplace。Web 与移动端尚未启动——现阶段 API 即产品
@@ -72,11 +73,11 @@ scripts/smoke.sh http://localhost:8080
 | Coterie | `/api/v1/coteries`(创建时指定容量、生命周期、成员、退出) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate`(equal / per_seat / fixed / usage / prorated)· `/api/v1/contributions/{id}` |
-| Payments | `POST/GET /api/v1/contributions/{id}/payments`(手动,外加已配置的渠道)· `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` |
+| Payments | `POST/GET /api/v1/contributions/{id}/payments`(手动,外加已配置的渠道)· `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` · `POST /api/v1/payments/webhooks/{method}`(公开,仅签名鉴权) |
 | Disputes | `POST /api/v1/contributions/{id}/disputes` · `POST /api/v1/disputes/{id}/decide`(所有者)· `GET /api/v1/subscriptions/{id}/disputes` |
 | Reputation | `GET /api/v1/users/{id}/reputation`(推导的结算统计) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
-| Marketplace | `GET /api/v1/marketplace/coteries`(公开;条目附派生的 Owner 信誉徽标)· `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
+| Marketplace | `GET /api/v1/marketplace/coteries`(公开;条目附派生的 Owner 信誉徽标)· `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments`(支付闸门)· `POST /api/v1/marketplace/webhooks/{method}`(公开) |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · 推送端点 `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
 | Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs`(Owner 只读) |
 
@@ -139,8 +140,8 @@ Seats / Quota / Cost
 - **Phase 3 ✅**:provider/支付/用量插件、自动化(自动出账滚动)、
   高级出账(按天折算分摊)、争议、声誉
 - **Phase 4 ✅**:审计日志、市场 Owner 信誉徽标、限速、自定义计费周期、
-  每成员用量上限、Web Push 通知、资源共享模式。尚未闭合:真实支付渠道
-  (Stripe)——等待外部凭据
+  每成员用量上限、Web Push 通知、资源共享模式、Stripe 支付渠道(D24)、
+  市场支付闸门(D25)
 
 ## 技术栈
 

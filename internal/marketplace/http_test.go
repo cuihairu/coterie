@@ -1,10 +1,20 @@
 package marketplace_test
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/cuihairu/coterie/internal/app"
+	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -574,4 +584,269 @@ func ownerMemberIDOf(t *testing.T, client *http.Client, base, tok, coterieID, ow
 	}
 	t.Fatalf("owner member row not found in %v", body["items"])
 	return ""
+}
+
+// signGate produces a Stripe-Signature header value for the payload,
+// mirroring the payments test helper (the adapter is shared).
+func signGate(t *testing.T, secret string, ts time.Time, payload []byte) string {
+	t.Helper()
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(strconv.FormatInt(ts.Unix(), 10)))
+	mac.Write([]byte("."))
+	mac.Write(payload)
+	return "t=" + strconv.FormatInt(ts.Unix(), 10) + ",v1=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// deliverGate posts a signed webhook to the gate's public endpoint.
+func deliverGate(t *testing.T, client *http.Client, base, secret, payload string) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost,
+		base+"/api/v1/marketplace/webhooks/stripe", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Stripe-Signature", signGate(t, secret, time.Now(), []byte(payload)))
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
+}
+
+// gateFixture lists the owner's circle and files a pending join request
+// from a fresh user, ready for the gate flow.
+func gateFixture(t *testing.T, client *http.Client, base, tag string) (ownerTok, reqTok, coterieID, requestID string) {
+	t.Helper()
+	ownerTok, _, _, coterieID, _ = testsupport.SeedCircle(t, client, base, tag, "12.00", 4, 2, 0)
+	publish(t, client, base, ownerTok, coterieID, "public")
+
+	// Flip the gate on — owner-only, audit-logged like the listing.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+"/api/v1/coteries/"+coterieID, `{"payment_gate":true}`, ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("enable gate: status = %d: %v", code, body)
+	}
+
+	reqTok, _ = testsupport.RegisterAndLogin(t, client, base, tag+"-req")
+	code, body = createRequest(t, client, base, reqTok, coterieID, `{}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create join request: status = %d: %v", code, body)
+	}
+	requestID, _ = body["id"].(string)
+	return ownerTok, reqTok, coterieID, requestID
+}
+
+// The gate holds admission at awaiting_payment: the owner's accept no
+// longer admits, the requester's stripe charge lands pending, and the
+// signed webhook admits — idempotently. (Design D25.)
+func TestPaymentGateAsyncFlow(t *testing.T) {
+	var intents int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		intents++
+		fmt.Fprintf(w, `{"id":"pi_gate_%d","client_secret":"pi_gate_%d_secret"}`, intents, intents)
+	}))
+	t.Cleanup(fake.Close)
+	gateStripe := payment.Stripe{SecretKey: "sk_test_x", WebhookSecret: "whsec_gate", APIBase: fake.URL}
+
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithMarketplaceAdapters(gateStripe))
+	client, base := srv.Client(), srv.URL
+	ownerTok, reqTok, coterieID, requestID := gateFixture(t, client, base, "gate-async")
+
+	// Accept holds the request and tells the requester to pay.
+	code, body := decide(t, client, base, ownerTok, "accept", requestID)
+	if code != http.StatusOK || body["status"] != "awaiting_payment" {
+		t.Fatalf("gated accept: status = %d: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("coterie read: %d", code)
+	}
+	if n, _ := body["member_count"].(float64); n != 1 {
+		t.Fatalf("member_count = %v, admission must be held", body["member_count"])
+	}
+	types := notificationTypes(t, client, base, reqTok)
+	if !hasType(types, "admission_due") {
+		t.Fatalf("requester notifications = %v, want admission_due", types)
+	}
+
+	// The requester starts the charge: 12.00 over owner+1 = 6.00.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments", `{"method":"stripe"}`, reqTok)
+	if code != http.StatusCreated {
+		t.Fatalf("start charge: status = %d: %v", code, body)
+	}
+	if body["status"] != "pending" || body["amount"] != "6.00" || body["currency"] != "USD" {
+		t.Fatalf("charge = %v", body)
+	}
+	if body["client_secret"] != "pi_gate_1_secret" {
+		t.Fatalf("client_secret = %v", body["client_secret"])
+	}
+	ref, _ := body["external_ref"].(string)
+
+	// Still no member before the webhook.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if n, _ := body["member_count"].(float64); n != 1 {
+		t.Fatalf("member_count = %v before webhook", body["member_count"])
+	}
+
+	// Unsigned webhook rejected.
+	code, _ = testsupport.DoJSON(t, client, http.MethodPost,
+		base+"/api/v1/marketplace/webhooks/stripe", `{"type":"payment_intent.succeeded"}`)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("unsigned gate webhook: status = %d, want 422", code)
+	}
+
+	succeeded := fmt.Sprintf(`{"id":"evt_g1","type":"payment_intent.succeeded","data":{"object":{"id":%q,"object":"payment_intent"}}}`, ref)
+	code, body = deliverGate(t, client, base, "whsec_gate", succeeded)
+	if code != http.StatusOK || body["status"] != "succeeded" {
+		t.Fatalf("gate webhook: status = %d: %v", code, body)
+	}
+
+	// Admitted: member_count up, request accepted, welcome notified.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if n, _ := body["member_count"].(float64); n != 2 {
+		t.Fatalf("member_count = %v after webhook, want 2", body["member_count"])
+	}
+	types = notificationTypes(t, client, base, reqTok)
+	if !hasType(types, "join_decided") {
+		t.Fatalf("requester notifications = %v, want join_decided", types)
+	}
+
+	// Replay is idempotent.
+	code, body = deliverGate(t, client, base, "whsec_gate", succeeded)
+	if code != http.StatusOK || body["status"] != "succeeded" {
+		t.Fatalf("replay: status = %d: %v", code, body)
+	}
+
+	// A decided request takes no further charges.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments", `{"method":"stripe"}`, reqTok)
+	if code != http.StatusConflict {
+		t.Fatalf("charge on decided request: status = %d, want 409", code)
+	}
+}
+
+// Failure keeps the request at awaiting_payment and allows a fresh
+// charge; decisions are refused while money is in flight.
+func TestPaymentGateFailureAndRetry(t *testing.T) {
+	var intents int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		intents++
+		fmt.Fprintf(w, `{"id":"pi_gf_%d","client_secret":"pi_gf_%d_secret"}`, intents, intents)
+	}))
+	t.Cleanup(fake.Close)
+	gateStripe := payment.Stripe{SecretKey: "sk_test_x", WebhookSecret: "whsec_gate", APIBase: fake.URL}
+
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithMarketplaceAdapters(gateStripe))
+	client, base := srv.Client(), srv.URL
+	ownerTok, reqTok, _, requestID := gateFixture(t, client, base, "gate-fail")
+
+	if code, body := decide(t, client, base, ownerTok, "accept", requestID); code != http.StatusOK {
+		t.Fatalf("accept: %d: %v", code, body)
+	}
+
+	// First charge fails by webhook.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments", `{"method":"stripe"}`, reqTok)
+	if code != http.StatusCreated {
+		t.Fatalf("start charge: status = %d: %v", code, body)
+	}
+	ref, _ := body["external_ref"].(string)
+	failed := fmt.Sprintf(`{"id":"evt_gf","type":"payment_intent.payment_failed","data":{"object":{"id":%q,"object":"payment_intent"}}}`, ref)
+	code, body = deliverGate(t, client, base, "whsec_gate", failed)
+	if code != http.StatusOK || body["status"] != "failed" {
+		t.Fatalf("failure webhook: status = %d: %v", code, body)
+	}
+
+	// The requester retries: a failed charge allows a fresh one.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments", `{"method":"stripe"}`, reqTok)
+	if code != http.StatusCreated {
+		t.Fatalf("retry charge: status = %d: %v", code, body)
+	}
+	ref2, _ := body["external_ref"].(string)
+
+	// Decisions are refused while a charge is pending — cancel too.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete,
+		base+"/api/v1/join-requests/"+requestID, "", reqTok)
+	if code != http.StatusConflict {
+		t.Fatalf("cancel with pending charge: status = %d, want 409", code)
+	}
+	if ref2 == ref {
+		t.Fatalf("retry reused external_ref %q", ref2)
+	}
+	succeeded := fmt.Sprintf(`{"id":"evt_gf2","type":"payment_intent.succeeded","data":{"object":{"id":%q,"object":"payment_intent"}}}`, ref2)
+	code, body = deliverGate(t, client, base, "whsec_gate", succeeded)
+	if code != http.StatusOK || body["status"] != "succeeded" {
+		t.Fatalf("retry webhook: status = %d: %v", code, body)
+	}
+}
+
+// Manual admission is owner-only: accept holds, the owner records the
+// cash, membership lands in the same transaction.
+func TestPaymentGateManual(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	ownerTok, reqTok, coterieID, requestID := gateFixture(t, client, base, "gate-manual")
+
+	if code, body := decide(t, client, base, ownerTok, "accept", requestID); code != http.StatusOK {
+		t.Fatalf("accept: %d: %v", code, body)
+	}
+
+	// The requester may never self-certify a manual payment.
+	code, _ := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments",
+		`{"method":"manual","external_ref":"cash on Friday"}`, reqTok)
+	if code != http.StatusForbidden {
+		t.Fatalf("requester manual charge: status = %d, want 403", code)
+	}
+
+	// The owner records it; the member is admitted inline.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments",
+		`{"method":"manual","external_ref":"cash on Friday"}`, ownerTok)
+	if code != http.StatusCreated {
+		t.Fatalf("owner manual charge: status = %d: %v", code, body)
+	}
+	if body["status"] != "succeeded" || body["method"] != "manual" {
+		t.Fatalf("charge = %v", body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if n, _ := body["member_count"].(float64); n != 2 {
+		t.Fatalf("member_count = %v after manual admission, want 2", body["member_count"])
+	}
+}
+
+// Without the gate flag, accept admits exactly as before — the gate is
+// a per-circle opt-in.
+func TestPaymentGateOffUnchanged(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	ownerTok, _, _, coterieID, _ := testsupport.SeedCircle(t, client, base, "gate-off", "12.00", 4, 2, 0)
+	publish(t, client, base, ownerTok, coterieID, "public")
+	reqTok, _ := testsupport.RegisterAndLogin(t, client, base, "gate-off-req")
+	code, body := createRequest(t, client, base, reqTok, coterieID, `{}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d: %v", code, body)
+	}
+	requestID, _ := body["id"].(string)
+	code, body = decide(t, client, base, ownerTok, "accept", requestID)
+	if code != http.StatusOK || body["status"] != "accepted" {
+		t.Fatalf("plain accept: status = %d: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if n, _ := body["member_count"].(float64); n != 2 {
+		t.Fatalf("member_count = %v, want 2", body["member_count"])
+	}
 }

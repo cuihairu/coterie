@@ -13,6 +13,10 @@ type Charge struct {
 	PayerUserID    string
 	Amount         string
 	Currency       string
+	// Description overrides the channel's statement text (the
+	// admission-charge path charges before a contribution exists,
+	// design D25).
+	Description string
 }
 
 // Receipt is the adapter's outcome. ExternalRef is whatever the channel

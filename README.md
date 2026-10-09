@@ -28,11 +28,12 @@ services and more.
 > endpoint plus an owner badge in the marketplace directory),
 > append-only audit log, rate limiting on the public auth endpoints,
 > per-member per-period usage limits from the sharing policy, Web Push
-> notifications, and resource-pool sharing — on top of Phase 2's usage
-> tracking, quota, marketplace, provider catalog, payment adapter, and
-> email/webhook notification channels. Still open from the vision:
-> real payment channels (Stripe) — the adapter interface is in place,
-> live credentials pending.
+> notifications, resource-pool sharing, the Stripe payment channel
+> (async adapter with a signed public webhook), and the marketplace
+> payment gate (admission charged before joining) — on top of Phase 2's
+> usage tracking, quota, marketplace, provider catalog, payment
+> adapter, and email/webhook notification channels. Live Stripe
+> credentials are all that remains to take real money.
 > The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
@@ -78,11 +79,11 @@ scripts/smoke.sh http://localhost:8080
 | Coterie | `/api/v1/coteries` (create with capacity, lifecycle, members, leave) |
 | Invitations | `POST /api/v1/coteries/{id}/invitations` · `POST /api/v1/invitations/accept` |
 | Billing | `/api/v1/subscriptions/{id}/billing-periods` · `generate` (equal / per_seat / fixed / usage / prorated) · `/api/v1/contributions/{id}` |
-| Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual, plus configured channels) · `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` |
+| Payments | `POST/GET /api/v1/contributions/{id}/payments` (manual, plus configured channels) · `GET /api/v1/payments/{id}` · `GET /api/v1/payments/methods` · `POST /api/v1/payments/webhooks/{method}` (public, signature-only) |
 | Disputes | `POST /api/v1/contributions/{id}/disputes` · `POST /api/v1/disputes/{id}/decide` (owner) · `GET /api/v1/subscriptions/{id}/disputes` |
 | Reputation | `GET /api/v1/users/{id}/reputation` (derived settlement stats) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
-| Marketplace | `GET /api/v1/marketplace/coteries` (public; entries carry a derived owner reputation badge) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` |
+| Marketplace | `GET /api/v1/marketplace/coteries` (public; entries carry a derived owner reputation badge) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments` (payment gate) · `POST /api/v1/marketplace/webhooks/{method}` (public) |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · push endpoints `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
 | Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs` (owner, read-only) |
 
@@ -146,8 +147,8 @@ Seats / Quota / Cost
   rollover), advanced billing (prorated split), disputes, reputation
 - **Phase 4 ✅**: audit log, owner reputation badge in the marketplace,
   rate limiting, custom billing cycles, per-member usage limits,
-  Web Push notifications, resource sharing mode. Still open: real
-  payment channels (Stripe) — pending external credentials
+  Web Push notifications, resource sharing mode, the Stripe payment
+  channel (D24), and the marketplace payment gate (D25)
 
 ## Tech stack
 

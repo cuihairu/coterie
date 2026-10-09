@@ -16,6 +16,7 @@ const (
 	TypeJoinRequested       = "join_requested"
 	TypeJoinDecided         = "join_decided"
 	TypePaymentReceived     = "payment_received"
+	TypeAdmissionDue        = "admission_due"
 	TypeDisputeOpened       = "dispute_opened"
 	TypeDisputeDecided      = "dispute_decided"
 )

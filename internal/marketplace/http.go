@@ -1,12 +1,16 @@
 package marketplace
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/pkg/api"
 )
+
+// maxWebhookBody bounds the payload read in the gate webhook handler.
+const maxWebhookBody = 1 << 20
 
 // Handler exposes the marketplace directory and join-request lifecycle.
 type Handler struct {
@@ -23,6 +27,52 @@ func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware
 	mux.Handle("POST /api/v1/join-requests/{id}/accept", requireUser(http.HandlerFunc(h.accept)))
 	mux.Handle("POST /api/v1/join-requests/{id}/decline", requireUser(http.HandlerFunc(h.decline)))
 	mux.Handle("DELETE /api/v1/join-requests/{id}", requireUser(http.HandlerFunc(h.cancel)))
+	mux.Handle("POST /api/v1/join-requests/{id}/payments", requireUser(http.HandlerFunc(h.payAdmission)))
+	// The gate's channel confirmations are public; the adapter's
+	// signature check is the only gate (design D25).
+	mux.HandleFunc("POST /api/v1/marketplace/webhooks/{method}", h.webhook)
+}
+
+// payAdmission starts the payment gate's charge for a request held at
+// awaiting_payment.
+func (h *Handler) payAdmission(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	var req StartAdmissionChargeRequest
+	if err := api.DecodeJSON(r, &req); err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	charge, err := h.svc.StartAdmissionCharge(r.Context(), u, r.PathValue("id"), req)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusCreated, charge)
+}
+
+// webhook receives a channel's admission-charge confirmation. The body
+// is read raw — the signature covers the exact bytes.
+func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
+	if err != nil {
+		api.WriteError(w, api.Validation("invalid webhook",
+			api.Detail{Field: "body", Message: "payload too large or unreadable"}))
+		return
+	}
+	charge, err := h.svc.ConfirmAdmission(r.Context(), r.PathValue("method"), r.Header, body)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	if charge == nil {
+		api.WriteJSON(w, http.StatusOK, map[string]any{"received": true})
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, charge)
 }
 
 func actor(r *http.Request) (*user.User, bool) {

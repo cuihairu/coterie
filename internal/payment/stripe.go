@@ -100,9 +100,17 @@ func (s Stripe) ChargeAsync(ctx context.Context, charge Charge) (Pending, error)
 	form := url.Values{}
 	form.Set("amount", strconv.FormatInt(amount, 10))
 	form.Set("currency", strings.ToLower(charge.Currency))
-	form.Set("metadata[contribution_id]", charge.ContributionID)
-	form.Set("metadata[payer_user_id]", charge.PayerUserID)
-	form.Set("description", fmt.Sprintf("Coterie contribution %s", charge.ContributionID))
+	if charge.ContributionID != "" {
+		form.Set("metadata[contribution_id]", charge.ContributionID)
+	}
+	if charge.PayerUserID != "" {
+		form.Set("metadata[payer_user_id]", charge.PayerUserID)
+	}
+	description := charge.Description
+	if description == "" {
+		description = fmt.Sprintf("Coterie contribution %s", charge.ContributionID)
+	}
+	form.Set("description", description)
 
 	intent, err := s.apiCall(ctx, http.MethodPost, "/v1/payment_intents", form)
 	if err != nil {

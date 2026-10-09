@@ -83,6 +83,34 @@ func paymentAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
 	return out
 }
 
+// marketplaceAdapters builds the channels the marketplace payment gate
+// (D25) confirms with. Stripe gets the gate's own webhook secret when
+// configured — Stripe issues one per endpoint — falling back to the
+// payments secret so single-endpoint setups keep working. Manual never
+// appears here: it settles through the owner's accept.
+func marketplaceAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
+	var out []payment.Adapter
+	for _, name := range cfg.PaymentMethods {
+		if name != (payment.Stripe{}).Name() {
+			continue
+		}
+		if cfg.StripeSecretKey == "" {
+			log.Warn("PAYMENT_METHODS lists stripe without STRIPE_SECRET_KEY, skipping", "method", name)
+			continue
+		}
+		whsec := cfg.StripeMarketplaceWebhookSecret
+		if whsec == "" {
+			whsec = cfg.StripeWebhookSecret
+		}
+		out = append(out, payment.Stripe{
+			SecretKey:     cfg.StripeSecretKey,
+			WebhookSecret: whsec,
+			APIBase:       cfg.StripeAPIBase,
+		})
+	}
+	return out
+}
+
 // providerPlugins maps configured plugin names to the implementations
 // the binary knows (design §5.2); the registry starts empty, so without
 // configuration every provider behaves Generic. Unknown names are
@@ -128,6 +156,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Handler: app.New(db, log,
 			app.WithNotificationChannels(channels(db, cfg)...),
 			app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
+			app.WithMarketplaceAdapters(marketplaceAdapters(cfg, log)...),
 			app.WithProviderPlugins(providerPlugins(cfg, log)...),
 			app.WithRateLimits(cfg.RateLimitRegisterPerMin, cfg.RateLimitLoginPerMin)),
 		ReadHeaderTimeout: 5 * time.Second,

@@ -40,6 +40,10 @@ type Config struct {
 	StripeWebhookSecret string
 	StripeAPIBase       string
 
+	// The marketplace gate's own webhook endpoint signing secret
+	// (design D25); empty falls back to StripeWebhookSecret.
+	StripeMarketplaceWebhookSecret string
+
 	// Payment channels to register on top of the always-on manual
 	// adapter (design §4.2), comma-separated; unknown names are skipped
 	// with a warning at startup.
@@ -85,6 +89,8 @@ func Load() Config {
 		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
 		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
 		StripeAPIBase:       envOr("STRIPE_API_BASE", "https://api.stripe.com"),
+
+		StripeMarketplaceWebhookSecret: os.Getenv("STRIPE_MARKETPLACE_WEBHOOK_SECRET"),
 
 		PaymentMethods: envList("PAYMENT_METHODS"),
 

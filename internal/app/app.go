@@ -37,6 +37,7 @@ type options struct {
 	notificationChannels []notification.Channel
 	providerPlugins      []provider.Plugin
 	paymentAdapters      []payment.Adapter
+	marketplaceAdapters  []payment.Adapter
 	rateLimits           map[string]int
 }
 
@@ -57,6 +58,13 @@ func WithProviderPlugins(plugins ...provider.Plugin) Option {
 // from config in apps/server.
 func WithPaymentAdapters(adapters ...payment.Adapter) Option {
 	return func(o *options) { o.paymentAdapters = append(o.paymentAdapters, adapters...) }
+}
+
+// WithMarketplaceAdapters registers the channels the marketplace
+// payment gate (D25) charges and confirms with; production wires them
+// from config in apps/server.
+func WithMarketplaceAdapters(adapters ...payment.Adapter) Option {
+	return func(o *options) { o.marketplaceAdapters = append(o.marketplaceAdapters, adapters...) }
 }
 
 // WithRateLimits overrides the public-endpoint rate limits (design
@@ -116,7 +124,6 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		seat.RegisterRoutes(mux, seatSvc, requireUser)
 		coterieSvc := coterie.NewService(db, seatSvc, notifier, pluginRegistry)
 		coterie.RegisterRoutes(mux, coterieSvc, requireUser)
-		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier), requireUser)
 		billing.RegisterRoutes(mux, billing.NewService(db, notifier), requireUser)
 		dispute.RegisterRoutes(mux, dispute.NewService(db, notifier), requireUser)
 		reputation.RegisterRoutes(mux, reputation.NewService(db), requireUser)
@@ -124,6 +131,9 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		// Manual stays registered no matter what's configured on top.
 		paymentAdapters := append([]payment.Adapter{payment.Manual{}}, o.paymentAdapters...)
 		payment.RegisterRoutes(mux, payment.NewServiceWithAdapters(db, notifier, paymentAdapters...), requireUser)
+		// The marketplace payment gate gets its own adapter set (D25):
+		// same channels, but a webhook secret of its own endpoint's.
+		marketplace.RegisterRoutes(mux, marketplace.NewService(db, coterieSvc, notifier, o.marketplaceAdapters...), requireUser)
 		usage.RegisterRoutes(mux, usage.NewServiceWithPlugins(db, pluginRegistry), requireUser)
 		notification.RegisterRoutes(mux, notifier, requireUser)
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/cuihairu/coterie/internal/coterie"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -19,6 +20,9 @@ type Store struct {
 
 // NewStore builds a Store.
 func NewStore(db *gorm.DB) *Store { return &Store{db: db} }
+
+// DB exposes the raw handle for transaction scoping.
+func (s *Store) DB() *gorm.DB { return s.db }
 
 // Directory lists publicly listed, recruiting coteries with their
 // product/provider names and price, oldest first.
@@ -174,11 +178,119 @@ func (s *Store) ListByCoterie(ctx context.Context, coterieID, status string, pag
 	return views, total, err
 }
 
-// SetStatus moves a pending request to a terminal state and reports
-// whether the row changed.
+// SetStatus moves a live request (pending, or awaiting payment under
+// the gate) to a decided state and reports whether the row changed.
 func (s *Store) SetStatus(ctx context.Context, id, status string) (bool, error) {
 	res := s.db.WithContext(ctx).Model(&JoinRequest{}).
-		Where("id = ? AND status = ?", id, RequestPending).
+		Where("id = ? AND status IN ?", id, []string{RequestPending, RequestAwaitingPayment}).
 		Updates(map[string]any{"status": status, "decided_at": time.Now().UTC()})
 	return res.RowsAffected > 0, res.Error
+}
+
+// SetStatusFromAwaiting closes a payment-gated request — only the
+// webhook's confirmed admission (D25) takes this path.
+func (s *Store) SetStatusFromAwaiting(ctx context.Context, id, status string) (bool, error) {
+	res := s.db.WithContext(ctx).Model(&JoinRequest{}).
+		Where("id = ? AND status = ?", id, RequestAwaitingPayment).
+		Updates(map[string]any{"status": status, "decided_at": time.Now().UTC()})
+	return res.RowsAffected > 0, res.Error
+}
+
+// GateQuote returns the subscription's price/currency plus the
+// coterie's active member count — the inputs of the gate's share
+// estimate. Unknown coteries return ok=false.
+func (s *Store) GateQuote(ctx context.Context, coterieID string) (price, currency string, members int, ok bool, err error) {
+	var row struct {
+		Price    string
+		Currency string
+		Members  int
+	}
+	err = s.db.WithContext(ctx).
+		Table("coteries c").
+		Select(`s.price, s.currency,
+			(SELECT count(*) FROM members m WHERE m.coterie_id = c.id AND m.status = 'active') AS members`).
+		Joins("JOIN subscriptions s ON s.id = c.subscription_id").
+		Where("c.id = ?", coterieID).
+		Scan(&row).Error
+	if err != nil || row.Currency == "" {
+		return "", "", 0, false, err
+	}
+	return row.Price, row.Currency, row.Members, true, nil
+}
+
+// CreateCharge inserts the admission charge row.
+func (s *Store) CreateCharge(ctx context.Context, c *AdmissionCharge) error {
+	return s.db.WithContext(ctx).Create(c).Error
+}
+
+// ChargeByExternalRef returns the charge started for a channel
+// transaction id (the webhook's lookup key), or nil when absent.
+func (s *Store) ChargeByExternalRef(ctx context.Context, ref string) (*AdmissionCharge, error) {
+	var c AdmissionCharge
+	err := s.db.WithContext(ctx).First(&c, "external_ref = ?", ref).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// ChargeByExternalRefForUpdate loads the charge with a row lock for the
+// webhook's flip; the caller must run inside its transaction.
+func (s *Store) ChargeByExternalRefForUpdate(ctx context.Context, ref string) (*AdmissionCharge, error) {
+	var c AdmissionCharge
+	err := s.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&c, "external_ref = ?", ref).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// ChargeByID returns the charge, or nil when absent.
+func (s *Store) ChargeByID(ctx context.Context, id string) (*AdmissionCharge, error) {
+	var c AdmissionCharge
+	err := s.db.WithContext(ctx).First(&c, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// LiveChargeByRequest returns the request's pending or settled charge —
+// failed ones allow a fresh retry — or nil when none exists.
+func (s *Store) LiveChargeByRequest(ctx context.Context, requestID string) (*AdmissionCharge, error) {
+	var c AdmissionCharge
+	err := s.db.WithContext(ctx).
+		Where("join_request_id = ? AND status IN ?", requestID, []string{ChargePending, ChargeSucceeded}).
+		First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// RequestByIDTx loads the join request on the caller's transaction.
+func (s *Store) RequestByIDTx(ctx context.Context, tx *gorm.DB, id string) (*JoinRequest, error) {
+	var r JoinRequest
+	err := tx.WithContext(ctx).First(&r, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
 }

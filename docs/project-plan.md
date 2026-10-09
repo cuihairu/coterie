@@ -295,7 +295,7 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 3. [x] **Rate Limit**（NFR-7 Phase 1 基础）— 注册/登录等公开端点限速
 4. [x] **自定义计费周期自动化**（§13 遗留）— custom 周期表达方式决策 + 调度器滚期支持（D13 扩展）
 5. [x] **Sharing Policy UsageLimit**（FR-10 后续扩展）— 核心侧每成员每期用量上限（D21）
-6. [ ] **真实支付渠道**（FR-9 后续）— Stripe 等适配器（需外部凭据，接入时另派；Marketplace 支付闸门随此项落地）
+6. [x] **真实支付渠道**（FR-9 后续）— Stripe 异步适配器 + 公开 Webhook（D24）；Marketplace 支付闸门（D25：payment_gate + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈）——生产使用仍需真实凭据
 7. [x] **Push 通知**（FR-12 后续）— Web Push 标准渠道（D22）
 8. [x] **Resource 共享模式**（FR-6 后续，§2.5）— 复用 Seat+metadata（D23）
 
