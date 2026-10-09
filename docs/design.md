@@ -829,6 +829,8 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/marketplace
 /api/v1/invitations
 /api/v1/notifications
+/api/v1/push/subscriptions
+/api/v1/users/{id}/reputation
 ```
 
 审计读取挂载于订阅与圈之下：`GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`（仅订阅 Owner，`?action=` 过滤 + 分页，D17/§6.3）。
