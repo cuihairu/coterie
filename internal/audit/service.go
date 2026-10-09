@@ -58,3 +58,14 @@ func (s *Service) ListForCoterie(ctx context.Context, actor *user.User, coterieI
 	}
 	return s.store.ListByCoterie(ctx, coterieID, action, page)
 }
+
+// ListAll is the platform admin's read (design D27): the whole ledger
+// across subscriptions and coteries. The admin gate itself lives on
+// the route middleware.
+func (s *Service) ListAll(ctx context.Context, action, actorID, coterieID, subscriptionID string, page api.Page) ([]Entry, int64, error) {
+	if action != "" && !Actions[action] {
+		return nil, 0, api.Validation("invalid filter",
+			api.Detail{Field: "action", Message: "unknown audit action"})
+	}
+	return s.store.ListAll(ctx, action, actorID, coterieID, subscriptionID, page)
+}

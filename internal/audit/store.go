@@ -28,6 +28,35 @@ func (s *Store) ListByCoterie(ctx context.Context, coterieID, action string, pag
 	return s.list(ctx, "coterie_id", coterieID, action, page)
 }
 
+// ListAll is the platform-wide read (design D27): the whole ledger,
+// newest first, filtered by any combination of action, actor, and the
+// subscription/coterie pivots.
+func (s *Store) ListAll(ctx context.Context, action, actorID, coterieID, subscriptionID string, page api.Page) ([]Entry, int64, error) {
+	q := s.db.WithContext(ctx).Model(&Entry{})
+	if action != "" {
+		q = q.Where("action = ?", action)
+	}
+	if actorID != "" {
+		q = q.Where("actor_user_id = ?", actorID)
+	}
+	if coterieID != "" {
+		q = q.Where("coterie_id = ?", coterieID)
+	}
+	if subscriptionID != "" {
+		q = q.Where("subscription_id = ?", subscriptionID)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entries []Entry
+	err := q.Order("created_at DESC, id DESC").
+		Limit(page.Limit).
+		Offset(page.Offset).
+		Find(&entries).Error
+	return entries, total, err
+}
+
 func (s *Store) list(ctx context.Context, pivot, id, action string, page api.Page) ([]Entry, int64, error) {
 	q := s.db.WithContext(ctx).Model(&Entry{}).Where(pivot+" = ?", id)
 	if action != "" {

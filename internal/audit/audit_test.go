@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cuihairu/coterie/internal/testsupport"
+	"github.com/cuihairu/coterie/internal/user"
 )
 
 // entries fetches an audit list and returns the decoded items.
@@ -298,5 +299,86 @@ func TestAuditReadAuthorization(t *testing.T) {
 	items := entries(t, client, base, "/api/v1/coteries/"+coterieID+"/audit-logs", tok)
 	if len(items) != 1 || items[0]["action"] != "coterie_created" {
 		t.Fatalf("coterie trail = %v", actionNames(items))
+	}
+}
+
+func TestAdminAuditQuery(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, ownerID, subID, coterieID, _ := testsupport.SeedCircle(t, client, base, "aud-admin", "10.00", 4, 0, 0)
+	_, _, subID2, _, _ := testsupport.SeedCircle(t, client, base, "aud-admin-2", "12.00", 4, 0, 0)
+
+	// The platform admin reads the whole ledger, both chains included.
+	adminTok, adminID := testsupport.RegisterAndLogin(t, client, base, "aud-admin-root")
+	if err := db.Model(&user.User{}).Where("id = ?", adminID).Update("role", user.RoleAdmin).Error; err != nil {
+		t.Fatalf("promote admin: %v", err)
+	}
+	items := entries(t, client, base, "/api/v1/admin/audit-logs", adminTok)
+	if len(items) == 0 || !hasAction(items, "coterie_created") {
+		t.Fatalf("admin audit list empty or missing coterie_created: %d items", len(items))
+	}
+	chains := map[string]bool{}
+	for _, e := range items {
+		if s, _ := e["subscription_id"].(string); s != "" {
+			chains[s] = true
+		}
+	}
+	if !chains[subID] || !chains[subID2] {
+		t.Fatalf("cross-chain listing incomplete: %v", chains)
+	}
+
+	// Action filter.
+	filtered := entries(t, client, base, "/api/v1/admin/audit-logs?action=coterie_created", adminTok)
+	if len(filtered) == 0 {
+		t.Fatal("action filter came back empty")
+	}
+	for _, e := range filtered {
+		if e["action"] != "coterie_created" {
+			t.Fatalf("action filter leaked %v", e["action"])
+		}
+	}
+
+	// Actor filter.
+	byOwner := entries(t, client, base, "/api/v1/admin/audit-logs?actor_id="+ownerID, adminTok)
+	if len(byOwner) == 0 {
+		t.Fatal("actor filter came back empty")
+	}
+	for _, e := range byOwner {
+		if e["actor_id"] != ownerID {
+			t.Fatalf("actor filter leaked %v", e["actor_id"])
+		}
+	}
+
+	// Coterie pivot filter.
+	byCoterie := entries(t, client, base, "/api/v1/admin/audit-logs?coterie_id="+coterieID, adminTok)
+	if len(byCoterie) == 0 {
+		t.Fatal("coterie filter came back empty")
+	}
+	for _, e := range byCoterie {
+		if e["coterie_id"] != coterieID {
+			t.Fatalf("coterie filter leaked %v", e["coterie_id"])
+		}
+	}
+
+	// Unknown action filter is rejected.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/admin/audit-logs?action=bogus", "", adminTok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("bogus action: status = %d: %v", code, body)
+	}
+
+	// An owner without the admin role is shut out.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/admin/audit-logs", "", tok)
+	if code != http.StatusForbidden {
+		t.Fatalf("non-admin: status = %d, want 403: %v", code, body)
+	}
+
+	// Anonymous stays at the session wall.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/admin/audit-logs", "", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anonymous: status = %d, want 401: %v", code, body)
 	}
 }
