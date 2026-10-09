@@ -19,11 +19,13 @@ go run ./apps/server
 
 ## Docker Compose
 
-仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像从源码构建，还没有发布到公共镜像仓库。
+仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像由 nightly 构建并发布到 `ghcr.io/cuihairu/coterie:nightly`（另附当天日期的版本 tag）。
 
 ```bash
-docker compose -f deployments/docker-compose.yml up -d --build
+docker compose -f deployments/docker-compose.yml up -d
 ```
+
+想从源码构建镜像：`docker build -t ghcr.io/cuihairu/coterie:nightly .`，compose 会直接用本地同名镜像。
 
 postgres 带 healthcheck，coterie 等它就绪后再启动；服务器连不上数据库会直接退出，由 compose 的 restart 策略拉起。compose 里的 5432 和 8080 是宿主机端口，被占用时改映射即可，不要动容器内的端口。
 

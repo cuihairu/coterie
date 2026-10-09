@@ -1,5 +1,6 @@
 # Minimal stack (docs/design.md §11): coterie + postgres, nothing else.
-# The image is built from source until a registry image is published.
+# The image ships from GHCR via the nightly run; to build from source
+# instead: docker build -t ghcr.io/cuihairu/coterie:nightly .
 services:
   postgres:
     image: postgres:18-alpine
@@ -19,7 +20,7 @@ services:
       retries: 15
 
   coterie:
-    build: ..
+    image: ghcr.io/cuihairu/coterie:nightly
     environment:
       DATABASE_URL: postgres://coterie:coterie@postgres:5432/coterie?sslmode=disable
       PORT: "8080"
