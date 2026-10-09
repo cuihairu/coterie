@@ -21,6 +21,7 @@ import (
 	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/push"
+	"github.com/cuihairu/coterie/internal/user"
 	"github.com/cuihairu/coterie/providers/claude"
 	"gorm.io/gorm"
 )
@@ -149,6 +150,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 		if err := database.Migrate(cfg.DatabaseURL, os.DirFS(cfg.MigrationsDir)); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
+	}
+
+	// Platform admin bootstrap (design D26): ADMIN_EMAILS promotes the
+	// instance operator, idempotently.
+	if n, err := user.EnsureAdmins(context.Background(), db, cfg.AdminEmails); err != nil {
+		return fmt.Errorf("admin bootstrap: %w", err)
+	} else if n > 0 {
+		log.Info("promoted platform admins", "count", n)
 	}
 
 	srv := &http.Server{

@@ -1,10 +1,13 @@
 package user_test
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/cuihairu/coterie/internal/testsupport"
+	"github.com/cuihairu/coterie/internal/user"
 )
 
 const usersPath = "/api/v1/users"
@@ -111,4 +114,42 @@ func TestUserValidationErrors(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown user status = %d, want 404", code)
 	}
+}
+
+// The admin role is invisible at registration and appears only through
+// the ADMIN_EMAILS bootstrap (design D26).
+func TestAdminRoleBootstrap(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, userID := testsupport.RegisterAndLogin(t, client, base, "role-boot")
+
+	// Fresh users are plain 'user'.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/auth/me", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("me: status = %d: %v", code, body)
+	}
+	if body["role"] != "user" {
+		t.Fatalf("role = %v, want user", body["role"])
+	}
+
+	// The bootstrap is idempotent and case-insensitive on email.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/auth/me", "", tok)
+	email, _ := body["email"].(string)
+	n, err := user.EnsureAdmins(context.Background(), testsupport.NewDB(t), []string{strings.ToUpper(email)})
+	if err != nil || n != 1 {
+		t.Fatalf("EnsureAdmins = %d, %v; want 1 promoted", n, err)
+	}
+	if n2, err := user.EnsureAdmins(context.Background(), testsupport.NewDB(t), []string{email}); err != nil || n2 != 0 {
+		t.Fatalf("second EnsureAdmins = %d, %v; want idempotent 0", n2, err)
+	}
+
+	// The promoted user now carries the role.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/auth/me", "", tok)
+	if body["role"] != "admin" {
+		t.Fatalf("role after bootstrap = %v, want admin", body["role"])
+	}
+	_ = userID
 }

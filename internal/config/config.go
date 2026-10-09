@@ -59,6 +59,10 @@ type Config struct {
 	// ("1h", "30s").
 	AutoBillingInterval time.Duration
 
+	// Platform admin bootstrap (design D26): comma-separated emails
+	// promoted to the admin role at startup (idempotent).
+	AdminEmails []string
+
 	// Public-endpoint rate limits per client address per minute
 	// (design D19); 0 disables a class.
 	RateLimitRegisterPerMin int
@@ -95,6 +99,8 @@ func Load() Config {
 		PaymentMethods: envList("PAYMENT_METHODS"),
 
 		ProviderPlugins: envList("PROVIDER_PLUGINS"),
+
+		AdminEmails: envList("ADMIN_EMAILS"),
 
 		AutoBillingInterval: envDuration("AUTO_BILLING_INTERVAL", time.Hour),
 

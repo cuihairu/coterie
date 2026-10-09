@@ -13,9 +13,17 @@ type User struct {
 	Locale       string    `gorm:"column:locale;not null" json:"locale"`
 	Timezone     string    `gorm:"column:timezone;not null" json:"timezone"`
 	Status       string    `gorm:"column:status;not null" json:"status"`
+	Role         string    `gorm:"column:role;not null" json:"role"`
 	CreatedAt    time.Time `gorm:"column:created_at" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"column:updated_at" json:"updated_at"`
 }
+
+// Role values (design D26). The instance operator bootstraps admins
+// out of band via ADMIN_EMAILS; there is no self-service elevation.
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
 
 // TableName aligns the model with the hand-written migration schema.
 func (User) TableName() string { return "users" }

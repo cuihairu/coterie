@@ -73,6 +73,7 @@ func (s *Service) Create(ctx context.Context, req CreateUserRequest) (*User, err
 		Locale:   req.Locale,
 		Timezone: req.Timezone,
 		Status:   StatusActive,
+		Role:     RoleUser,
 	}
 	if req.Password != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -106,4 +107,26 @@ func (s *Service) Get(ctx context.Context, id string) (*User, error) {
 // List returns a page of users with the total count.
 func (s *Service) List(ctx context.Context, page api.Page) ([]User, int64, error) {
 	return s.store.List(ctx, page)
+}
+
+// EnsureAdmins promotes the given emails (as configured via
+// ADMIN_EMAILS) to the platform admin role — the instance operator's
+// bootstrap (design D26). Addresses are normalized here so the match
+// against lower(email) is case-insensitive; blank entries are skipped.
+// Idempotent; returns the number of rows it flipped.
+func EnsureAdmins(ctx context.Context, db *gorm.DB, emails []string) (int64, error) {
+	wanted := make([]string, 0, len(emails))
+	for _, e := range emails {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			wanted = append(wanted, e)
+		}
+	}
+	if len(wanted) == 0 {
+		return 0, nil
+	}
+	res := db.WithContext(ctx).Exec(
+		`UPDATE users SET role = ?, updated_at = now()
+		 WHERE role <> ? AND lower(email) IN ?`,
+		RoleAdmin, RoleAdmin, wanted)
+	return res.RowsAffected, res.Error
 }

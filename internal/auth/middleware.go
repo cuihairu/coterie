@@ -37,6 +37,23 @@ func (s *Service) RequireUser() api.Middleware {
 	}
 }
 
+// RequireAdmin builds on RequireUser's session check and additionally
+// demands the platform admin role (design D26). It wraps a RequireUser
+// middleware — pass the result of RequireUser() to keep the session
+// enforcement in one place.
+func RequireAdmin(next api.Middleware) api.Middleware {
+	return func(inner http.Handler) http.Handler {
+		return next(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := UserFrom(r.Context())
+			if !ok || u.Role != user.RoleAdmin {
+				api.WriteError(w, api.Forbidden("platform admin role required"))
+				return
+			}
+			inner.ServeHTTP(w, r)
+		}))
+	}
+}
+
 // bearerToken extracts the token from an Authorization: Bearer header.
 func bearerToken(r *http.Request) string {
 	const prefix = "Bearer "
