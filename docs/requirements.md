@@ -885,7 +885,7 @@ Notification
 | FR-13 | Dashboard | Phase 1 |
 | FR-14 | Admin | Phase 1（基础） |
 | FR-15 | Audit Log | Phase 1（已落地，D17） |
-| FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10）；支付门槛的真实渠道已就位（Stripe，D24），闸门编排留后续增量 |
+| FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10）；Phase 4 补支付闸门（D25：payment_gate 圈级开关 + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈，渠道复用 D24 Stripe） |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
 | FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Phase 4 补齐 Marketplace 展示位——目录条目附 Owner 派生徽标，见设计 D18） |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |
