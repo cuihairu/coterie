@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" width="120" alt="Coterie logo" />
+  <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
   <h1>Coterie</h1>
   <p><strong>Open-source platform for shared digital services.</strong></p>
   <p>

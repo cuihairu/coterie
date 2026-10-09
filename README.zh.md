@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.svg" width="120" alt="Coterie logo" />
+  <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
   <h1>Coterie</h1>
   <p><strong>开源的数字服务共享平台。</strong></p>
   <p>
