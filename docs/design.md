@@ -936,6 +936,8 @@ services:
     image: postgres
 ```
 
+现成文件是 `deployments/docker-compose.yml`：postgres 带 healthcheck，coterie 等它就绪后再启动，镜像暂从源码构建。
+
 ### 11.3 未来扩展
 
 ```text

@@ -299,6 +299,7 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 7. [x] **Push 通知**（FR-12 后续）— Web Push 标准渠道（D22）
 8. [x] **Resource 共享模式**（FR-6 后续，§2.5）— 复用 Seat+metadata（D23）
 9. [x] **防滥用收口**（NFR-7 / FR-14）— 平台管理员角色（`ADMIN_EMAILS` 启动引导）、举报（公开圈可报 + 管理员收件箱与 resolve/dismiss）、圈级拉黑（全准入路径 403）（D26）
+10. [x] **部署收口**（§11）— compose 一键起全栈（postgres 健康检查 + 源码构建镜像）、每 push 的 CI 门禁（gofmt/build/vet/test）、文档站部署页
 
 ---
 
