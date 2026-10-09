@@ -68,8 +68,13 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	actor, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	page := api.ParsePage(r)
-	views, total, err := h.svc.List(r.Context(), r.URL.Query().Get("subscription_id"), page)
+	views, total, err := h.svc.List(r.Context(), actor, r.URL.Query().Get("subscription_id"), page)
 	if err != nil {
 		api.WriteError(w, err)
 		return

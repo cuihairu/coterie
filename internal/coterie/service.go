@@ -149,8 +149,8 @@ func (s *Service) Get(ctx context.Context, id string) (*CoterieView, error) {
 }
 
 // List returns coteries, optionally filtered by subscription.
-func (s *Service) List(ctx context.Context, subscriptionID string, page api.Page) ([]CoterieView, int64, error) {
-	items, total, err := s.store.ListCoteries(ctx, subscriptionID, page)
+func (s *Service) List(ctx context.Context, actor *user.User, subscriptionID string, page api.Page) ([]CoterieView, int64, error) {
+	items, total, err := s.store.ListByMember(ctx, actor.ID, subscriptionID, page)
 	if err != nil {
 		return nil, 0, err
 	}

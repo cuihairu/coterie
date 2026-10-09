@@ -159,6 +159,75 @@ func TestCoterieCreationAndLifecycle(t *testing.T) {
 	}
 }
 
+// TestCoterieListScopedToMembers pins the contract behind GET /coteries:
+// the list only contains the caller's own circles, never the whole
+// table (docs/api.md: 自己参与的圈).
+func TestCoterieListScopedToMembers(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, ownerID := testsupport.RegisterAndLogin(t, client, srv.URL, "cot-list")
+	subID := seedOwnedSubscription(t, client, srv.URL, "list", tok, ownerID, 3)
+	c := createCoterie(t, client, srv.URL, tok, subID, "Scoped Circle", 3)
+	id, _ := c["id"].(string)
+
+	other, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "cot-list-b")
+
+	// A fresh user sees none of the existing circles.
+	for _, q := range []string{"", "?subscription_id=" + subID} {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+			srv.URL+"/api/v1/coteries"+q, "", other)
+		if code != http.StatusOK {
+			t.Fatalf("outsider list status = %d: %v", code, body)
+		}
+		if items, _ := body["items"].([]any); len(items) != 0 {
+			t.Fatalf("outsider list must be empty, got %d items", len(items))
+		}
+	}
+
+	// The owner sees their circle, filtered and unfiltered.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/coteries", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("owner list status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("owner list = %d items, want 1", len(items))
+	}
+
+	// Joining puts the circle in the member's list; leaving drops it.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/coteries/"+id, `{"status":"open"}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("publish status = %d: %v", code, body)
+	}
+	token := invite(t, client, srv.URL, tok, id, "member")
+	accept(t, client, srv.URL, other, token)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/coteries", "", other)
+	if code != http.StatusOK {
+		t.Fatalf("member list status = %d: %v", code, body)
+	}
+	if items, _ := body["items"].([]any); len(items) != 1 {
+		t.Fatalf("member list = %d items, want 1", len(items))
+	}
+
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/coteries/"+id+"/leave", "", other)
+	if code != http.StatusNoContent {
+		t.Fatalf("leave status = %d: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/coteries", "", other)
+	if code != http.StatusOK {
+		t.Fatalf("post-leave list status = %d: %v", code, body)
+	}
+	if items, _ := body["items"].([]any); len(items) != 0 {
+		t.Fatalf("post-leave list must be empty, got %d items", len(items))
+	}
+}
+
 func TestInvitationJoinLeave(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)

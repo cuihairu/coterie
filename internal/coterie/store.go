@@ -68,19 +68,24 @@ func (s *Store) GetCoterie(ctx context.Context, id string) (*Coterie, error) {
 	return &c, nil
 }
 
-// ListCoteries returns coteries newest first, optionally filtered by
-// subscription.
-func (s *Store) ListCoteries(ctx context.Context, subscriptionID string, page api.Page) ([]Coterie, int64, error) {
-	q := s.db.WithContext(ctx).Model(&Coterie{})
+// ListByMember returns the coteries a user currently participates in
+// (left_at IS NULL), newest first, optionally narrowed to one
+// subscription. The list endpoint is scoped to the caller's memberships
+// so one user never sees another tenant's circles.
+func (s *Store) ListByMember(ctx context.Context, userID, subscriptionID string, page api.Page) ([]Coterie, int64, error) {
+	q := s.db.WithContext(ctx).
+		Model(&Coterie{}).
+		Joins("JOIN members ON members.coterie_id = coteries.id").
+		Where("members.user_id = ? AND members.left_at IS NULL", userID)
 	if subscriptionID != "" {
-		q = q.Where("subscription_id = ?", subscriptionID)
+		q = q.Where("coteries.subscription_id = ?", subscriptionID)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var items []Coterie
-	err := q.Order("created_at DESC, id DESC").
+	err := q.Order("coteries.created_at DESC, coteries.id DESC").
 		Limit(page.Limit).
 		Offset(page.Offset).
 		Find(&items).Error
