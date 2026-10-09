@@ -134,7 +134,7 @@ func TestAdminRoleBootstrap(t *testing.T) {
 	}
 
 	// The bootstrap is idempotent and case-insensitive on email.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/auth/me", "", tok)
 	email, _ := body["email"].(string)
 	n, err := user.EnsureAdmins(context.Background(), testsupport.NewDB(t), []string{strings.ToUpper(email)})
@@ -146,7 +146,7 @@ func TestAdminRoleBootstrap(t *testing.T) {
 	}
 
 	// The promoted user now carries the role.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/auth/me", "", tok)
 	if body["role"] != "admin" {
 		t.Fatalf("role after bootstrap = %v, want admin", body["role"])

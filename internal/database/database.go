@@ -112,7 +112,7 @@ func migrateUp(databaseURL string, dir fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("open database for migrations: %w", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	driver, err := pgx.WithInstance(sqlDB, &pgx.Config{})
 	if err != nil {

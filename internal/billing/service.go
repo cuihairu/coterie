@@ -250,7 +250,7 @@ func (s *Service) Generate(ctx context.Context, actor *user.User, periodID strin
 		for _, m := range members {
 			userByMember[m.ID] = m.UserID
 		}
-		window := p.StartDate.Time.Format("2006-01-02") + " – " + p.EndDate.Time.Format("2006-01-02")
+		window := p.StartDate.Format("2006-01-02") + " – " + p.EndDate.Format("2006-01-02")
 		for _, c := range contributions {
 			if uid, ok := userByMember[c.MemberID]; ok {
 				s.notifier.Notify(ctx, uid, notification.TypePaymentDue,
@@ -462,8 +462,8 @@ func (s *Service) splitUsage(ctx context.Context, sub *subscription.Subscription
 // the period end, inclusive. Members who joined after the period ended
 // get no share; the split conserves the total exactly.
 func splitProrated(totalCents int64, p *BillingPeriod, members []MemberRef) map[string]int64 {
-	start := p.StartDate.Time.Truncate(24 * time.Hour)
-	end := p.EndDate.Time.Truncate(24 * time.Hour)
+	start := p.StartDate.Truncate(24 * time.Hour)
+	end := p.EndDate.Truncate(24 * time.Hour)
 	weights := make(map[string]*big.Rat, len(members))
 	for _, m := range members {
 		from := m.JoinedAt.UTC().Truncate(24 * time.Hour)

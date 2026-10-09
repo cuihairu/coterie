@@ -82,7 +82,7 @@ func (c *WebhookChannel) Deliver(ctx context.Context, n *Notification) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("webhook receiver answered %d", resp.StatusCode)
 	}

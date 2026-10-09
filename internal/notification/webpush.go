@@ -66,10 +66,20 @@ func parseVapidKeys(publicB64, privateB64, subject string) *vapidKeys {
 		return nil
 	}
 	d := new(big.Int).SetBytes(priv)
-	x, y := elliptic.Unmarshal(elliptic.P256(), pub)
-	if x == nil {
+	// ecdh parses and validates the same uncompressed point encoding the
+	// deprecated elliptic.Unmarshal accepted; deriving the public key
+	// also pins the pair together — a private key that does not match
+	// the configured public point is a config error, not a signer.
+	ecdhPriv, err := ecdh.P256().NewPrivateKey(priv)
+	if err != nil {
 		return nil
 	}
+	pubKey := ecdhPriv.PublicKey().Bytes()
+	if !bytes.Equal(pubKey, pub) {
+		return nil
+	}
+	x := new(big.Int).SetBytes(pubKey[1:33])
+	y := new(big.Int).SetBytes(pubKey[33:])
 	return &vapidKeys{
 		signer:   &ecdsa.PrivateKey{D: d, PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}},
 		Public65: pub,

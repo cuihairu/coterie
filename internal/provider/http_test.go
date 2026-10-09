@@ -1,7 +1,6 @@
 package provider_test
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -171,19 +170,4 @@ func TestProviderValidationErrors(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("delete unknown status = %d, want 404", code)
 	}
-}
-
-// seedProvider creates a provider through the API and returns its id.
-func seedProvider(t *testing.T, client *http.Client, base, slug, tok string) string {
-	t.Helper()
-	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+providersPath,
-		fmt.Sprintf(`{"slug":%q,"name":%q,"category":"video"}`, slug, slug), tok)
-	if code != http.StatusCreated {
-		t.Fatalf("seed provider %s: status = %d: %v", slug, code, body)
-	}
-	id, _ := body["id"].(string)
-	if id == "" {
-		t.Fatalf("seed provider %s: no id", slug)
-	}
-	return id
 }

@@ -107,9 +107,10 @@ func fold(userID string, rows []statusRow) *Report {
 			cs = &CurrencyStats{Currency: r.Currency, Paid: "0.00", Pending: "0.00"}
 			byCur[r.Currency] = cs
 		}
-		if r.Status == "paid" {
+		switch r.Status {
+		case "paid":
 			cs.Paid = r.Total
-		} else if r.Status == "pending" {
+		case "pending":
 			cs.Pending = r.Total
 		}
 	}

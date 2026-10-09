@@ -345,14 +345,14 @@ func TestMemberRemovalReleasesSeats(t *testing.T) {
 	if _, err := assignSeat(t, client, srv.URL, tok, seatIDs[0], m2ID); err != nil {
 		t.Fatal(err)
 	}
-	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+"/api/v1/coteries/"+id, "", tok)
 	if body["full"] != true {
 		t.Fatalf("expected full before removal: %v", body)
 	}
 
 	// Non-owner removal → 403.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodDelete,
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodDelete,
 		srv.URL+"/api/v1/members/"+m2ID, "", u2)
 	if code != http.StatusForbidden {
 		t.Fatalf("non-owner remove status = %d, want 403: %v", code, body)
@@ -364,14 +364,14 @@ func TestMemberRemovalReleasesSeats(t *testing.T) {
 	if code != http.StatusNoContent {
 		t.Fatalf("remove member status = %d, want 204", code)
 	}
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+"/api/v1/coteries/"+id, "", tok)
 	if body["member_count"] != float64(1) || body["seats_free"] != float64(1) || body["full"] != false {
 		t.Fatalf("post-removal view wrong: %v", body)
 	}
 
 	// Owner member cannot be removed; unknown member 404s.
-	code, members := testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, members := testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+"/api/v1/coteries/"+id+"/members", "", tok)
 	items, _ := members["items"].([]any)
 	ownerMember, _ := items[0].(map[string]any)
@@ -553,7 +553,7 @@ func TestCoterieBlocks(t *testing.T) {
 	}
 
 	// The list is owner-only.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, blockURL[:len(blockURL)-1], "", utok)
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet, blockURL[:len(blockURL)-1], "", utok)
 	if code != http.StatusForbidden {
 		t.Fatalf("outsider list status = %d, want 403", code)
 	}

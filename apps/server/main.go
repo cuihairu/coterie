@@ -143,7 +143,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	defer database.Close(db)
+	defer func() { _ = database.Close(db) }()
 
 	if cfg.MigrateOnStart {
 		log.Info("applying migrations", "dir", cfg.MigrationsDir)

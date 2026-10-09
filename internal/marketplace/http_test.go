@@ -611,7 +611,7 @@ func deliverGate(t *testing.T, client *http.Client, base, secret, payload string
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	return res.StatusCode, out
@@ -647,7 +647,7 @@ func TestPaymentGateAsyncFlow(t *testing.T) {
 	var intents int
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		intents++
-		fmt.Fprintf(w, `{"id":"pi_gate_%d","client_secret":"pi_gate_%d_secret"}`, intents, intents)
+		_, _ = fmt.Fprintf(w, `{"id":"pi_gate_%d","client_secret":"pi_gate_%d_secret"}`, intents, intents)
 	}))
 	t.Cleanup(fake.Close)
 	gateStripe := payment.Stripe{SecretKey: "sk_test_x", WebhookSecret: "whsec_gate", APIBase: fake.URL}
@@ -690,7 +690,7 @@ func TestPaymentGateAsyncFlow(t *testing.T) {
 	ref, _ := body["external_ref"].(string)
 
 	// Still no member before the webhook.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
 	if n, _ := body["member_count"].(float64); n != 1 {
 		t.Fatalf("member_count = %v before webhook", body["member_count"])
@@ -710,7 +710,7 @@ func TestPaymentGateAsyncFlow(t *testing.T) {
 	}
 
 	// Admitted: member_count up, request accepted, welcome notified.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
 	if n, _ := body["member_count"].(float64); n != 2 {
 		t.Fatalf("member_count = %v after webhook, want 2", body["member_count"])
@@ -740,7 +740,7 @@ func TestPaymentGateFailureAndRetry(t *testing.T) {
 	var intents int
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		intents++
-		fmt.Fprintf(w, `{"id":"pi_gf_%d","client_secret":"pi_gf_%d_secret"}`, intents, intents)
+		_, _ = fmt.Fprintf(w, `{"id":"pi_gf_%d","client_secret":"pi_gf_%d_secret"}`, intents, intents)
 	}))
 	t.Cleanup(fake.Close)
 	gateStripe := payment.Stripe{SecretKey: "sk_test_x", WebhookSecret: "whsec_gate", APIBase: fake.URL}
@@ -820,7 +820,7 @@ func TestPaymentGateManual(t *testing.T) {
 	if body["status"] != "succeeded" || body["method"] != "manual" {
 		t.Fatalf("charge = %v", body)
 	}
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
 	if n, _ := body["member_count"].(float64); n != 2 {
 		t.Fatalf("member_count = %v after manual admission, want 2", body["member_count"])
@@ -844,7 +844,7 @@ func TestPaymentGateOffUnchanged(t *testing.T) {
 	if code != http.StatusOK || body["status"] != "accepted" {
 		t.Fatalf("plain accept: status = %d: %v", code, body)
 	}
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
 	if n, _ := body["member_count"].(float64); n != 2 {
 		t.Fatalf("member_count = %v, want 2", body["member_count"])

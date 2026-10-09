@@ -75,7 +75,7 @@ func TestReputationDerivesFromLedger(t *testing.T) {
 	}
 
 	// Unknown users 404.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/users/00000000-0000-0000-0000-000000000000/reputation", "", tok)
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown user: status = %d, want 404", code)

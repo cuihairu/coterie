@@ -117,7 +117,7 @@ func startFakeSMTP(t *testing.T) *fakeSMTP {
 	}
 	f := &fakeSMTP{listener: l, data: make(chan string, 1)}
 	go f.serve()
-	t.Cleanup(func() { l.Close() })
+	t.Cleanup(func() { _ = l.Close() })
 	return f
 }
 
@@ -128,10 +128,10 @@ func (f *fakeSMTP) serve() {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
-	write := func(s string) { w.WriteString(s + "\r\n"); w.Flush() }
+	write := func(s string) { _, _ = w.WriteString(s + "\r\n"); _ = w.Flush() }
 
 	write("220 test ESMTP")
 	for {

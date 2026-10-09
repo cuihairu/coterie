@@ -18,9 +18,6 @@ import (
 	"github.com/cuihairu/coterie/pkg/api"
 )
 
-// maxProvisionBounds how many seats one call may create.
-const maxProvision = 100
-
 // Service enforces the seat rules: capacity comes from the subscription
 // (D2), mutations belong to the subscription owner (D5), and an assignee
 // must be an active member of the subscription's coterie (invariant 4).

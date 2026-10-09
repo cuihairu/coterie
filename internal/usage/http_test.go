@@ -159,7 +159,7 @@ func TestUsageSeatAttribution(t *testing.T) {
 	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, srv.URL, "use-seat", "10.00", 3, 2, 1)
 	m := joined[0]
 
-	code, seats := testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, seats := testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+recordsPath+"/"+subID+"/seats", "", tok)
 	items, _ := seats["items"].([]any)
 	seatA, _ := items[0].(map[string]any)
@@ -174,7 +174,7 @@ func TestUsageSeatAttribution(t *testing.T) {
 			t.Fatalf("patch seat: status = %d: %v", code, body)
 		}
 	}
-	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPost,
+	code, _ := testsupport.DoAuthJSON(t, client, http.MethodPost,
 		srv.URL+"/api/v1/seats/"+seatAID+"/assign",
 		fmt.Sprintf(`{"member_id":%q}`, m.MemberID), tok)
 	if code != http.StatusOK {
@@ -213,7 +213,7 @@ func TestUsageSeatAttribution(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("provision extra seat: status = %d", code)
 	}
-	code, seats = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, seats = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+recordsPath+"/"+subID+"/seats", "", tok)
 	var freeSeatID string
 	for _, raw := range seats["items"].([]any) {
@@ -435,7 +435,7 @@ func TestRecordUsageProjectsResourceUsed(t *testing.T) {
 	// A quota seat on the same member makes implicit attribution
 	// ambiguous — the metered-seat discovery treats quota and resource
 	// uniformly.
-	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+recordsPath+"/"+subID+"/seats", "", tok)
 	secondID, _ := body["items"].([]any)[1].(map[string]any)["id"].(string)
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,

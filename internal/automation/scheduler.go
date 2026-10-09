@@ -106,7 +106,7 @@ func (s *Scheduler) rollSubscription(ctx context.Context, d DueSubscription) (bo
 		return false, fmt.Errorf("owner %s no longer exists", d.OwnerUserID)
 	}
 
-	start := d.EndDate.Time.AddDate(0, 0, 1)
+	start := d.EndDate.AddDate(0, 0, 1)
 	var end time.Time
 	switch d.BillingCycle {
 	case "monthly":

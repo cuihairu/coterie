@@ -335,7 +335,7 @@ func TestStripeAsyncChannel(t *testing.T) {
 	var intents int
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		intents++
-		fmt.Fprintf(w, `{"id":"pi_async_%d","client_secret":"pi_async_%d_secret"}`, intents, intents)
+		_, _ = fmt.Fprintf(w, `{"id":"pi_async_%d","client_secret":"pi_async_%d_secret"}`, intents, intents)
 	}))
 	t.Cleanup(fake.Close)
 
@@ -444,7 +444,7 @@ func TestStripeAsyncFailure(t *testing.T) {
 	var attempts int
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
-		fmt.Fprintf(w, `{"id":"pi_fail_%d","client_secret":"pi_fail_%d_secret"}`, attempts, attempts)
+		_, _ = fmt.Fprintf(w, `{"id":"pi_fail_%d","client_secret":"pi_fail_%d_secret"}`, attempts, attempts)
 	}))
 	t.Cleanup(fake.Close)
 
@@ -503,7 +503,7 @@ func postWebhook(t *testing.T, client *http.Client, base, method, secret, payloa
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	return res.StatusCode, out

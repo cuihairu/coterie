@@ -30,7 +30,7 @@ func (d Date) String() string { return d.Format(dateLayout) }
 
 // Value implements driver.Valuer; a zero Date becomes SQL NULL.
 func (d Date) Value() (driver.Value, error) {
-	if d.Time.IsZero() {
+	if d.IsZero() {
 		return nil, nil
 	}
 	return d.Time, nil
@@ -65,7 +65,7 @@ func (d *Date) parseText(s string) error {
 
 // MarshalJSON renders as "YYYY-MM-DD"; a zero Date renders as null.
 func (d Date) MarshalJSON() ([]byte, error) {
-	if d.Time.IsZero() {
+	if d.IsZero() {
 		return []byte("null"), nil
 	}
 	return []byte(`"` + d.String() + `"`), nil

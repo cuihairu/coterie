@@ -160,9 +160,11 @@ func TestVapidAuthHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	pub65 := priv.PublicKey().Bytes()
-	x, y := elliptic.Unmarshal(elliptic.P256(), pub65)
 	keys := &vapidKeys{
-		signer:   &ecdsa.PrivateKey{D: new(big.Int).SetBytes(privRaw), PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}},
+		signer: &ecdsa.PrivateKey{
+			D:         new(big.Int).SetBytes(privRaw),
+			PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(pub65[1:33]), Y: new(big.Int).SetBytes(pub65[33:])},
+		},
 		Public65: pub65,
 		Subject:  "mailto:ops@example.com",
 	}

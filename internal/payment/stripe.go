@@ -155,7 +155,7 @@ func (s Stripe) apiCall(ctx context.Context, method, path string, form url.Value
 	if err != nil {
 		return stripeIntent{}, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return stripeIntent{}, err

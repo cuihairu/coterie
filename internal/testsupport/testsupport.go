@@ -227,7 +227,7 @@ func do(t *testing.T, client *http.Client, method, url, body, token string) (int
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -283,11 +283,11 @@ func setup() {
 }
 
 func dockerAvailable(ctx context.Context) bool {
-	cli, err := mobyclient.NewClientWithOpts(mobyclient.FromEnv, mobyclient.WithAPIVersionNegotiation())
+	cli, err := mobyclient.New(mobyclient.FromEnv)
 	if err != nil {
 		return false
 	}
-	defer cli.Close()
+	defer func() { _ = cli.Close() }()
 	ping, err := cli.Ping(ctx, mobyclient.PingOptions{})
 	return err == nil && ping.APIVersion != ""
 }

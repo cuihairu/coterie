@@ -184,7 +184,7 @@ func TestEqualSplit(t *testing.T) {
 
 	// One of the joined members settles their share.
 	memberID := joined[0].MemberID
-	code, list := testsupport.DoAuthJSON(t, client, http.MethodGet,
+	_, list := testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+"/api/v1/billing-periods/"+periodID+"/contributions", "", tok)
 	items, _ = list["items"].([]any)
 	var contributionID string

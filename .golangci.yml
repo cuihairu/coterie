@@ -1,0 +1,18 @@
+# Lint gate: the standard v1 default set carried into v2 (errcheck,
+# govet, ineffassign, staticcheck, unused). Kept deliberately small —
+# gofmt/go vet already run in the test job, so this adds the classes
+# vet cannot see (shadowed assignments, unchecked error returns,
+# unused code).
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  settings:
+    govet:
+      disable:
+        # Style hint with no defect behind it: it flags the canonical
+        # docker SDK call NewClientWithOpts(FromEnv, WithAPIVersionNegotiation())
+        # in the test harness because the constructor forwards its args.
+        - inline

@@ -139,7 +139,7 @@ func (s *Store) ListBySubscription(ctx context.Context, subscriptionID string, f
 		q = q.Where("recorded_at >= ?", f.From.Time)
 	}
 	if f.To != nil {
-		q = q.Where("recorded_at < ?", f.To.Time.AddDate(0, 0, 1))
+		q = q.Where("recorded_at < ?", f.To.AddDate(0, 0, 1))
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
