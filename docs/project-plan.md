@@ -300,6 +300,9 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 8. [x] **Resource 共享模式**（FR-6 后续，§2.5）— 复用 Seat+metadata（D23）
 9. [x] **防滥用收口**（NFR-7 / FR-14）— 平台管理员角色（`ADMIN_EMAILS` 启动引导）、举报（公开圈可报 + 管理员收件箱与 resolve/dismiss）、圈级拉黑（全准入路径 403）（D26）
 10. [x] **部署收口**（§11）— compose 一键起全栈（postgres 健康检查 + 源码构建镜像）、每 push 的 CI 门禁（gofmt/build/vet/test）、文档站部署页
+11. [x] **GHCR 镜像发布**（§11.2）— nightly 测试通过后推 `ghcr.io/cuihairu/coterie`（nightly 滚动 tag + 日期 tag，amd64/arm64），compose 切到 registry 镜像；顺手收口 manual 支付重复流水号（409 而非 500）
+12. [x] **管理员审计查询面**（NFR-7 / D27）— `GET /api/v1/admin/audit-logs`（仅平台管理员），action/actor/coterie/subscription 过滤 + 分页，与 Owner 读取面共用同一只增表
+13. [x] **API 参考页**（文档站）— 全量端点平铺清单，鉴权/分页/错误信封约定
 
 ---
 
