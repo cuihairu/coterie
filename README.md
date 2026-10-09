@@ -58,6 +58,16 @@ export PORT=8080
 go run ./apps/server
 ```
 
+Or run the whole stack with Docker Compose (builds the image and starts
+PostgreSQL next to it):
+
+```bash
+docker compose -f deployments/docker-compose.yml up -d --build
+```
+
+Deployment details (configuration, platform admins, upgrades) are covered
+in the [docs site](https://cuihairu.github.io/coterie/deployment).
+
 Every route except `GET /healthz`, `POST /api/v1/auth/register`,
 `POST /api/v1/auth/login`, and the public catalog reads (`GET /api/v1/providers`,
 `GET /api/v1/products`, `GET /api/v1/marketplace/coteries`) needs

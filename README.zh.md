@@ -51,6 +51,14 @@ export PORT=8080
 go run ./apps/server
 ```
 
+或者用 Docker Compose 跑整套环境(构建镜像,连同 PostgreSQL 一起启动):
+
+```bash
+docker compose -f deployments/docker-compose.yml up -d --build
+```
+
+部署细节(配置项、平台管理员、升级)见[文档站](https://cuihairu.github.io/coterie/deployment)。
+
 除 `GET /healthz`、`POST /api/v1/auth/register`、
 `POST /api/v1/auth/login` 以及目录类的公开读接口(`GET /api/v1/providers`、
 `GET /api/v1/products`、`GET /api/v1/marketplace/coteries`)外,所有路由都需要

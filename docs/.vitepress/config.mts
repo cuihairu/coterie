@@ -29,11 +29,15 @@ export default defineConfig({
       { text: '需求规格', link: '/requirements' },
       { text: '技术设计', link: '/design' },
       { text: '项目计划', link: '/project-plan' },
+      { text: '部署', link: '/deployment' },
     ],
     sidebar: [
       {
         text: '开始',
-        items: [{ text: '简介与快速开始', link: '/' }],
+        items: [
+          { text: '简介与快速开始', link: '/' },
+          { text: '部署', link: '/deployment' },
+        ],
       },
       {
         text: '项目文档',

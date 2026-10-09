@@ -61,6 +61,9 @@ go run ./apps/server
 scripts/smoke.sh http://localhost:8080
 ```
 
+部署（Docker Compose、配置项、平台管理员引导）见 [部署](/deployment)。
+```
+
 ## 文档导航
 
 | 文档 | 内容 |
