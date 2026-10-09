@@ -75,6 +75,8 @@ scripts/smoke.sh http://localhost:8080
 
 ## API 概览(v1)
 
+完整端点参考见[文档站](https://cuihairu.github.io/coterie/api)。
+
 | 领域 | 端点 |
 |------|-----------|
 | Auth | `POST /api/v1/auth/register` · `login` · `logout` · `GET me` |

@@ -84,6 +84,8 @@ scripts/smoke.sh http://localhost:8080
 
 ## API overview (v1)
 
+The full endpoint reference lives on the [docs site](https://cuihairu.github.io/coterie/api).
+
 | Area | Endpoints |
 |------|-----------|
 | Auth | `POST /api/v1/auth/register` · `login` · `logout` · `GET me` |
