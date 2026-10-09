@@ -22,7 +22,7 @@ Coterie is designed for any digital service that can be legitimately shared
 among multiple people — from streaming and music to software, AI, cloud
 services and more.
 
-> 🚧 **Status: Phase 4 backend complete.** Provider plugin face with
+> **Status: Phase 4 backend complete.** Provider plugin face with
 > policy/admission/usage hooks plus a real `claude` plugin sample,
 > sandbox payment channel, auto-billing rollover (monthly, yearly, and
 > custom day-count cycles), prorated (per-day) split, contribution
@@ -139,17 +139,17 @@ Seats / Quota / Cost
 | [Requirements](docs/requirements.md) | Functional / non-functional requirements, MVP scope and non-goals |
 | [Design](docs/design.md) | Domain model, sharing models, billing, architecture, API, deployment |
 
-> 📝 Documentation is currently written in Chinese.
+> Documentation is currently written in Chinese.
 
 ## Roadmap
 
-- **Phase 1 — MVP ✅**: users, providers, products, subscriptions, coteries,
+- **Phase 1 — MVP** (complete): users, providers, products, subscriptions, coteries,
   members, seats, contributions, invitations, notifications (manual settlement)
-- **Phase 2 ✅**: marketplace, provider catalog, payment adapters, email,
+- **Phase 2** (complete): marketplace, provider catalog, payment adapters, email,
   webhooks, usage tracking, quotas
-- **Phase 3 ✅**: provider/payment/usage plugins, automation (auto-billing
+- **Phase 3** (complete): provider/payment/usage plugins, automation (auto-billing
   rollover), advanced billing (prorated split), disputes, reputation
-- **Phase 4 ✅**: audit log, owner reputation badge in the marketplace,
+- **Phase 4** (complete): audit log, owner reputation badge in the marketplace,
   rate limiting, custom billing cycles, per-member usage limits,
   Web Push notifications, resource sharing mode, the Stripe payment
   channel (D24), the marketplace payment gate (D25), and abuse

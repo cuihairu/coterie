@@ -184,7 +184,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 字段清单见需求文档对应条目，此处只记录实现要点：
 
 - **Provider / Product（目录）**：Product 不存价格，实际支付价在 Subscription；目录既可由用户经 Generic Provider 自建（[§5.3](#53-generic-provider)），也可来自 Provider Registry（[§5.4](#54-provider-registry未来)）。
-- **Subscription**：聚合根，拥有 Seats / SharingPolicy / BillingPeriods；其 `status` 独立于 Coterie.status——订阅过期而圈尚存时，通过通知驱动圈的 Closed 流程，而不是级联硬删。
+- **Subscription**：聚合根，拥有 Seats / SharingPolicy / BillingPeriods；其 `status` 独立于 Coterie.status；订阅过期而圈尚存时，通过通知驱动圈的 Closed 流程，而不是级联硬删。
 - **Coterie**：不存 capacity（不变量 3）、不存任何凭证（NFR-1）；成员与角色语义见 FR-7。
 - **Member**：`UNIQUE(coterie_id, user_id)` 保证同一用户在同一圈最多一条活跃记录；离开用 `left_at` 软记录，历史保留供结算追溯。
 - **Contribution**：由 Billing 任务按周期批量生成；Manual Settlement 下结算状态由 Owner 手动标记（见 [§4.2](#42-payment-架构)）。
@@ -194,7 +194,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | # | 决策 | 结论 | 理由与影响 |
 |---|------|------|------------|
 | **D1** | Subscription ↔ Coterie 基数 | **严格 1:1**（UNIQUE 外键） | 席位、费用、结算在单圈内闭环，模型最简；未来需要 1:N 时经迁移扩展 |
-| **D2** | Seat 归属 | **Subscription** | 订阅是容量唯一源头——「订阅定坑位，圈内定人选」；Coterie 不存容量字段 |
+| **D2** | Seat 归属 | **Subscription** | 订阅是容量唯一源头：「订阅定坑位，圈内定人选」；Coterie 不存容量字段 |
 | **D3** | Full 状态 | **派生标志** | 消除原文状态机中 Full 先于 Active 的歧义；持久化状态收敛为 5 个 |
 | **D4** | Quota 建模 | **复用 Seat + metadata** | Seat 成为通用分配单元，概念数量最少；配额调整即 metadata 更新 |
 | **D5** | Owner 同一性 | 圈 Owner ≡ 订阅 Owner（MVP） | 1:1 下费用责任人与圈管理人天然一致；转让是 Phase 2 特性 |
@@ -205,20 +205,20 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D9** | Usage 记账 | **追加式账本 + 投影** | `usage_records` 只增不改（修正记负数记录），是用量唯一事实源；quota Seat 的 `metadata.used` 是其席位归集记录的 SUM 投影，写入时行锁重算，不做增量累加（无浮点漂移、可对账）；账期 `usage` 分摊按成员期内用量比例、最大余数法分币，总额精确守恒（[§4.1](#41-billing)） |
 | **D11** | Payment Adapter | **接口 + Manual 内置 + 只增账本** | `Adapter` 接口（`Charge→Receipt`）是唯一渠道接缝；`payments` 只增不改，金额/币种恒取自 Contribution（不变量 5），落账与 Contribution 置 `paid` 同事务；Owner 或付款成员可登记；真实渠道（Stripe 等）以新适配器接入，不改核心（[§4.2](#42-payment-架构)） |
 | **D12** | Provider 插件面 | **按 slug 绑定 + 可选能力接口** | `Plugin` + 可选 `PolicyValidator`（订阅策略复验）/ `AdmissionGuard`（准入拒绝）/ `UsageValidator`（用量记账复验）；Registry 为空时全 Generic 语义，核心零依赖特定 Provider（[§5.1](#51-原则)）；核心准入同时执行 `max_members`（MemberLimit） |
-| **D13** | 账务自动化 | **调度器滚期 + Owner 身份代办** | `auto_billing`（订阅级开关，默认关）开启后，进程内调度器（`AUTO_BILLING_INTERVAL`，默认 1h，0 关闭）在**前沿账期**（start_date 最大者）结束后以 **Owner 身份**走同一 billing 服务开下一期并按 `equal` 生成分摊——唯一约束/守恒/通知等全部不变量原样生效；monthly/yearly 可推算下期区间，`custom` 按周期天数 `cycle_days` 推算（D20）；首期恒手动（价格与起日是 Owner 决策）；滚期成功后 `subscription_renewal` 通知 Owner 及上期未结笔数（[§4.1](#41-billing)） |
-| **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**——需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
-| **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面——没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
-| **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**——插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
-| **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加——审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)）；埋点需要可信 actor，同批把订阅资源面的 Owner 强制补齐——**owner 即认证用户**（`owner_user_id` 载荷只能确认不能指名，创建/读取/列表/修改/删除全表面校验，抹平 M1 遗留的越权缺口） |
-| **D18** | Marketplace 信誉展示位 | **纯派生徽标** | 目录条目附 Owner 结算信誉徽标（`owner`: user_id / username / 分摊计数 / `payment_ratio`），聚合复用 D15 同一派生（批量 SQL 与单用户报告同构），不另立评分路径；徽标是粗粒度公开投影——不含各币种金额（金额留在已认证报告端点），Owner 把圈发布为公开（`listing=public`）即接受展示位；无应收历史 ratio=null 不给虚假满分（[§4.4](#44-reputation)） |
-| **D19** | Rate Limit | **内存固定窗口** | Phase 1 只挡现实滥用面——未认证公开写端点按 (端点, 客户端 IP) 计数：register 5 次/分、login 10 次/分，超限 429 JSON 信封 + `Retry-After`；单实例内存、无 Redis（§7.4），配置 0 即关闭；公开读与已认证端点等真实流量画像再议（[§6.4](#64-rate-limit)） |
+| **D13** | 账务自动化 | **调度器滚期 + Owner 身份代办** | `auto_billing`（订阅级开关，默认关）开启后，进程内调度器（`AUTO_BILLING_INTERVAL`，默认 1h，0 关闭）在**前沿账期**（start_date 最大者）结束后以 **Owner 身份**走同一 billing 服务开下一期并按 `equal` 生成分摊。唯一约束/守恒/通知等全部不变量原样生效；monthly/yearly 可推算下期区间，`custom` 按周期天数 `cycle_days` 推算（D20）；首期恒手动（价格与起日是 Owner 决策）；滚期成功后 `subscription_renewal` 通知 Owner 及上期未结笔数（[§4.1](#41-billing)） |
+| **D14** | 争议处理 | **独立账本 + 建议性裁决** | `disputes` 表（reason/evidence/status + decided_shape CHECK，每 Contribution 至多一个 open，部分唯一索引）；成员或 Owner 发起（cancelled 分摊不可争议），Owner 一向裁决（resolved/rejected，`decide` 单向原子）；**裁决不改分摊**：需要调整结算时 Owner 经既有 PATCH 显式操作，争议账本与资金流动解耦；通知 `dispute_opened`/`dispute_decided` 随迁移扩展类型清单（[§4.3](#43-dispute)） |
+| **D15** | 账号信誉 | **纯派生 + 只读投影** | 信誉是 contributions 账本的投影，不是可写模型：按用户聚合其分摊记录状态计数（paid/pending/waived/cancelled）与各币种已缴/未缴金额，`payment_ratio` = paid ÷（paid+pending）（仅计「曾应收」的分摊，waived/cancelled 不入分母；无应收历史 → null 而非虚假 100%）。无手工评分、无写入面，没有可刷分的对象；`GET /api/v1/users/{id}/reputation`（已认证基线）（[§4.4](#44-reputation)） |
+| **D16** | 真实插件样例 | **绑定种子目录 slug 的 `claude` 插件** | §5.2 插件位契约的首个真实实现，落 `providers/claude/`（policy/admission/usage 三面全实现）：策略要求 `region ∈ {us,eu}`（数据驻留）+ 可选 `plan ∈ {pro,max}`（缺省 max）；准入上 pro 为个人套餐拒绝一切加入、max 圈至多 5 人；记账仅收 `tokens`/`requests` 且单笔设上限（负数修正放行）。**绑定种子目录条目而非新建 Provider 行**：插件面向「已存在的 slug」增强语义，目录（§5.4）与插件（行为）解耦；经 `PROVIDER_PLUGINS=claude` 注册（与 `PAYMENT_METHODS` 同模式，未知名警告跳过），不注册则该 Provider 保持 Generic（[§5.2](#52-目录结构)） |
+| **D17** | 审计日志 | **append-only 账本 + 同事务埋点 + Owner 只读** | FR-15 要求资金与成员变更必审计：`audit_logs` 只增不改（who/what/when/where/before/after），在既有业务事务内追加，审计失败即回滚业务写入，与「落账同事务」同一纪律（D11）；动作清单经 CHECK 枚举随迁移扩展；读取面只有订阅 Owner（订阅树按 `subscription_id` 枢纽查、圈按 `coterie_id` 枢纽查），成员不开放审计读（结果在其自有视图可见），Admin 面后续（[§6.3](#63-audit-log)）；埋点需要可信 actor，同批把订阅资源面的 Owner 强制补齐：**owner 即认证用户**（`owner_user_id` 载荷只能确认不能指名，创建/读取/列表/修改/删除全表面校验，抹平 M1 遗留的越权缺口） |
+| **D18** | Marketplace 信誉展示位 | **纯派生徽标** | 目录条目附 Owner 结算信誉徽标（`owner`: user_id / username / 分摊计数 / `payment_ratio`），聚合复用 D15 同一派生（批量 SQL 与单用户报告同构），不另立评分路径；徽标是粗粒度公开投影，不含各币种金额（金额留在已认证报告端点），Owner 把圈发布为公开（`listing=public`）即接受展示位；无应收历史 ratio=null 不给虚假满分（[§4.4](#44-reputation)） |
+| **D19** | Rate Limit | **内存固定窗口** | Phase 1 只挡现实滥用面：未认证公开写端点按 (端点, 客户端 IP) 计数：register 5 次/分、login 10 次/分，超限 429 JSON 信封 + `Retry-After`；单实例内存、无 Redis（§7.4），配置 0 即关闭；公开读与已认证端点等真实流量画像再议（[§6.4](#64-rate-limit)） |
 | **D20** | 自定义计费周期 | **cycle_days 天数偏移** | 计费期的语义是「区间长度」（显式 `[start,end]`、同 start 唯一），cron 回答的是触发时刻且引入时区/表达式校验负担，故取**天数偏移**：`cycle_days`（1–365 整数）在 `billing_cycle='custom'` 时必填、非 custom 时必须为空，由行级 CHECK 双向强制；调度器（D13）按 `[end+1, end+cycle_days-1]` 推算下期，与 monthly/yearly 同一管线；变更入 `subscription_updated` 审计快照 |
-| **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409——判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
-| **D22** | Push 通知 | **Web Push（RFC 8291 + RFC 8292 VAPID）** | Push 渠道取 Web Push 标准而非 FCM/APNs 私有通道（自托管友好、无厂商凭据）：用户经认证 API 登记 `push_subscriptions`（endpoint + p256dh/auth 密钥，endpoint 全局唯一 upsert）；出站适配器对通知接收者的每个登记端点按 RFC 8291 `aes128gcm` 加密负载、RFC 8292 VAPID（ES256 JWT）签名 `Authorization` 头后 POST——纯 stdlib + x/crypto/hkdf 手写（加密与 JWT 均有 RFC 测试向量背书，不引第三方推送库）；推送服务 404/410 即剪除该订阅（端点已失效），其余失败按渠道惯例记日志不致命（FR-12）；VAPID 未配置则渠道不注册，行为与 Email/Webhook 一致（[§6.5](#65-web-push)） |
-| **D23** | Resource 共享建模 | **复用 D4：Seat + metadata** | §2.5 的资源池共享不引入新实体：`sharing.mode = resource` 时 Seat 的 metadata 携带 `{"resource": <容量>, "unit": "...", "used": 0}`（与 quota 同构）；`used` 投影与 quota 完全同管线——账本按席位归集 SUM 重写（D9），席位归集发现与多席位歧义检查对 quota / resource 一视同仁；费用拆分（§4.3）与共享模式正交，资源模式照选 equal / usage 等拆分，无新增计费路径 |
-| **D24** | 真实支付渠道（Stripe） | **异步适配器 facet + 公开 Webhook + pending/failed 状态** | 同步 `Charge`（事务内成功即落账）无法表达 Stripe 的确认-回调流，故适配器面增加**可选异步 facet**：`AsyncAdapter`（`ChargeAsync → 渠道单号` + `ParseWebhook → 事件`），同步适配器自动满足（零改动）；`payments.status` 经迁移 0014 扩为 `('pending','succeeded','failed')`（付款先行落 `pending`，`paid_at` 于确认时回填）；Stripe 适配器用**纯 net/http + HMAC-SHA256**（不引 stripe-go：只需 `/v1/payment_intents` 一个表单 POST + webhook 签名验证，供应商 SDK 带不进价值）；`POST /api/v1/payments/webhooks/stripe` 为**公开端点**（唯一签名鉴权，无会话），验签→翻译为规范化事件→服务层在同一事务内回写 `payments`（succeeded 置 `paid`/`paid_at` 并翻 Contribution，failed 仅落状态）——不反向驱动领域模型；配置 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_API_BASE`（后者供测试指向假服务），未配置则渠道不注册（渠道惯例） |
-| **D25** | Marketplace 支付闸门 | **准入费独立账本 + awaiting_payment + Webhook 驱动入圈** | 闸门语义取「入圈前收费、确认即入圈」：`coteries.payment_gate`（Owner 专属 PATCH，默认关）；开启后 accept 转 `awaiting_payment`（Owner 同意已记录、入圈挂起），请求者经 `POST /api/v1/join-requests/{id}/payments` 发起收费——金额平台计算（equal 口径 floor(price/(活跃成员+1))，上限 price，币种随订阅，与目录估计同源），同步渠道当场结算并同事务入圈，异步渠道落 `pending` + `client_secret`；manual 仅 Owner 可记（自证收款禁止）。确认走独立公开 Webhook `POST /api/v1/marketplace/webhooks/{method}`（复用 D24 验签管线；`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`）：同一事务内重跑全部准入检查并插入成员（`admitUser` 事务化复用）+ 翻 charge + 请求转 `accepted`，满员 409 回滚由渠道重试自愈。**准入费记 `admission_charges` 独立账本而非 `payments`**：不变量 5 要求金额出自 Contribution，而 Contribution 以成员身份为前提、闸门刻意先行——准入费是当前账期份额的估计收讫，不进结算账本，入圈后真实份额仍由 billing generate 出账；failed 可重付（唯一部分索引保证每请求至多一条在途/成功 charge）；pending charge 在途时 decline/cancel 409（资金在途）；未开闸的圈零改动 |
-| **D26** | 防滥用收口 + Admin 基础面 | **平台管理员角色 + 举报 + 圈级拉黑** | NFR-7 最后两项（Report / Block）与 FR-14 的 Reports 职责一并收口：**平台管理员** = `users.role`（`'user'`/`'admin'`，默认 user），经 `ADMIN_EMAILS` 启动引导（幂等 UPDATE——实例运营者即管理员，自托管不建管理后台注册面）；管理员面 v1 只做举报处置（FR-14 明言 Admin 不参与圈的日常管理——不做用户管理/圈编辑）。**Report**：认证用户对公开列出的圈举报（非公开圈照旧 404 不泄露存在性，reason ≤1000 字符），`reports` 独立账本（open/resolved/dismissed + resolution_note，每用户每圈至多一条 open），管理员 `GET /api/v1/admin/reports` + `resolve/dismiss`；决定不通知报告者（避免泄露处置细节），审计留痕。**Block** 取圈级而非平台级：公开目录 + 支付闸门让恶意请求有了真实成本，Owner 拉黑是成本最低、语义最清的防滥用原语（平台级封禁属风控扩张，明确不做）；被拉黑者在加入请求与全部准入路径（`admitUser`：邀请接受 / marketplace accept / 闸门确认）一律 403，现有成员不自动移除（Owner 仍可手动移除）。迁移随实现分落（0016 角色 / 0017 拉黑 / 0018 举报）（[§6.6](#66-防滥用report-与-block)） |
+| **D21** | Sharing Policy UsageLimit | **核心侧每成员每账期用量上限** | `sharing_policy.usage_limit = {"unit","per_period"}`（JSONB 承载，§3 无强结构列原则）；`POST /usage-records` 事务内插入前强制：对 `unit` 匹配的账本行、按 `recorded_at` 所在账期（`[start,end]`）对成员求和，**写入后新总和** > `per_period` → 409；判据是总和而非增量，负修正自然放行；无覆盖账期或 unit 不匹配不设限（账本先行，结算视角才需要账期）；比较按 1e4 定标整数，杜绝浮点；core 结构校验 unit（1–32 字符）与 per_period（正十进制 ≤4 位小数），插件可在同事务内叠加更严校验（D12） |
+| **D22** | Push 通知 | **Web Push（RFC 8291 + RFC 8292 VAPID）** | Push 渠道取 Web Push 标准而非 FCM/APNs 私有通道（自托管友好、无厂商凭据）：用户经认证 API 登记 `push_subscriptions`（endpoint + p256dh/auth 密钥，endpoint 全局唯一 upsert）；出站适配器对通知接收者的每个登记端点按 RFC 8291 `aes128gcm` 加密负载、RFC 8292 VAPID（ES256 JWT）签名 `Authorization` 头后 POST，纯 stdlib + x/crypto/hkdf 手写（加密与 JWT 均有 RFC 测试向量背书，不引第三方推送库）；推送服务 404/410 即剪除该订阅（端点已失效），其余失败按渠道惯例记日志不致命（FR-12）；VAPID 未配置则渠道不注册，行为与 Email/Webhook 一致（[§6.5](#65-web-push)） |
+| **D23** | Resource 共享建模 | **复用 D4：Seat + metadata** | §2.5 的资源池共享不引入新实体：`sharing.mode = resource` 时 Seat 的 metadata 携带 `{"resource": <容量>, "unit": "...", "used": 0}`（与 quota 同构）；`used` 投影与 quota 完全同管线：账本按席位归集 SUM 重写（D9），席位归集发现与多席位歧义检查对 quota / resource 一视同仁；费用拆分（§4.3）与共享模式正交，资源模式照选 equal / usage 等拆分，无新增计费路径 |
+| **D24** | 真实支付渠道（Stripe） | **异步适配器 facet + 公开 Webhook + pending/failed 状态** | 同步 `Charge`（事务内成功即落账）无法表达 Stripe 的确认-回调流，故适配器面增加**可选异步 facet**：`AsyncAdapter`（`ChargeAsync → 渠道单号` + `ParseWebhook → 事件`），同步适配器自动满足（零改动）；`payments.status` 经迁移 0014 扩为 `('pending','succeeded','failed')`（付款先行落 `pending`，`paid_at` 于确认时回填）；Stripe 适配器用**纯 net/http + HMAC-SHA256**（不引 stripe-go：只需 `/v1/payment_intents` 一个表单 POST 加 webhook 验签，引 SDK 在这里没有收益）；`POST /api/v1/payments/webhooks/stripe` 为**公开端点**（唯一签名鉴权，无会话），验签→翻译为规范化事件→服务层在同一事务内回写 `payments`（succeeded 置 `paid`/`paid_at` 并翻 Contribution，failed 仅落状态），不反向驱动领域模型；配置 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_API_BASE`（后者供测试指向假服务），未配置则渠道不注册（渠道惯例） |
+| **D25** | Marketplace 支付闸门 | **准入费独立账本 + awaiting_payment + Webhook 驱动入圈** | 闸门语义取「入圈前收费、确认即入圈」：`coteries.payment_gate`（Owner 专属 PATCH，默认关）；开启后 accept 转 `awaiting_payment`（Owner 同意已记录、入圈挂起），请求者经 `POST /api/v1/join-requests/{id}/payments` 发起收费，金额平台计算（equal 口径 floor(price/(活跃成员+1))，上限 price，币种随订阅，与目录估计同源），同步渠道当场结算并同事务入圈，异步渠道落 `pending` + `client_secret`；manual 仅 Owner 可记（自证收款禁止）。确认走独立公开 Webhook `POST /api/v1/marketplace/webhooks/{method}`（复用 D24 验签管线；`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`）：同一事务内重跑全部准入检查并插入成员（`admitUser` 事务化复用）+ 翻 charge + 请求转 `accepted`，满员 409 回滚由渠道重试自愈。**准入费记 `admission_charges` 独立账本而非 `payments`**：不变量 5 要求金额出自 Contribution，而 Contribution 以成员身份为前提、闸门刻意先行：准入费是当前账期份额的估计收讫，不进结算账本，入圈后真实份额仍由 billing generate 出账；failed 可重付（唯一部分索引保证每请求至多一条在途/成功 charge）；pending charge 在途时 decline/cancel 409（资金在途）；未开闸的圈零改动 |
+| **D26** | 防滥用收口 + Admin 基础面 | **平台管理员角色 + 举报 + 圈级拉黑** | NFR-7 最后两项（Report / Block）与 FR-14 的 Reports 职责一并收口：**平台管理员** = `users.role`（`'user'`/`'admin'`，默认 user），经 `ADMIN_EMAILS` 启动引导（幂等 UPDATE。实例运营者即管理员，自托管不建管理后台注册面）；管理员面 v1 只做举报处置（FR-14 明言 Admin 不参与圈的日常管理，不做用户管理与圈编辑）。**Report**：认证用户对公开列出的圈举报（非公开圈照旧 404 不泄露存在性，reason ≤1000 字符），`reports` 独立账本（open/resolved/dismissed + resolution_note，每用户每圈至多一条 open），管理员 `GET /api/v1/admin/reports` + `resolve/dismiss`；决定不通知报告者（避免泄露处置细节），审计留痕。**Block** 取圈级而非平台级：公开目录 + 支付闸门让恶意请求有了真实成本，Owner 拉黑是最直接的防滥用原语（平台级封禁属风控扩张，明确不做）；被拉黑者在加入请求与全部准入路径（`admitUser`：邀请接受 / marketplace accept / 闸门确认）一律 403，现有成员不自动移除（Owner 仍可手动移除）。迁移随实现分落（0016 角色 / 0017 拉黑 / 0018 举报）（[§6.6](#66-防滥用report-与-block)） |
 
 
 ---
@@ -294,7 +294,7 @@ Cloud Storage
      └── Charlie
 ```
 
-> 落地方式：与 Quota（D4）同机制——Seat 承载资源占用（`metadata.resource`），`used` 由账本按 unit 投影（D23）；费用拆分与共享模式正交，资源模式照选 equal / usage 等拆分。
+> 落地方式：与 Quota（D4）同机制：Seat 承载资源占用（`metadata.resource`），`used` 由账本按 unit 投影（D23）；费用拆分与共享模式正交，资源模式照选 equal / usage 等拆分。
 
 ### 2.6 结论
 
@@ -306,7 +306,7 @@ Coterie 的核心不是：
 
 > **Resource / Subscription Sharing**
 
-因此 Seat、Quota 等都统一抽象为「订阅下的可分配单元」——Seat 是通用分配单元（见 [§1.6](#16-seat通用分配单元)），分配规则由 Sharing Policy 描述（见 [§3](#3-sharing-policy)）。
+因此 Seat、Quota 等都统一抽象为「订阅下的可分配单元」。Seat 是通用分配单元（见 [§1.6](#16-seat通用分配单元)），分配规则由 Sharing Policy 描述（见 [§3](#3-sharing-policy)）。
 
 ---
 
@@ -348,7 +348,7 @@ TimeLimit
 - Sharing Policy 挂在 Subscription 上，Coterie 继承并可在更严格范围内收敛；
 - Policy 是合规信息的载体之一，配合 UI 提示（见 [需求文档 NFR-2](./requirements.md#nfr-2-合规与风险)）；
 - Provider-specific 字段不要建强结构列，用 JSONB 承载 metadata；
-- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21——每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；DeviceLimit / RegionLimit / ConcurrentLimit / QuotaLimit / TimeLimit 留插件策略面或后续扩展。
+- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21：每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；DeviceLimit / RegionLimit / ConcurrentLimit / QuotaLimit / TimeLimit 留插件策略面或后续扩展。
 
 ---
 
@@ -376,7 +376,7 @@ Settlement
 
 Phase 1 落地状态（Manual Settlement，已实现）：
 
-- `POST /api/v1/subscriptions/{id}/billing-periods` 以显式起止日期开账期——月付、年付、自定义周期都是显式区间；自定义周期由 `cycle_days`（1–365）给出周期长度，行级 CHECK 保证「custom ⇔ cycle_days 非空」（D20）；同订阅同 `start_date` 唯一（409）；
+- `POST /api/v1/subscriptions/{id}/billing-periods` 以显式起止日期开账期，月付、年付、自定义周期都是显式区间；自定义周期由 `cycle_days`（1–365）给出周期长度，行级 CHECK 保证「custom ⇔ cycle_days 非空」（D20）；同订阅同 `start_date` 唯一（409）；
 - `POST /api/v1/billing-periods/{id}/contributions/generate` 一次性生成分摊，`mode` 取：
   - `equal`（默认）均摊订阅价格，整除余数按「先加入多一分」分币，总额精确守恒；
   - `per_seat` 按占用席位分摊，无席位成员不产生分摊记录；
@@ -385,12 +385,12 @@ Phase 1 落地状态（Manual Settlement，已实现）：
     - 窗口内所有记录必须同一 `unit`（混合单位 422）；活跃成员用量合计 ≤ 0（无记录或净负）422；单个成员净用量为负 422（先补负数修正记录对平）；
     - 席位分币用**最大余数法**（余数并列时先加入者优先），分摊总额精确等于订阅价格；用量为零的成员不产生分摊记录；
     - 已离开成员的用量不计入分摊基数（与其它 mode 只对活跃成员分摊一致）；
-  - `prorated`（Phase 3 高级计费）按成员在账期内的**在圈天数**加权：权重 = `max(joined_at, start_date)` 至 `end_date` 的含端天数；期后才加入的成员不产生分摊记录，全部成员覆盖为零（如账期早于入圈）422；与 `usage` 共用最大余数法分币引擎，总额精确守恒——中期加入按天计费的语义落在 Owner 显式选择，auto_billing 滚期仍用 `equal`（D13）；
+  - `prorated`（Phase 3 高级计费）按成员在账期内的**在圈天数**加权：权重 = `max(joined_at, start_date)` 至 `end_date` 的含端天数；期后才加入的成员不产生分摊记录，全部成员覆盖为零（如账期早于入圈）422；与 `usage` 共用最大余数法分币引擎，总额精确守恒。中期加入按天计费的语义落在 Owner 显式选择，auto_billing 滚期仍用 `equal`（D13）；
 - 币种恒等于订阅币种（不变量 5）；每成员每账期至多一条 Contribution（不变量 6）；已生成的账期不可重复生成（409）；
 - `POST /api/v1/billing-periods/{id}/close` 单向关闭账期：关闭后禁止再生成与修改金额，但结算状态仍可更新（允许补记）；
 - `PATCH /api/v1/contributions/{id}` 由 Owner 标记 `paid / waived / pending / cancelled`（手动结算）；进入 `paid` 记 `paid_at`，离开即清除。
 
-账务自动化（Phase 3，ADR D13）：订阅带 `auto_billing` 开关（创建/`PATCH /api/v1/subscriptions/{id}` 可设，默认关）。开启后进程内调度器（`internal/automation`，`AUTO_BILLING_INTERVAL` 控制节奏，默认 1h，`0` 关闭）每次扫描「前沿账期已结束」的订阅：以 **Owner 身份**复用 billing 服务创建下一期（monthly/yearly 按 `[end+1, end+1 周期-1]` 推算；`custom` 按 `cycle_days` 天数偏移推算，D20）并按 `equal` 生成分摊——即成员照常收到 `payment_due`，Owner 额外收到 `subscription_renewal`（含新窗口与上期未结笔数）。同 `(subscription, start_date)` 唯一约束保证重复扫描幂等；首期与分摊模式的最终裁量仍属 Owner（`fixed`/`usage` 等模式请关闭 auto_billing 手动管理）。
+账务自动化（Phase 3，ADR D13）：订阅带 `auto_billing` 开关（创建/`PATCH /api/v1/subscriptions/{id}` 可设，默认关）。开启后进程内调度器（`internal/automation`，`AUTO_BILLING_INTERVAL` 控制节奏，默认 1h，`0` 关闭）每次扫描「前沿账期已结束」的订阅：以 **Owner 身份**复用 billing 服务创建下一期（monthly/yearly 按 `[end+1, end+1 周期-1]` 推算；`custom` 按 `cycle_days` 天数偏移推算，D20）并按 `equal` 生成分摊，成员照常收到 `payment_due`，Owner 额外收到 `subscription_renewal`（含新窗口与上期未结笔数）。同 `(subscription, start_date)` 唯一约束保证重复扫描幂等；首期与分摊模式的最终裁量仍属 Owner（`fixed`/`usage` 等模式请关闭 auto_billing 手动管理）。
 
 用量记账（Phase 2 Usage Tracking，Phase 2 起）：
 
@@ -431,12 +431,12 @@ Phase 2 落地（ADR D11）：`internal/payment` 定义 `Adapter` 接口（`Name
 
 Phase 3 补充：适配器经 `app.WithPaymentAdapters` 注册（`PAYMENT_METHODS` 环境变量驱动，Manual 恒注册），`GET /api/v1/payments/methods` 列出已注册渠道；内置 **Sandbox** 演示渠道（离线确定性应答，外部单号 `sbx_` 前缀）作为插件接缝的端到端模板，`payments.method` CHECK 随迁移 0008 扩展为 `('manual','sandbox')`（D11「Check 清单随迁移扩展」的首次演练）。
 
-Phase 4 落地（ADR D24）：新增 **Stripe** 真实适配器，走**异步确认**语义。适配器面引入可选 facet `AsyncAdapter`——同步适配器（Manual / Sandbox）天然满足，异步渠道实现 `ChargeAsync`（建 payment intent → 返回渠道单号）与 `ParseWebhook`（验签 + 归一化事件）。写路径据此分叉：同步渠道仍「事务内 Charge → 落账 → 翻 Contribution」；异步渠道先落 `pending` 行（外部单号即 Stripe payment intent），Contribution 保持 `pending`，确认由公开 Webhook 端点驱动：
+Phase 4 落地（ADR D24）：新增 **Stripe** 真实适配器，走**异步确认**语义。适配器面引入可选 facet `AsyncAdapter`，同步适配器（Manual / Sandbox）天然满足，异步渠道实现 `ChargeAsync`（建 payment intent → 返回渠道单号）与 `ParseWebhook`（验签 + 归一化事件）。写路径据此分叉：同步渠道仍「事务内 Charge → 落账 → 翻 Contribution」；异步渠道先落 `pending` 行（外部单号即 Stripe payment intent），Contribution 保持 `pending`，确认由公开 Webhook 端点驱动：
 
 | 项 | 决策 |
 |---|---|
-| 状态 | `payments.status` 扩为 `('pending','succeeded','failed')`（迁移 0014）；`paid_at` 可空——仅确认时回填；pending→succeeded 回写外部单号与 `paid_at` 并翻 Contribution 为 `paid`；pending→failed 仅落状态，Contribution 留在 pending 供重试 |
-| 端点 | `POST /api/v1/payments/webhooks/stripe`——**公开**（无 `Authorization`），唯一鉴权是 Stripe-Signature HMAC；验签失败 400；重放（已非 pending）幂等返回 200 |
+| 状态 | `payments.status` 扩为 `('pending','succeeded','failed')`（迁移 0014）；`paid_at` 可空，仅确认时回填；pending→succeeded 回写外部单号与 `paid_at` 并翻 Contribution 为 `paid`；pending→failed 仅落状态，Contribution 留在 pending 供重试 |
+| 端点 | `POST /api/v1/payments/webhooks/stripe`：**公开**（无 `Authorization`），唯一鉴权是 Stripe-Signature HMAC；验签失败 400；重放（已非 pending）幂等返回 200 |
 | 实现 | 纯 `net/http` + `crypto/hmac`：表单向 `/v1/payment_intents` 下单（`amount`=分、`currency` 小写、`metadata[contribution_id]`），webhook 验签用 `Stripe-Signature: t=…,v1=…` 的 HMAC-SHA256(t + "." + body) 定时比较 |
 | 配置 | `STRIPE_SECRET_KEY`、`STRIPE_WEBHOOK_SECRET`、`STRIPE_API_BASE`（默认 `https://api.stripe.com`，测试指向假服务）；任一缺失则适配器不注册，行为同 Email/Webhook/Push 渠道 |
 | 测试 | 对假 Stripe（httptest）跑完整链：建 intent → pending 行 → 投递签名 webhook → 行转 succeeded + Contribution 翻 paid；验签失败 400、未知 intent 404、重复投递幂等 |
@@ -445,7 +445,7 @@ Phase 4 落地（ADR D24）：新增 **Stripe** 真实适配器，走**异步确
 
 ### 4.3 Dispute
 
-争议是**独立账本**（ADR D14，FR-17）：成员对分摊提出异议，Owner 裁决，裁决本身不触碰资金——这是争议与结算的解耦边界。
+争议是**独立账本**（ADR D14，FR-17）：成员对分摊提出异议，Owner 裁决，裁决本身不触碰资金。这是争议与结算的解耦边界。
 
 Phase 3 落地：
 
@@ -466,11 +466,11 @@ Phase 3 落地：
 - `payment_ratio` 只对「曾应收」的分摊（paid+pending）计算；waived/cancelled 从不入分母；无应收历史返回 `null` 而非虚假满分；
 - 无写入端点：信誉不可编辑、不可人工评分，随账本只增而更新。
 
-Phase 4 落地（ADR D18）——Marketplace 信誉展示位：
+Phase 4 落地（ADR D18）：Marketplace 信誉展示位
 
 - 目录条目附 `owner` 徽标：`user_id`、`username`、分摊计数（`contributions` 四态）、`payment_ratio`；聚合走 reputation 包的**批量派生**（`GROUP BY user_id` 与单用户报告同一 SQL 形状），目录只做投影，不产生第二种信誉口径；
-- 粗粒度公开：徽标不含各币种金额——金额留在已认证的 `GET /users/{id}/reputation`；Owner 把圈发布为公开目录（`listing=public`）即接受展示位；
-- 目录保持匿名可读（FR-18 展示位的价值在浏览时刻）；**成员级徽标暂不展示**——成员没有选择公开，隐私面比 Owner 更窄，待后续有明确诉求再议。
+- 粗粒度公开：徽标不含各币种金额，金额留在已认证的 `GET /users/{id}/reputation`；Owner 把圈发布为公开目录（`listing=public`）即接受展示位；
+- 目录保持匿名可读（FR-18 展示位的价值在浏览时刻）；**成员级徽标暂不展示**：成员没有选择公开，隐私面比 Owner 更窄，待后续有明确诉求再议。
 
 ---
 
@@ -502,10 +502,10 @@ Provider
 
 **Provider Adapter 必须是可选扩展，核心平台不应依赖任何特定 Provider。**
 
-Phase 3 起插件面落地（ADR D12）：`internal/provider` 定义 `Plugin`（按 slug 绑定）与可选能力接口——
+Phase 3 起插件面落地（ADR D12）：`internal/provider` 定义 `Plugin`（按 slug 绑定）与可选能力接口：
 
 - **PolicyValidator（Validation 面）**：订阅创建/更新设置 `sharing_policy` 时，经「product → provider → slug」找到插件并复验策略（核心只校验 mode 枚举；插件可要求 region 等字段），拒绝 → 422；
-- **AdmissionGuard（Sharing 面）**：成员准入（邀请接受、JoinRequest 接受共用 `admitUser`）前调用，插件可按策略与当前人数拒绝（409）；核心自身同时执行 `max_members`（MemberLimit，FR-10）——席位约束设备数，`max_members` 约束人数，二者独立；
+- **AdmissionGuard（Sharing 面）**：成员准入（邀请接受、JoinRequest 接受共用 `admitUser`）前调用，插件可按策略与当前人数拒绝（409）；核心自身同时执行 `max_members`（MemberLimit，FR-10）；席位约束设备数，`max_members` 约束人数，二者独立；
 - **UsageValidator（Metering 面）**：Owner 记账写入 `usage_records` 前、席位归集解析后调用，插件可按成员/数值/单位/席位拒绝（422，api 错误透传）；同一 Registry 驱动，与订阅/准入钩子共享 provider 解析。
 
 `Registry` 按 slug 索引插件，**空注册表 = 全 Generic 语义**（§5.3）：不注册任何插件时上述钩子全部旁路，现有行为不变。
@@ -527,10 +527,10 @@ providers/
 `claude` 样例的契约（迁移 `0006` 预置了 slug 为 `claude` 的目录条目与 Pro/Max 套餐）：
 
 - **策略（PolicyValidator）**：`sharing_policy.region` 必填且 ∈ `{us,eu}`（数据驻留约束）；可选 `plan ∈ {pro,max}`，缺省 `max`。其余字段（如 `mode`）仍由核心先校验；
-- **准入（AdmissionGuard）**：`plan=pro` 是个人套餐——拒绝一切成员加入（409）；`plan=max` 圈内总人数（含 Owner）至多 5 人（409）。核心的 `max_seats`/`max_members` 约束照常独立生效；
+- **准入（AdmissionGuard）**：`plan=pro` 是个人套餐，拒绝一切成员加入（409）；`plan=max` 圈内总人数（含 Owner）至多 5 人（409）。核心的 `max_seats`/`max_members` 约束照常独立生效；
 - **记账（UsageValidator）**：仅接受 `tokens` / `requests` 单位，单笔记录上限 10,000,000 tokens / 100,000 requests；负数（修正记录）按绝对值同限放行。
 
-注册走环境变量 `PROVIDER_PLUGINS`（逗号分隔，与 `PAYMENT_METHODS` 同模式）：二进制内有一个 slug → 实现的映射表，未知名警告跳过——不注册任何插件时该 Provider 表现为 Generic（§5.3）。插件包只依赖 `internal/provider` 的接口与 `pkg/api` 的错误构造，反向依赖核心业务模块。
+注册走环境变量 `PROVIDER_PLUGINS`（逗号分隔，与 `PAYMENT_METHODS` 同模式）：二进制内有一个 slug → 实现的映射表，未知名警告跳过。不注册任何插件时该 Provider 表现为 Generic（§5.3）。插件包只依赖 `internal/provider` 的接口与 `pkg/api` 的错误构造，反向依赖核心业务模块。
 
 ### 5.3 Generic Provider
 
@@ -637,24 +637,24 @@ Secret Store
 
 | 项 | 设计 |
 |---|---|
-| 存储 | `audit_logs` 只增不改，骨架取自 0001_init（`id` 自增、`actor_user_id` 可空——系统/调度器动作、`action`、`entity_type` + `entity_id`、`before_state` / `after_state` JSONB 快照、`created_at`）；**0011 追加** `subscription_id` / `coterie_id` 查询枢纽（级联删除）与 `action` CHECK 枚举（随迁移扩展），更新类动作只带变更字段 |
-| 埋点 | 在**既有业务事务内**追加（`audit.Record(tx, entry)`）——审计写入失败即整体回滚，与 D11「落账与状态置位同事务」同一纪律；不入事务的埋点一律不设，杜绝「改了但没记」 |
-| 动作清单 | `coterie_created` / `coterie_updated`（含 listing 与状态流转，关闭即 `after.status=closed`）/ `member_removed` / `member_left` / `seat_assigned` / `seat_released` / `seat_updated` / `subscription_updated`（价格/策略/状态等变更字段快照）/ `contribution_updated`（金额与状态冻结规则照旧）/ `payment_recorded` / `period_closed`——覆盖 FR-15 重点操作（转移席位 = release + assign 两条记录） |
+| 存储 | `audit_logs` 只增不改，骨架取自 0001_init（`id` 自增、`actor_user_id` 可空（系统/调度器动作）、`action`、`entity_type` + `entity_id`、`before_state` / `after_state` JSONB 快照、`created_at`）；**0011 追加** `subscription_id` / `coterie_id` 查询枢纽（级联删除）与 `action` CHECK 枚举（随迁移扩展），更新类动作只带变更字段 |
+| 埋点 | 在**既有业务事务内**追加（`audit.Record(tx, entry)`），审计写入失败即整体回滚，与 D11「落账与状态置位同事务」同一纪律；不入事务的埋点一律不设，杜绝「改了但没记」 |
+| 动作清单 | `coterie_created` / `coterie_updated`（含 listing 与状态流转，关闭即 `after.status=closed`）/ `member_removed` / `member_left` / `seat_assigned` / `seat_released` / `seat_updated` / `subscription_updated`（价格/策略/状态等变更字段快照）/ `contribution_updated`（金额与状态冻结规则照旧）/ `payment_recorded` / `period_closed`，覆盖 FR-15 重点操作（转移席位 = release + assign 两条记录） |
 | 读取面 | `GET /api/v1/subscriptions/{id}/audit-logs`、`GET /api/v1/coteries/{id}/audit-logs`，均**仅订阅 Owner**；支持 `?action=` 过滤与分页。成员不开放审计读（结果在其自有视图可见），Admin 查询面留后续 |
-| 非目标 | 不记录任何 Secret（§6.2 边界）；无编辑/删除端点——账本不可篡改；不做导出 |
+| 非目标 | 不记录任何 Secret（§6.2 边界）；无编辑/删除端点，账本不可篡改；不做导出 |
 
 ### 6.4 Rate Limit
 
-NFR-7 第一阶段的基础限速（ADR D19），只挡现实滥用面——批量注册与口令暴力破解：
+NFR-7 第一阶段的基础限速（ADR D19），只挡现实滥用面：批量注册与口令暴力破解。
 
 | 项 | 决策 |
 |---|---|
-| 范围 | `POST /api/v1/auth/register`（默认 5 次/分）、`POST /api/v1/auth/login`（默认 10 次/分），两路独立计数。公开读（目录/分类）与已认证端点不限——读面是另一层防护（连接/带宽），等真实流量画像再议 |
+| 范围 | `POST /api/v1/auth/register`（默认 5 次/分）、`POST /api/v1/auth/login`（默认 10 次/分），两路独立计数。公开读（目录/分类）与已认证端点不限；读面是另一层防护（连接/带宽），等真实流量画像再议 |
 | 算法 | 内存**固定窗口**计数器：键 = (端点类, 客户端地址)；客户端地址取 `RemoteAddr` 主机位（反代头 `X-Forwarded-For` 待部署拓扑明确后再信任）。窗口过期条目按窗口节奏清扫，内存有界 |
 | 超限 | `429` + 标准 JSON 信封（`code: "rate_limited"`）+ `Retry-After` 秒数（到窗口结束的剩余时间）；计数失败不阻塞业务请求 |
 | 配置 | `RATE_LIMIT_REGISTER_PER_MIN` / `RATE_LIMIT_LOGIN_PER_MIN`，`0` = 关闭该端点限速；`app.WithRateLimits` 注入 |
 | 测试 | 限速器单测走假时钟（窗口翻转/按键隔离）；测试套件默认关闭限速（不干扰既有集成测试的多次注册），限速集成测试显式注入小额度 |
-| 约束 | 单实例内存（§7.4：第一阶段不依赖 Redis）——进程重启即重置，多实例各计各的；共享计数留待 §11.3 扩展 |
+| 约束 | 单实例内存（§7.4：第一阶段不依赖 Redis），进程重启即重置，多实例各计各的；共享计数留待 §11.3 扩展 |
 
 ### 6.5 Web Push
 
@@ -662,13 +662,13 @@ Push 渠道的落地（ADR D22，FR-12）：Web Push 标准（浏览器原生、
 
 | 项 | 决策 |
 |---|---|
-| 登记 | `POST /api/v1/push/subscriptions`（认证）：`{endpoint, keys:{p256dh, auth}}`——endpoint 必须 https 且全局唯一（重复即 upsert）；`GET` 列出自己的登记；`DELETE /api/v1/push/subscriptions/{id}` 只能删自己的 |
-| 存储 | `push_subscriptions` 表（0001 骨架 + 0013 建表，D7 惯例）：id、user_id、endpoint（UNIQUE）、p256dh、auth、created_at——密钥存 base64url 原文（服务端要原样用于加密） |
+| 登记 | `POST /api/v1/push/subscriptions`（认证）：`{endpoint, keys:{p256dh, auth}}`，endpoint 必须 https 且全局唯一（重复即 upsert）；`GET` 列出自己的登记；`DELETE /api/v1/push/subscriptions/{id}` 只能删自己的 |
+| 存储 | `push_subscriptions` 表（0001 骨架 + 0013 建表，D7 惯例）：id、user_id、endpoint（UNIQUE）、p256dh、auth、created_at。密钥存 base64url 原文（服务端要原样用于加密） |
 | 发送 | 通知入站内信后异步出站（与 Email/Webhook 同一 Channel 面）：查接收者的全部登记端点，逐个按 RFC 8291 `aes128gcm` 加密（临时 P-256 ECDH + HKDF 派生 IKM/nonce，单记录零填充）+ RFC 8292 VAPID `Authorization`（ES256 JWT，`aud`=端点 origin、`exp`=12h、`sub`=配置的联系邮箱），POST 至推送服务 |
-| 剪除 | 推送服务返回 404/410（端点失效/已退订）即删除该行——失效登记不自清理会越积越多；其余错误记日志不重试（渠道 best-effort 惯例，FR-12） |
+| 剪除 | 推送服务返回 404/410（端点失效/已退订）即删除该行；失效登记不清理会越积越多；其余错误记日志不重试（渠道 best-effort 惯例，FR-12） |
 | 配置 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`（base64url：未压缩 P-256 公钥点 / 私钥标量）+ `VAPID_SUBJECT`（`mailto:` 联系方式）；未配置则渠道不注册，`Enabled()` 惯例同 Email/Webhook |
 | 加密实现 | 纯 stdlib + x/crypto/hkdf 手写：加密/JWT 均按 RFC 测试向量对拍，不引第三方推送库（供应链最小化，§7.4 同源原则） |
-| 约束 | 推送负载只含通知的 title/body（不含金额等敏感明细——推送服务是第三方）；负载上限 ~4KB（RFC 8291 单记录） |
+| 约束 | 推送负载只含通知的 title/body（不含金额等敏感明细，推送服务是第三方）；负载上限 ~4KB（RFC 8291 单记录） |
 
 ---
 
@@ -985,22 +985,22 @@ Instance
 
 - **目录（公开读）**：`GET /api/v1/marketplace/coteries?product_id=` 列出 `listing=public` 且状态 open/active 的圈，附产品/提供商名称、价格与币种、成员数、席位总数/空闲、`full` 派生标志，以及按「价格 ÷ 活跃成员数」估的当前人均分摊（equal 口径，展示用估计值）；
 - **曝光 opt-in（D10）**：圈默认 `listing=private`；`PATCH /api/v1/coteries/{id}` 增 `listing` 字段（private/public），Owner 专属；非公开圈在目录与加入请求两条路径上都按不存在处理（404），不泄露存在性；
-- **加入请求**：已认证用户对公开圈 `POST /api/v1/coteries/{id}/join-requests`（可附留言）——圈须 open/active 且未满、请求者不是活跃成员、每圈每用户至多一条 `pending`；Owner/Admin 经 `GET /api/v1/coteries/{id}/join-requests?status=pending` 查看，`POST /api/v1/join-requests/{id}/accept|decline` 决定，请求者可 `DELETE` 撤回自己的 pending；
+- **加入请求**：已认证用户对公开圈 `POST /api/v1/coteries/{id}/join-requests`（可附留言）。圈须 open/active 且未满、请求者不是活跃成员、每圈每用户至多一条 `pending`；Owner/Admin 经 `GET /api/v1/coteries/{id}/join-requests?status=pending` 查看，`POST /api/v1/join-requests/{id}/accept|decline` 决定，请求者可 `DELETE` 撤回自己的 pending；
 - **接受即准入**：accept 复用与邀请接受一致的检查（open/active、未满、未重复加入、`max_members` 上限、Provider 插件 AdmissionGuard），角色固定 member；满员时 accept 以 409 失败，请求退回 pending；
 - **通知**：请求创建通知 Owner（`join_requested`），决定后通知请求者（`join_decided`）；
-- **Payment 门槛（D25）**：「Request Join → Payment → Join」链已闭合。`payment_gate` 为圈级 opt-in（Owner PATCH，默认关，与 listing 同思路）；开启后 accept 不再直接入圈——请求转 `awaiting_payment`（Owner 已同意，入圈挂起）并通知请求者付费；`POST /api/v1/join-requests/{id}/payments`（请求者发起，manual 仅 Owner 可记——禁止自证收款）以平台计算的等分估计金额（floor(price/(活跃成员+1))，币种随订阅，与目录估计同源）发起收费：同步渠道当场结算并同事务入圈，异步渠道落 `pending` 并返回 `client_secret` 待客户端确认；确认走公开 `POST /api/v1/marketplace/webhooks/{method}`（签名鉴权，复用 D24 验签管线，`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`），**同一事务**内重跑全部准入检查并插入成员、翻 charge 为 `succeeded`、请求转 `accepted`——满员等 409 回滚由渠道重试自愈；失败事件仅翻 charge 为 `failed`，请求保持待付可重新发起。准入费记 `admission_charges` **独立账本**而非 `payments`：不变量 5（金额出自 Contribution）以成员身份为前提，而闸门刻意先行——准入费是「当前账期份额的估计收讫」，不进结算账本，入圈后的真实份额仍由 billing generate 出账；存在 `pending` charge 时 decline/cancel 以 409 拒绝（资金在途）。未开闸的圈 accept 即入圈，零改动。
+- **Payment 门槛（D25）**：「Request Join → Payment → Join」链已闭合。`payment_gate` 为圈级 opt-in（Owner PATCH，默认关，与 listing 同思路）；开启后 accept 不再直接入圈，请求转 `awaiting_payment`（Owner 已同意，入圈挂起）并通知请求者付费；`POST /api/v1/join-requests/{id}/payments`（请求者发起，manual 仅 Owner 可记，禁止自证收款）以平台计算的等分估计金额（floor(price/(活跃成员+1))，币种随订阅，与目录估计同源）发起收费：同步渠道当场结算并同事务入圈，异步渠道落 `pending` 并返回 `client_secret` 待客户端确认；确认走公开 `POST /api/v1/marketplace/webhooks/{method}`（签名鉴权，复用 D24 验签管线，`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`），**同一事务**内重跑全部准入检查并插入成员、翻 charge 为 `succeeded`、请求转 `accepted`，满员等 409 回滚由渠道重试自愈；失败事件仅翻 charge 为 `failed`，请求保持待付可重新发起。准入费记 `admission_charges` **独立账本**而非 `payments`：不变量 5（金额出自 Contribution）以成员身份为前提，而闸门刻意先行，准入费是「当前账期份额的估计收讫」，不进结算账本，入圈后的真实份额仍由 billing generate 出账；存在 `pending` charge 时 decline/cancel 以 409 拒绝（资金在途）。未开闸的圈 accept 即入圈，零改动。
 
 ### 6.6 防滥用：Report 与 Block
 
 NFR-7 的防滥用清单四项至此收口：Rate Limit（D19）、Audit Log（D17）已落地，本节补 Report 与 Block。
 
-**平台管理员（FR-14）**：`users.role`（`'user'`/`'admin'`）。实例运营者经 `ADMIN_EMAILS`（逗号分隔邮箱）在启动时引导为 admin（幂等 UPDATE）；无自助提权面。管理员 v1 的全部职责是**举报处置**——读收件箱、裁定，不碰圈的日常管理。
+**平台管理员（FR-14）**：`users.role`（`'user'`/`'admin'`）。实例运营者经 `ADMIN_EMAILS`（逗号分隔邮箱）在启动时引导为 admin（幂等 UPDATE）；无自助提权面。管理员 v1 只做举报处置：读收件箱、裁定，不碰圈的日常管理。
 
 **Report（举报）**：
 
 - `POST /api/v1/coteries/{id}/report`（认证用户）：对**公开列出**的圈提交举报，`reason` 必填 ≤1000 字符；非公开圈照常 404（不泄露存在性）；同一用户对同一圈至多一条 `open`；
 - `reports` 独立账本：`coterie_id / reporter_id / reason / status(open, resolved, dismissed) / resolution_note / decided_at`；创建不通知任何人（不打扰 Owner，不提示恶意方）；
-- 管理员面：`GET /api/v1/admin/reports?status=` 收件箱、`POST /api/v1/admin/reports/{id}/resolve|dismiss`（note 可选 ≤1000）；处置动作本身不外溢（下架/关闭等由管理员用既有面另行执行），报告者不获通知——避免泄露处置细节，审计留痕。
+- 管理员面：`GET /api/v1/admin/reports?status=` 收件箱、`POST /api/v1/admin/reports/{id}/resolve|dismiss`（note 可选 ≤1000）；处置动作本身不外溢（下架/关闭等由管理员用既有面另行执行），报告者不获通知，避免泄露处置细节，审计留痕。
 
 **Block（圈级拉黑）**：
 

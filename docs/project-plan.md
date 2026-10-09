@@ -20,7 +20,7 @@
 
 > **Coterie — Open-source platform for shared digital services.**
 
-Coterie 面向任何适合多人共同使用、共同承担费用的数字服务——从流媒体、音乐，到软件、AI、云服务等。
+Coterie 面向适合多人共同使用、共同承担费用的数字服务，例如流媒体、音乐、软件、AI 与云服务。
 
 ---
 
@@ -295,7 +295,7 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 3. [x] **Rate Limit**（NFR-7 Phase 1 基础）— 注册/登录等公开端点限速
 4. [x] **自定义计费周期自动化**（§13 遗留）— custom 周期表达方式决策 + 调度器滚期支持（D13 扩展）
 5. [x] **Sharing Policy UsageLimit**（FR-10 后续扩展）— 核心侧每成员每期用量上限（D21）
-6. [x] **真实支付渠道**（FR-9 后续）— Stripe 异步适配器 + 公开 Webhook（D24）；Marketplace 支付闸门（D25：payment_gate + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈）——生产使用仍需真实凭据
+6. [x] **真实支付渠道**（FR-9 后续）— Stripe 异步适配器 + 公开 Webhook（D24）；Marketplace 支付闸门（D25：payment_gate + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈）。生产使用仍需真实凭据
 7. [x] **Push 通知**（FR-12 后续）— Web Push 标准渠道（D22）
 8. [x] **Resource 共享模式**（FR-6 后续，§2.5）— 复用 Seat+metadata（D23）
 9. [x] **防滥用收口**（NFR-7 / FR-14）— 平台管理员角色（`ADMIN_EMAILS` 启动引导）、举报（公开圈可报 + 管理员收件箱与 resolve/dismiss）、圈级拉黑（全准入路径 403）（D26）

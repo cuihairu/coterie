@@ -18,9 +18,9 @@
 
 **把订阅、席位、成员和共享开销集中在一处管理。**
 
-Coterie 面向一切可以在多人之间合法共享的数字服务——从流媒体、音乐到软件、AI、云服务等。
+Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、音乐、软件、AI 与云服务。
 
-> 🚧 **状态:Phase 4 后端已完成。**provider 插件接口(含
+> **状态：Phase 4 后端已完成。**provider 插件接口(含
 > policy/admission/usage 钩子)与通过 `PROVIDER_PLUGINS` 注册的真实
 > `claude` 插件示例、经配置注册的沙箱支付渠道、自动出账滚动调度器
 > (支持 monthly / yearly / 自定义天数周期)、按天折算(prorated)的分摊、
@@ -29,12 +29,12 @@ Coterie 面向一切可以在多人之间合法共享的数字服务——从流
 > 共享策略驱动的每成员每账期用量上限、Web Push 通知、
 > 资源池共享、Stripe 支付渠道(异步适配器 + 签名公开 Webhook)、
 > 市场支付闸门(入圈先付费)与防滥用收口(平台管理员角色、圈级拉黑、
-> 管理员举报收件箱)——在 Phase 2 的用量跟踪、配额、市场、
+> 管理员举报收件箱)。其下是 Phase 2 的用量跟踪、配额、市场、
 > provider 目录、支付适配器与邮件/网页通知渠道之上。
 > 距离真实收款只差可用的 Stripe 生产凭据。
 > 完整的 REST API 已端到端可用:auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
-> marketplace。Web 与移动端尚未启动——现阶段 API 即产品
+> marketplace。Web 与移动端尚未启动，现阶段 API 即产品
 > ([设计文档 §9](docs/design.md#9-api-design))。
 
 ## 快速开始
@@ -102,16 +102,13 @@ Members
 Seats / Quota / Cost
 ```
 
-- **Provider → Product**——任意服务厂商及其套餐,以普通元数据描述。
-  通用优先:核心代码中不存在硬编码的 provider 逻辑。
-- **Subscription**——一次真实购买:价格、账单周期、续订日期、
-  共享策略、席位容量。成本与容量的唯一事实来源。
-- **Coterie**——围绕且仅围绕一个订阅组织的共享圈子:
-  成员、角色、邀请与费用分摊。
-- **Member / Seat**——人是平台用户;席位是订阅中可分配的单元
-  (配额共享复用同一概念)。
-- **Contribution**——每个成员在每个账单周期应付的金额。Phase 1
-  通过手动方式记录与结算;真实支付是一个适配器,而非核心。
+- **Provider → Product**:任意服务厂商及其套餐,用普通元数据描述。
+  核心代码中没有硬编码的 provider 逻辑。
+- **Subscription**:一次真实购买,含价格、账单周期、续订日期、
+  共享策略与席位容量,是成本与容量的唯一事实来源。
+- **Coterie**:围绕且仅围绕一个订阅组织的共享圈,管成员、角色、邀请与费用分摊。
+- **Member / Seat**:成员是平台用户;席位是订阅中可分配的单元,配额共享复用同一概念。
+- **Contribution**:每个成员在每个账单周期应付的金额。Phase 1 手动记录与结算,真实支付走适配器,不进核心。
 
 ## 设计原则
 
@@ -119,7 +116,7 @@ Seats / Quota / Cost
 |---|---|
 | 通用优先 | Netflix 只是一个 provider,永远不是特例 |
 | 订阅 ≠ 账号 | 订阅、席位、配额与凭证是彼此独立的概念 |
-| Provider 无关 | 核心中没有 `if netflix`——provider 是可选的适配器 |
+| Provider 无关 | 核心中没有 `if netflix`,provider 是可选的适配器 |
 | 自托管优先 | 单个 Go 二进制 + PostgreSQL,`docker compose up -d` |
 | 支付是适配器 | Phase 1 仅提供手动结算 |
 | 密钥可选 | 默认不存储任何第三方密码 |
@@ -132,25 +129,25 @@ Seats / Quota / Cost
 | [需求](docs/requirements.md) | 功能/非功能需求、MVP 范围与非目标 |
 | [设计](docs/design.md) | 领域模型、共享模型、出账、架构、API、部署 |
 
-> 📝 文档目前以中文撰写。
+> 文档目前以中文撰写。
 
 ## 路线图
 
-- **Phase 1 — MVP ✅**:用户、provider、产品、订阅、coterie、
+- **Phase 1(MVP,已完成)**:用户、provider、产品、订阅、coterie、
   成员、席位、出资、邀请、通知(手动结算)
-- **Phase 2 ✅**:市场、provider 目录、支付适配器、邮件、
+- **Phase 2(已完成)**:市场、provider 目录、支付适配器、邮件、
   webhook、用量跟踪、配额
-- **Phase 3 ✅**:provider/支付/用量插件、自动化(自动出账滚动)、
+- **Phase 3(已完成)**:provider/支付/用量插件、自动化(自动出账滚动)、
   高级出账(按天折算分摊)、争议、声誉
-- **Phase 4 ✅**:审计日志、市场 Owner 信誉徽标、限速、自定义计费周期、
+- **Phase 4(已完成)**:审计日志、市场 Owner 信誉徽标、限速、自定义计费周期、
   每成员用量上限、Web Push 通知、资源共享模式、Stripe 支付渠道(D24)、
-  市场支付闸门(D25)、防滥用收口——平台管理员/举报/圈级拉黑(D26)
+  市场支付闸门(D25)、防滥用收口(平台管理员、举报与圈级拉黑,D26)
 
 ## 技术栈
 
 Go(标准库 `net/http`、GORM)· PostgreSQL(手写 SQL 迁移,
 启动时由 golang-migrate 执行)· React + TypeScript(Vite、Tailwind
-CSS、shadcn/ui、TanStack Query / Router)——详见[设计
+CSS、shadcn/ui、TanStack Query / Router),详见[设计
 文档](docs/design.md)。
 
 ## 参与贡献

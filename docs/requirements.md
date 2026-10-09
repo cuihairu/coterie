@@ -333,7 +333,7 @@ Cloud Storage
      └── Charlie
 ```
 
-> 建模方式：与 Quota 同机制（D23）——Seat 的 metadata 携带 `{"resource": <容量>,
+> 建模方式：与 Quota 同机制（D23）：Seat 的 metadata 携带 `{"resource": <容量>,
 > "unit": "..."}`，`used` 由使用账本按席位归集投影；计费拆分照常选择。
 
 > **结论：Coterie 的核心不是 Account Sharing，而是 Resource / Subscription Sharing。**
@@ -431,7 +431,7 @@ Settlement
 - 固定金额
 - 按使用量
 
-**重要：Coterie 不应把「付款」直接绑定支付平台。** 第一阶段只实现 **Manual Settlement**——系统负责记录谁应该支付多少钱。真实支付通过 Payment Adapter 在后续阶段接入（见 [设计计划 · 计费与支付](./design.md#4-计费与支付)）。
+**重要：Coterie 不应把「付款」直接绑定支付平台。** 第一阶段只实现 **Manual Settlement**：系统负责记录谁应该支付多少钱。真实支付通过 Payment Adapter 在后续阶段接入（见 [设计计划 · 计费与支付](./design.md#4-计费与支付)）。
 
 ### FR-10 Sharing Policy（共享限制）
 
@@ -678,7 +678,7 @@ Dispute
 
 ### NFR-1 安全模型
 
-**不要把账号密码作为核心模型**——这是最重要的设计原则之一。
+**不要把账号密码作为核心模型**。这是最重要的设计原则之一。
 
 系统应尽量存储：
 
@@ -822,7 +822,7 @@ Account Reputation
 Dispute
 ```
 
-Phase 3 进展：Dispute 已落地（FR-17，设计 D14）；Account Reputation 以**纯派生**形式落地（FR-18，设计 D15——从 contributions 账本聚合缴纳统计，无手工评分面）；Anti-spam / Fraud Detection 后续扩展。
+Phase 3 进展：Dispute 已落地（FR-17，设计 D14）；Account Reputation 以**纯派生**形式落地（FR-18，设计 D15：从 contributions 账本聚合缴纳统计，无手工评分面）；Anti-spam / Fraud Detection 后续扩展。
 
 ---
 
@@ -881,11 +881,11 @@ Notification
 | FR-9 | 费用分摊与结算（Manual Settlement） | Phase 1；Phase 2（Adapter 接口 + `payments` 账本 + Manual 渠道）；Phase 3（Sandbox 演示渠道经配置注册，`GET /payments/methods` 列渠道；`auto_billing` 调度器滚期见设计 D13；`prorated` 按天比例分摊）；Phase 4（Stripe 真实渠道已落地：异步确认 + 公开 Webhook，见设计 D24） |
 | FR-10 | Sharing Policy | Phase 1（基础限制）；Phase 3（MemberLimit `max_members` 准入强制 + Provider 插件策略复验/准入守卫已落地，见设计 D12）；Phase 4（UsageLimit 核心强制已落地：每成员每账期用量上限，见设计 D21；其余 Limit 后续扩展） |
 | FR-11 | Invitation | Phase 1 |
-| FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook + Push 已落地——Push 为 Web Push 标准，D22） |
+| FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook + Push 已落地，走 Web Push 标准，D22） |
 | FR-13 | Dashboard | Phase 1 |
-| FR-14 | Admin | Phase 1（基础）；Phase 4 补平台管理员角色与举报处置面（`ADMIN_EMAILS` 引导 + `reports` 收件箱 resolve/dismiss，见设计 D26——Admin 不参与圈的日常管理） |
+| FR-14 | Admin | Phase 1（基础）；Phase 4 补平台管理员角色与举报处置面（`ADMIN_EMAILS` 引导 + `reports` 收件箱 resolve/dismiss，见设计 D26；Admin 不参与圈的日常管理） |
 | FR-15 | Audit Log | Phase 1（已落地，D17） |
 | FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10）；Phase 4 补支付闸门（D25：payment_gate 圈级开关 + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈，渠道复用 D24 Stripe） |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
-| FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Phase 4 补齐 Marketplace 展示位——目录条目附 Owner 派生徽标，见设计 D18） |
+| FR-18 | Account Reputation | Phase 3（已落地：结算信誉派生只读端点 `GET /api/v1/users/{id}/reputation`，见设计 D15；Phase 4 补齐 Marketplace 展示位：目录条目附 Owner 派生徽标，见设计 D18） |
 | NFR-1 ~ NFR-7 | 非功能需求 | 见各条目内的阶段标注 |
