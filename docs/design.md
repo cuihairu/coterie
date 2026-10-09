@@ -218,6 +218,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D23** | Resource 共享建模 | **复用 D4：Seat + metadata** | §2.5 的资源池共享不引入新实体：`sharing.mode = resource` 时 Seat 的 metadata 携带 `{"resource": <容量>, "unit": "...", "used": 0}`（与 quota 同构）；`used` 投影与 quota 完全同管线——账本按席位归集 SUM 重写（D9），席位归集发现与多席位歧义检查对 quota / resource 一视同仁；费用拆分（§4.3）与共享模式正交，资源模式照选 equal / usage 等拆分，无新增计费路径 |
 | **D24** | 真实支付渠道（Stripe） | **异步适配器 facet + 公开 Webhook + pending/failed 状态** | 同步 `Charge`（事务内成功即落账）无法表达 Stripe 的确认-回调流，故适配器面增加**可选异步 facet**：`AsyncAdapter`（`ChargeAsync → 渠道单号` + `ParseWebhook → 事件`），同步适配器自动满足（零改动）；`payments.status` 经迁移 0014 扩为 `('pending','succeeded','failed')`（付款先行落 `pending`，`paid_at` 于确认时回填）；Stripe 适配器用**纯 net/http + HMAC-SHA256**（不引 stripe-go：只需 `/v1/payment_intents` 一个表单 POST + webhook 签名验证，供应商 SDK 带不进价值）；`POST /api/v1/payments/webhooks/stripe` 为**公开端点**（唯一签名鉴权，无会话），验签→翻译为规范化事件→服务层在同一事务内回写 `payments`（succeeded 置 `paid`/`paid_at` 并翻 Contribution，failed 仅落状态）——不反向驱动领域模型；配置 `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`STRIPE_API_BASE`（后者供测试指向假服务），未配置则渠道不注册（渠道惯例） |
 | **D25** | Marketplace 支付闸门 | **准入费独立账本 + awaiting_payment + Webhook 驱动入圈** | 闸门语义取「入圈前收费、确认即入圈」：`coteries.payment_gate`（Owner 专属 PATCH，默认关）；开启后 accept 转 `awaiting_payment`（Owner 同意已记录、入圈挂起），请求者经 `POST /api/v1/join-requests/{id}/payments` 发起收费——金额平台计算（equal 口径 floor(price/(活跃成员+1))，上限 price，币种随订阅，与目录估计同源），同步渠道当场结算并同事务入圈，异步渠道落 `pending` + `client_secret`；manual 仅 Owner 可记（自证收款禁止）。确认走独立公开 Webhook `POST /api/v1/marketplace/webhooks/{method}`（复用 D24 验签管线；`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`）：同一事务内重跑全部准入检查并插入成员（`admitUser` 事务化复用）+ 翻 charge + 请求转 `accepted`，满员 409 回滚由渠道重试自愈。**准入费记 `admission_charges` 独立账本而非 `payments`**：不变量 5 要求金额出自 Contribution，而 Contribution 以成员身份为前提、闸门刻意先行——准入费是当前账期份额的估计收讫，不进结算账本，入圈后真实份额仍由 billing generate 出账；failed 可重付（唯一部分索引保证每请求至多一条在途/成功 charge）；pending charge 在途时 decline/cancel 409（资金在途）；未开闸的圈零改动 |
+| **D26** | 防滥用收口 + Admin 基础面 | **平台管理员角色 + 举报 + 圈级拉黑** | NFR-7 最后两项（Report / Block）与 FR-14 的 Reports 职责一并收口：**平台管理员** = `users.role`（`'user'`/`'admin'`，默认 user），经 `ADMIN_EMAILS` 启动引导（幂等 UPDATE——实例运营者即管理员，自托管不建管理后台注册面）；管理员面 v1 只做举报处置（FR-14 明言 Admin 不参与圈的日常管理——不做用户管理/圈编辑）。**Report**：认证用户对公开列出的圈举报（非公开圈照旧 404 不泄露存在性，reason ≤1000 字符），`reports` 独立账本（open/resolved/dismissed + resolution_note，每用户每圈至多一条 open），管理员 `GET /api/v1/admin/reports` + `resolve/dismiss`；决定不通知报告者（避免泄露处置细节），审计留痕。**Block** 取圈级而非平台级：公开目录 + 支付闸门让恶意请求有了真实成本，Owner 拉黑是成本最低、语义最清的防滥用原语（平台级封禁属风控扩张，明确不做）；被拉黑者在加入请求与全部准入路径（`admitUser`：邀请接受 / marketplace accept / 闸门确认）一律 403，现有成员不自动移除（Owner 仍可手动移除）。迁移随实现分落（0016 角色 / 0017 拉黑 / 0018 举报）（[§6.6](#66-防滥用report-与-block)） |
 
 
 ---
@@ -838,6 +839,9 @@ API-first：从第一天开始设计，Web 界面只是 API 的客户端。
 /api/v1/payments/webhooks/{method}
 /api/v1/join-requests/{id}/payments
 /api/v1/marketplace/webhooks/{method}
+/api/v1/coteries/{id}/report
+/api/v1/coteries/{id}/blocks
+/api/v1/admin/reports
 /api/v1/disputes
 /api/v1/usage-records
 /api/v1/join-requests
@@ -986,11 +990,29 @@ Instance
 - **通知**：请求创建通知 Owner（`join_requested`），决定后通知请求者（`join_decided`）；
 - **Payment 门槛（D25）**：「Request Join → Payment → Join」链已闭合。`payment_gate` 为圈级 opt-in（Owner PATCH，默认关，与 listing 同思路）；开启后 accept 不再直接入圈——请求转 `awaiting_payment`（Owner 已同意，入圈挂起）并通知请求者付费；`POST /api/v1/join-requests/{id}/payments`（请求者发起，manual 仅 Owner 可记——禁止自证收款）以平台计算的等分估计金额（floor(price/(活跃成员+1))，币种随订阅，与目录估计同源）发起收费：同步渠道当场结算并同事务入圈，异步渠道落 `pending` 并返回 `client_secret` 待客户端确认；确认走公开 `POST /api/v1/marketplace/webhooks/{method}`（签名鉴权，复用 D24 验签管线，`STRIPE_MARKETPLACE_WEBHOOK_SECRET` 缺省回落 `STRIPE_WEBHOOK_SECRET`），**同一事务**内重跑全部准入检查并插入成员、翻 charge 为 `succeeded`、请求转 `accepted`——满员等 409 回滚由渠道重试自愈；失败事件仅翻 charge 为 `failed`，请求保持待付可重新发起。准入费记 `admission_charges` **独立账本**而非 `payments`：不变量 5（金额出自 Contribution）以成员身份为前提，而闸门刻意先行——准入费是「当前账期份额的估计收讫」，不进结算账本，入圈后的真实份额仍由 billing generate 出账；存在 `pending` charge 时 decline/cancel 以 409 拒绝（资金在途）。未开闸的圈 accept 即入圈，零改动。
 
+### 6.6 防滥用：Report 与 Block
+
+NFR-7 的防滥用清单四项至此收口：Rate Limit（D19）、Audit Log（D17）已落地，本节补 Report 与 Block。
+
+**平台管理员（FR-14）**：`users.role`（`'user'`/`'admin'`）。实例运营者经 `ADMIN_EMAILS`（逗号分隔邮箱）在启动时引导为 admin（幂等 UPDATE）；无自助提权面。管理员 v1 的全部职责是**举报处置**——读收件箱、裁定，不碰圈的日常管理。
+
+**Report（举报）**：
+
+- `POST /api/v1/coteries/{id}/report`（认证用户）：对**公开列出**的圈提交举报，`reason` 必填 ≤1000 字符；非公开圈照常 404（不泄露存在性）；同一用户对同一圈至多一条 `open`；
+- `reports` 独立账本：`coterie_id / reporter_id / reason / status(open, resolved, dismissed) / resolution_note / decided_at`；创建不通知任何人（不打扰 Owner，不提示恶意方）；
+- 管理员面：`GET /api/v1/admin/reports?status=` 收件箱、`POST /api/v1/admin/reports/{id}/resolve|dismiss`（note 可选 ≤1000）；处置动作本身不外溢（下架/关闭等由管理员用既有面另行执行），报告者不获通知——避免泄露处置细节，审计留痕。
+
+**Block（圈级拉黑）**：
+
+- `PUT /api/v1/coteries/{id}/blocks/{userID}` / `DELETE …/blocks/{userID}` / `GET …/blocks`（均 Owner 专属）；
+- 被拉黑者在**全部准入路径**被 403 拒绝：`admitUser`（邀请接受、marketplace accept、支付闸门确认入圈共用）与加入请求创建；已入圈成员不自动移除（Owner 可手动移除）；
+- 语义边界：拉黑不进审计（准入拒绝本身不留痕，与限速同理由）；解拉黑即恢复请求资格。
+
 ---
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）、D26 防滥用收口（平台管理员 + Report + 圈级 Block）。
 
 实现阶段仍需确认的细节：
 

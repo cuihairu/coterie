@@ -811,7 +811,7 @@ Block
 Audit Log
 ```
 
-进度：Audit Log 已落地（D17）；Rate Limit 已落地（D19，注册/登录公开端点固定窗口限速）；Report / Block 为 Phase 4 后续条目。
+进度：Audit Log 已落地（D17）；Rate Limit 已落地（D19，注册/登录公开端点固定窗口限速）；Report / Block 已落地（D26：平台管理员 + 圈级拉黑 + 举报收件箱）。
 
 后续开放公共 Marketplace 时再增加：
 
@@ -883,7 +883,7 @@ Notification
 | FR-11 | Invitation | Phase 1 |
 | FR-12 | Notification（Web + Email） | Phase 1；Phase 2（Email SMTP 适配器 + 出站 Webhook + Push 已落地——Push 为 Web Push 标准，D22） |
 | FR-13 | Dashboard | Phase 1 |
-| FR-14 | Admin | Phase 1（基础） |
+| FR-14 | Admin | Phase 1（基础）；Phase 4 补平台管理员角色与举报处置面（`ADMIN_EMAILS` 引导 + `reports` 收件箱 resolve/dismiss，见设计 D26——Admin 不参与圈的日常管理） |
 | FR-15 | Audit Log | Phase 1（已落地，D17） |
 | FR-16 | Marketplace | Phase 2（只读目录 + JoinRequest 收件箱已落地，见设计 D10）；Phase 4 补支付闸门（D25：payment_gate 圈级开关 + awaiting_payment + 准入费独立账本 + Webhook 驱动入圈，渠道复用 D24 Stripe） |
 | FR-17 | Dispute | Phase 3（已落地：`disputes` 独立账本 + Owner 单向裁决，裁决与结算解耦，见设计 D14；Buyer/Owner/Reason/Evidence/Status/Resolution 字段映射见 §4 FR-17） |
