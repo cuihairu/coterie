@@ -3,7 +3,11 @@ package auth_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
+	"gorm.io/gorm"
+
+	"github.com/cuihairu/coterie/internal/auth"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -141,5 +145,65 @@ func TestRegisterValidation(t *testing.T) {
 		`{"username":"auth-nopass","email":"auth-nopass@example.com"}`)
 	if code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing password status = %d, want 422: %v", code, body)
+	}
+}
+
+func TestExpiredSessionsArePurged(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+
+	code, body := testsupport.DoJSON(t, client, http.MethodPost, srv.URL+authPath+"/register",
+		`{"username":"auth-exp","email":"auth-exp@example.com","password":"password-123"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("register status = %d, want 201: %v", code, body)
+	}
+	created, _ := body["user"].(map[string]any)
+	userID, _ := created["id"].(string)
+	if userID == "" {
+		t.Fatalf("register returned no user id: %v", body)
+	}
+	expireUserSessions(t, db, userID)
+
+	// Login issues a fresh session and purges the expired one.
+	code, body = testsupport.DoJSON(t, client, http.MethodPost, srv.URL+authPath+"/login",
+		`{"email":"auth-exp@example.com","password":"password-123"}`)
+	if code != http.StatusOK {
+		t.Fatalf("login status = %d, want 200: %v", code, body)
+	}
+	live, _ := body["token"].(string)
+	if live == "" {
+		t.Fatalf("login returned no token: %v", body)
+	}
+	countUserSessions(t, db, userID, 1)
+
+	// Once expired, me → 401 and the row is deleted on sight.
+	expireUserSessions(t, db, userID)
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+authPath+"/me", "", live)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("me with expired session status = %d, want 401", code)
+	}
+	countUserSessions(t, db, userID, 0)
+}
+
+// expireUserSessions marks the user's sessions expired in place. The
+// suite shares one database, so every query stays scoped to the user.
+func expireUserSessions(t *testing.T, db *gorm.DB, userID string) {
+	t.Helper()
+	if err := db.Model(&auth.Session{}).
+		Where("user_id = ?", userID).
+		Update("expires_at", time.Now().UTC().Add(-time.Hour)).Error; err != nil {
+		t.Fatalf("expire sessions: %v", err)
+	}
+}
+
+func countUserSessions(t *testing.T, db *gorm.DB, userID string, want int64) {
+	t.Helper()
+	var n int64
+	if err := db.Model(&auth.Session{}).Where("user_id = ?", userID).Count(&n).Error; err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if n != want {
+		t.Fatalf("sessions = %d, want %d", n, want)
 	}
 }
