@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/pkg/api"
@@ -241,4 +242,80 @@ func SoftLeftMember(tx *gorm.DB, memberID string, now time.Time) error {
 	return tx.Model(&Member{}).
 		Where("id = ?", memberID).
 		Update("left_at", now).Error
+}
+
+// IsBlocked reports whether the user is blocked from the coterie
+// (design D26) — the gate shared by every admission path.
+func (s *Store) IsBlocked(ctx context.Context, coterieID, userID string) (bool, error) {
+	var n int64
+	err := s.db.WithContext(ctx).Model(&Block{}).
+		Where("coterie_id = ? AND user_id = ?", coterieID, userID).
+		Count(&n).Error
+	return n > 0, err
+}
+
+// PutBlock inserts the block, ignoring a duplicate (idempotent PUT).
+// It reports whether this call created the row.
+func (s *Store) PutBlock(ctx context.Context, b *Block) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(b)
+	return res.RowsAffected > 0, res.Error
+}
+
+// DeleteBlock removes the block and reports whether a row was removed.
+func (s *Store) DeleteBlock(ctx context.Context, coterieID, userID string) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Where("coterie_id = ? AND user_id = ?", coterieID, userID).
+		Delete(&Block{})
+	return res.RowsAffected > 0, res.Error
+}
+
+// BlockEntry returns the block with the blocked user's identity, or
+// nil when absent.
+func (s *Store) BlockEntry(ctx context.Context, coterieID, userID string) (*BlockEntry, error) {
+	var e BlockEntry
+	err := s.db.WithContext(ctx).Table("coterie_blocks b").
+		Select("b.coterie_id, b.user_id, u.username, u.email, b.created_at").
+		Joins("JOIN users u ON u.id = b.user_id").
+		Where("b.coterie_id = ? AND b.user_id = ?", coterieID, userID).
+		Scan(&e).Error
+	if err != nil {
+		return nil, err
+	}
+	if e.UserID == "" {
+		return nil, nil
+	}
+	return &e, nil
+}
+
+// ListBlocks returns the coterie's blocks with user identities,
+// newest first.
+func (s *Store) ListBlocks(ctx context.Context, coterieID string, page api.Page) ([]BlockEntry, int64, error) {
+	var total int64
+	if err := s.db.WithContext(ctx).Model(&Block{}).
+		Where("coterie_id = ?", coterieID).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []BlockEntry
+	err := s.db.WithContext(ctx).Table("coterie_blocks b").
+		Select("b.coterie_id, b.user_id, u.username, u.email, b.created_at").
+		Joins("JOIN users u ON u.id = b.user_id").
+		Where("b.coterie_id = ?", coterieID).
+		Order("b.created_at DESC").
+		Limit(page.Limit).
+		Offset(page.Offset).
+		Scan(&items).Error
+	return items, total, err
+}
+
+// UserExists reports whether the platform user exists — block targets
+// are validated so a bad id surfaces as 404, not an FK violation.
+func (s *Store) UserExists(ctx context.Context, id string) (bool, error) {
+	var n int64
+	err := s.db.WithContext(ctx).Table("users").
+		Where("id = ?", id).
+		Count(&n).Error
+	return n > 0, err
 }

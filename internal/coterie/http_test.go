@@ -427,3 +427,118 @@ func assignSeat(t *testing.T, client *http.Client, base, tok, seatID, memberID s
 	}
 	return body, nil
 }
+
+func TestCoterieBlocks(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, ownerID := testsupport.RegisterAndLogin(t, client, srv.URL, "cot-blk")
+	subID := seedOwnedSubscription(t, client, srv.URL, "blk", tok, ownerID, 3)
+	c := createCoterie(t, client, srv.URL, tok, subID, "Block Circle", 3)
+	id, _ := c["id"].(string)
+
+	// Recruit publicly so join requests are in play.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/coteries/"+id, `{"status":"open","listing":"public"}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("publish status = %d: %v", code, body)
+	}
+
+	// A member joins first — blocking later must not remove them.
+	mtok, mid := testsupport.RegisterAndLogin(t, client, srv.URL, "cot-blk-m")
+	accept(t, client, srv.URL, mtok, invite(t, client, srv.URL, tok, id, "member"))
+
+	// An outsider to block.
+	utok, uid := testsupport.RegisterAndLogin(t, client, srv.URL, "cot-blk-u")
+	blockURL := srv.URL + "/api/v1/coteries/" + id + "/blocks/"
+
+	// Only the owner manages the list.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPut, blockURL+uid, "", utok)
+	if code != http.StatusForbidden {
+		t.Fatalf("non-owner block status = %d, want 403", code)
+	}
+	// Nonsense targets.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPut, blockURL+ownerID, "", tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("self-block status = %d, want 422", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodPut,
+		blockURL+"00000000-0000-0000-0000-000000000000", "", tok)
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown user block status = %d, want 404", code)
+	}
+
+	// Owner blocks the outsider: 201 with identity.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPut, blockURL+uid, "", tok)
+	if code != http.StatusCreated {
+		t.Fatalf("block status = %d, want 201: %v", code, body)
+	}
+	if body["user_id"] != uid || body["username"] == "" || body["email"] == "" {
+		t.Fatalf("block entry identity wrong: %v", body)
+	}
+	created, _ := body["created_at"].(string)
+	// PUT replay is idempotent: 200, same row.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPut, blockURL+uid, "", tok)
+	if code != http.StatusOK || body["created_at"] != created {
+		t.Fatalf("replay status = %d created_at = %v, want 200 same row", code, body["created_at"])
+	}
+
+	// The list is owner-only.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, blockURL[:len(blockURL)-1], "", utok)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider list status = %d, want 403", code)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, blockURL[:len(blockURL)-1], "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("owner list status = %d: %v", code, body)
+	}
+	if meta, _ := body["meta"].(map[string]any); meta == nil || meta["total"] != float64(1) {
+		t.Fatalf("block list total wrong: %v", body)
+	}
+	if items, _ := body["items"].([]any); len(items) != 1 || items[0].(map[string]any)["user_id"] != uid {
+		t.Fatalf("block list items wrong: %v", body["items"])
+	}
+
+	// Join requests are refused while blocked.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/coteries/"+id+"/join-requests", `{"message":"let me in"}`, utok)
+	if code != http.StatusForbidden {
+		t.Fatalf("blocked join request status = %d, want 403: %v", code, body)
+	}
+	// So is invitation acceptance.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/invitations/accept",
+		fmt.Sprintf(`{"token":%q}`, invite(t, client, srv.URL, tok, id, "member")), utok)
+	if code != http.StatusForbidden {
+		t.Fatalf("blocked invite accept status = %d, want 403: %v", code, body)
+	}
+
+	// The blocked member stays a member (no auto-removal).
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		srv.URL+"/api/v1/coteries/"+id+"/members", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("members status = %d: %v", code, body)
+	}
+	if meta, _ := body["meta"].(map[string]any); meta == nil || meta["total"] != float64(2) {
+		t.Fatalf("members total = %v, want owner + blocked member", body["meta"])
+	}
+
+	// Unblock reopens the paths; delete is not idempotent.
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, blockURL+mid, "", tok)
+	if code != http.StatusNotFound {
+		t.Fatalf("delete absent block status = %d, want 404", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, blockURL+uid, "", tok)
+	if code != http.StatusNoContent {
+		t.Fatalf("unblock status = %d, want 204", code)
+	}
+	code, _ = testsupport.DoAuthJSON(t, client, http.MethodDelete, blockURL+uid, "", tok)
+	if code != http.StatusNotFound {
+		t.Fatalf("re-unblock status = %d, want 404", code)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+"/api/v1/coteries/"+id+"/join-requests", `{"message":"try again"}`, utok)
+	if code != http.StatusCreated {
+		t.Fatalf("join request after unblock status = %d, want 201: %v", code, body)
+	}
+}

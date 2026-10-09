@@ -122,3 +122,25 @@ type InvitationView struct {
 type AcceptInvitationRequest struct {
 	Token string `json:"token"`
 }
+
+// Block is the owner's refusal of a user on this coterie (design D26).
+// The composite primary key makes it pure set membership — one row per
+// (coterie, user) pair, nothing else to say.
+type Block struct {
+	CoterieID string    `gorm:"column:coterie_id;primaryKey;type:uuid" json:"coterie_id"`
+	UserID    string    `gorm:"column:user_id;primaryKey;type:uuid" json:"user_id"`
+	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
+}
+
+// TableName aligns the model with the hand-written migration schema.
+func (Block) TableName() string { return "coterie_blocks" }
+
+// BlockEntry is a block with the blocked user's display identity — the
+// shape of the owner's block list.
+type BlockEntry struct {
+	CoterieID string    `gorm:"column:coterie_id" json:"coterie_id"`
+	UserID    string    `gorm:"column:user_id" json:"user_id"`
+	Username  string    `gorm:"column:username" json:"username"`
+	Email     string    `gorm:"column:email" json:"email"`
+	CreatedAt time.Time `gorm:"column:created_at" json:"created_at"`
+}

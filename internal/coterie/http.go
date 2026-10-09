@@ -28,6 +28,9 @@ func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware
 	mux.Handle("POST /api/v1/coteries/{id}/invitations", requireUser(http.HandlerFunc(h.createInvitation)))
 	mux.Handle("GET /api/v1/coteries/{id}/invitations", requireUser(http.HandlerFunc(h.listInvitations)))
 	mux.Handle("POST /api/v1/invitations/accept", requireUser(http.HandlerFunc(h.acceptInvitation)))
+	mux.Handle("PUT /api/v1/coteries/{id}/blocks/{userID}", requireUser(http.HandlerFunc(h.putBlock)))
+	mux.Handle("DELETE /api/v1/coteries/{id}/blocks/{userID}", requireUser(http.HandlerFunc(h.deleteBlock)))
+	mux.Handle("GET /api/v1/coteries/{id}/blocks", requireUser(http.HandlerFunc(h.listBlocks)))
 }
 
 // actor requires an authenticated user; the middleware guarantees one,
@@ -192,4 +195,56 @@ func (h *Handler) acceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	api.WriteJSON(w, http.StatusCreated, member)
+}
+
+// putBlock implements PUT /coteries/{id}/blocks/{userID} — 201 when the
+// block is new, 200 for an idempotent replay.
+func (h *Handler) putBlock(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	entry, created, err := h.svc.Block(r.Context(), u, r.PathValue("id"), r.PathValue("userID"))
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	api.WriteJSON(w, status, entry)
+}
+
+func (h *Handler) deleteBlock(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	if err := h.svc.Unblock(r.Context(), u, r.PathValue("id"), r.PathValue("userID")); err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) listBlocks(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	page := api.ParsePage(r)
+	entries, total, err := h.svc.ListBlocks(r.Context(), u, r.PathValue("id"), page)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, api.NewList(entries, api.Meta{
+		Total:  total,
+		Limit:  page.Limit,
+		Offset: page.Offset,
+	}))
 }

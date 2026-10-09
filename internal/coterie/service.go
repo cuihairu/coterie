@@ -347,6 +347,14 @@ func (s *Service) admitUser(ctx context.Context, db *gorm.DB, c *Coterie, userID
 		return nil, api.Conflict("coterie is not accepting members while %s", c.Status)
 	}
 	st := NewStore(db)
+	// The owner's block list (design D26) gates every admission path —
+	// invitation acceptance, marketplace accept, and payment-gate
+	// confirmation all funnel through here.
+	if blocked, err := st.IsBlocked(ctx, c.ID, userID); err != nil {
+		return nil, err
+	} else if blocked {
+		return nil, api.Forbidden("you are blocked from this coterie")
+	}
 	if existing, err := st.ActiveMemberByUser(ctx, c.ID, userID); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -542,6 +550,61 @@ func (s *Service) ListInvitations(ctx context.Context, actor *user.User, coterie
 		return nil, 0, err
 	}
 	return s.store.ListInvitations(ctx, coterieID, page)
+}
+
+// Block refuses a user from the coterie (owner only, design D26). PUT
+// semantics: blocking an already-blocked user returns the existing
+// entry; created reports whether this call inserted the row.
+func (s *Service) Block(ctx context.Context, actor *user.User, coterieID, userID string) (*BlockEntry, bool, error) {
+	if _, _, err := s.LoadForRole(ctx, actor, coterieID, RoleOwner); err != nil {
+		return nil, false, err
+	}
+	if userID == actor.ID {
+		return nil, false, api.Validation("invalid block",
+			api.Detail{Field: "user_id", Message: "cannot block yourself"})
+	}
+	exists, err := s.store.UserExists(ctx, userID)
+	if err != nil {
+		return nil, false, err
+	}
+	if !exists {
+		return nil, false, api.NotFound("user %s not found", userID)
+	}
+	b := &Block{CoterieID: coterieID, UserID: userID, CreatedAt: time.Now().UTC()}
+	created, err := s.store.PutBlock(ctx, b)
+	if err != nil {
+		return nil, false, err
+	}
+	entry, err := s.store.BlockEntry(ctx, coterieID, userID)
+	if err != nil {
+		return nil, false, err
+	}
+	return entry, created, nil
+}
+
+// Unblock restores the user's eligibility to join (owner only). Per the
+// design, blocking never removed membership and unblocking never adds
+// one — it just reopens the admission paths.
+func (s *Service) Unblock(ctx context.Context, actor *user.User, coterieID, userID string) error {
+	if _, _, err := s.LoadForRole(ctx, actor, coterieID, RoleOwner); err != nil {
+		return err
+	}
+	removed, err := s.store.DeleteBlock(ctx, coterieID, userID)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return api.NotFound("user %s is not blocked from this coterie", userID)
+	}
+	return nil
+}
+
+// ListBlocks returns the coterie's block list (owner only).
+func (s *Service) ListBlocks(ctx context.Context, actor *user.User, coterieID string, page api.Page) ([]BlockEntry, int64, error) {
+	if _, _, err := s.LoadForRole(ctx, actor, coterieID, RoleOwner); err != nil {
+		return nil, 0, err
+	}
+	return s.store.ListBlocks(ctx, coterieID, page)
 }
 
 // loadForOwner returns the coterie when the actor owns its subscription

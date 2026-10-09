@@ -109,6 +109,13 @@ func (s *Service) CreateJoinRequest(ctx context.Context, actor *user.User, coter
 	} else if member {
 		return nil, api.Conflict("already a member of this coterie")
 	}
+	// The owner's block list (design D26) silences requests before they
+	// reach the inbox; existing members are not touched by blocks.
+	if blocked, err := s.store.IsBlocked(ctx, c.ID, actor.ID); err != nil {
+		return nil, err
+	} else if blocked {
+		return nil, api.Forbidden("you are blocked from this coterie")
+	}
 	if existing, err := s.store.PendingByUserAndCoterie(ctx, c.ID, actor.ID); err != nil {
 		return nil, err
 	} else if existing != nil {

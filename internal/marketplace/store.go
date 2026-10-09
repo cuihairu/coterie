@@ -86,6 +86,21 @@ func (s *Store) ActiveMemberRole(ctx context.Context, coterieID, userID string) 
 	return m.Role, true, nil
 }
 
+// IsBlocked reports whether the user is on the coterie's block list
+// (design D26) — blocked users may not file join requests.
+func (s *Store) IsBlocked(ctx context.Context, coterieID, userID string) (bool, error) {
+	var b coterie.Block
+	err := s.db.WithContext(ctx).
+		First(&b, "coterie_id = ? AND user_id = ?", coterieID, userID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // SeatStats returns the subscription's total and free seat counts.
 func (s *Store) SeatStats(ctx context.Context, subscriptionID string) (total, free int, err error) {
 	type row struct {
