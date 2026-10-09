@@ -149,6 +149,40 @@ export interface Contribution {
   paid_at?: string
 }
 
+export interface Provider {
+  id: string
+  slug: string
+  name: string
+  category: string
+}
+
+export interface Product {
+  id: string
+  provider_id: string
+  name: string
+  tier?: string
+}
+
+export interface Invitation {
+  id: string
+  coterie_id: string
+  role: string
+  status: string
+  token?: string
+  expires_at?: string
+}
+
+export interface Subscription {
+  id: string
+  product_id: string
+  owner_user_id: string
+  billing_cycle: string
+  price: string
+  currency: string
+  start_date: string
+  max_seats: number
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }
