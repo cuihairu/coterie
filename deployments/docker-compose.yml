@@ -1,6 +1,5 @@
-# Development stack: PostgreSQL only for now.
-# The coterie service will be enabled once the first image is published
-# (see docs/design.md §11 — the target is coterie + postgres, nothing else).
+# Minimal stack (docs/design.md §11): coterie + postgres, nothing else.
+# The image is built from source until a registry image is published.
 services:
   postgres:
     image: postgres:18-alpine
@@ -11,7 +10,27 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # postgres:18+ expects a single mount at /var/lib/postgresql.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coterie -d coterie"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  coterie:
+    build: ..
+    environment:
+      DATABASE_URL: postgres://coterie:coterie@postgres:5432/coterie?sslmode=disable
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # The server exits when the database is unreachable; a host reboot
+    # or a cold postgres should recover on its own.
+    restart: unless-stopped
 
 volumes:
   pgdata:
