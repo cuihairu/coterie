@@ -22,7 +22,7 @@ import type {
   UsageLimit,
   UsageRecord,
 } from '../../lib/api'
-import { AUDIT_ACTIONS } from '../../lib/api'
+import { AUDIT_ACTIONS, AUDIT_LABEL } from '../../lib/api'
 
 export const Route = createFileRoute('/_app/coteries/$coterieId')({
   component: CoterieDetailPage,
@@ -1014,20 +1014,7 @@ function DisputesTab({
 }
 
 // Mirrors internal/audit/model.go actions for display.
-const AUDIT_LABEL: Record<string, string> = {
-  coterie_created: '建圈',
-  coterie_updated: '圈更新',
-  member_removed: '移除成员',
-  member_left: '成员退出',
-  seat_assigned: '席位分配',
-  seat_released: '席位释放',
-  seat_updated: '席位更新',
-  subscription_updated: '订阅更新',
-  contribution_updated: '分摊调整',
-  payment_recorded: '收款登记',
-  period_closed: '账期关闭',
-  report_decided: '举报裁定',
-}
+
 
 const AUDIT_PAGE = 20
 
