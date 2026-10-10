@@ -208,6 +208,22 @@ export interface UsageRecord {
   created_at: string
 }
 
+// Dispute is one member's challenge against a contribution (D14);
+// the owner decides resolved or rejected, one-way.
+export interface Dispute {
+  id: string
+  contribution_id: string
+  subscription_id: string
+  raised_by: string
+  reason: string
+  evidence?: string
+  status: string
+  resolution_note?: string
+  decided_by?: string
+  created_at: string
+  decided_at?: string
+}
+
 export interface Notification {
   id: string
   type: string
