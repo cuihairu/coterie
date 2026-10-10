@@ -192,6 +192,16 @@ export interface Notification {
   created_at: string
 }
 
+export interface JoinRequest {
+  id: string
+  coterie_id: string
+  user_id: string
+  username: string
+  message: string
+  status: string
+  created_at: string
+}
+
 export interface DirectoryEntry {
   coterie_id: string
   name: string
