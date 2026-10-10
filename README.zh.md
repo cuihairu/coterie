@@ -4,6 +4,7 @@
   <p><strong>开源的数字服务共享平台。</strong></p>
   <p>
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+    <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>
     <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange">
     <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white">
     <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
@@ -34,7 +35,10 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 > 距离真实收款只差可用的 Stripe 生产凭据。
 > 完整的 REST API 已端到端可用:auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
-> marketplace。Web 与移动端尚未启动，现阶段 API 即产品
+> marketplace。React + TypeScript Web 客户端覆盖日常旅程:登录注册、
+> 建圈向导、席位、账期与结算、含支付闸门的加入申请收件箱、带每账期
+> 上限的用量记账、争议、市场与通知——与 API 打进同一二进制
+> (服务器在同一端口提供 SPA 回退)
 > ([设计文档 §9](docs/design.md#9-api-design))。
 
 ## 快速开始
@@ -56,6 +60,9 @@ go run ./apps/server
 ```bash
 docker compose -f deployments/docker-compose.yml up -d --build
 ```
+
+服务器在同一端口同时提供 Web 客户端与 API——浏览器打开
+`http://localhost:8080` 即进入界面,端点走 `/api/v1/...`。
 
 部署细节(配置项、平台管理员、升级)见[文档站](https://cuihairu.github.io/coterie/deployment)。
 
@@ -152,12 +159,15 @@ Seats / Quota / Cost
 - **Phase 4(已完成)**:审计日志、市场 Owner 信誉徽标、限速、自定义计费周期、
   每成员用量上限、Web Push 通知、资源共享模式、Stripe 支付渠道(D24)、
   市场支付闸门(D25)、防滥用收口(平台管理员、举报与圈级拉黑,D26)
+- **Web 客户端(进行中)**:React + TypeScript SPA 嵌入 Go 二进制——
+  认证与建圈向导、席位、账期写操作、市场目录、含支付闸门的
+  加入申请收件箱、用量记账与争议
 
 ## 技术栈
 
 Go(标准库 `net/http`、GORM)· PostgreSQL(手写 SQL 迁移,
 启动时由 golang-migrate 执行)· React + TypeScript(Vite、Tailwind
-CSS、shadcn/ui、TanStack Query / Router),详见[设计
+CSS、TanStack Query / Router),详见[设计
 文档](docs/design.md)。
 
 ## 参与贡献

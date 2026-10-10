@@ -181,6 +181,87 @@ export interface Subscription {
   currency: string
   start_date: string
   max_seats: number
+  sharing_policy?: SharingPolicy | null
+}
+
+// SharingPolicy is the subscription's JSONB policy bag; usage_limit is
+// the D21 per-member per-period cap enforced on the ledger write.
+export interface SharingPolicy {
+  usage_limit?: UsageLimit
+  [key: string]: unknown
+}
+
+export interface UsageLimit {
+  unit: string
+  per_period: string
+}
+
+export interface UsageRecord {
+  id: string
+  subscription_id: string
+  member_id: string
+  seat_id?: string
+  amount: string
+  unit: string
+  metadata: Record<string, unknown>
+  recorded_at: string
+  created_at: string
+}
+
+// Dispute is one member's challenge against a contribution (D14);
+// the owner decides resolved or rejected, one-way.
+export interface Dispute {
+  id: string
+  contribution_id: string
+  subscription_id: string
+  raised_by: string
+  reason: string
+  evidence?: string
+  status: string
+  resolution_note?: string
+  decided_by?: string
+  created_at: string
+  decided_at?: string
+}
+
+export interface Notification {
+  id: string
+  type: string
+  title: string
+  body: string
+  read_at?: string
+  created_at: string
+}
+
+export interface JoinRequest {
+  id: string
+  coterie_id: string
+  user_id: string
+  username: string
+  message: string
+  status: string
+  created_at: string
+}
+
+export interface DirectoryEntry {
+  coterie_id: string
+  name: string
+  status: string
+  product_name: string
+  provider_name: string
+  price: string
+  currency: string
+  member_count: number
+  seats_total: number
+  seats_free: number
+  full: boolean
+  share_estimate: string
+  owner?: {
+    user_id: string
+    username: string
+    contributions: { paid: number; pending: number; waived: number; cancelled: number }
+    payment_ratio?: string
+  }
 }
 
 export interface ListResponse<T> {

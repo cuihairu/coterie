@@ -15,6 +15,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppCoteriesIndexRouteImport } from './routes/_app/coteries.index'
 import { Route as AppCoteriesCoterieIdRouteImport } from './routes/_app/coteries.$coterieId'
 import { Route as AppCoteriesNewRouteImport } from './routes/_app/coteries.new'
+import { Route as AppMarketplaceIndexRouteImport } from './routes/_app/marketplace.index'
+import { Route as AppNotificationsIndexRouteImport } from './routes/_app/notifications.index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,6 +47,16 @@ const AppCoteriesNewRoute = AppCoteriesNewRouteImport.update({
   path: '/coteries/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMarketplaceIndexRoute = AppMarketplaceIndexRouteImport.update({
+  id: '/marketplace/',
+  path: '/marketplace/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotificationsIndexRoute = AppNotificationsIndexRouteImport.update({
+  id: '/notifications/',
+  path: '/notifications/',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -52,6 +64,8 @@ export interface FileRoutesByFullPath {
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/coteries/new': typeof AppCoteriesNewRoute
   '/coteries/': typeof AppCoteriesIndexRoute
+  '/marketplace/': typeof AppMarketplaceIndexRoute
+  '/notifications/': typeof AppNotificationsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +73,8 @@ export interface FileRoutesByTo {
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/coteries/new': typeof AppCoteriesNewRoute
   '/coteries': typeof AppCoteriesIndexRoute
+  '/marketplace': typeof AppMarketplaceIndexRoute
+  '/notifications': typeof AppNotificationsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,13 +84,28 @@ export interface FileRoutesById {
   '/_app/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/_app/coteries/new': typeof AppCoteriesNewRoute
   '/_app/coteries/': typeof AppCoteriesIndexRoute
+  '/_app/marketplace/': typeof AppMarketplaceIndexRoute
+  '/_app/notifications/': typeof AppNotificationsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/coteries/$coterieId' | '/coteries/new' | '/coteries/'
+    | '/'
+    | '/login'
+    | '/coteries/$coterieId'
+    | '/coteries/new'
+    | '/coteries/'
+    | '/marketplace/'
+    | '/notifications/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/coteries/$coterieId' | '/coteries/new' | '/coteries'
+  to:
+    | '/'
+    | '/login'
+    | '/coteries/$coterieId'
+    | '/coteries/new'
+    | '/coteries'
+    | '/marketplace'
+    | '/notifications'
   id:
     | '__root__'
     | '/'
@@ -83,6 +114,8 @@ export interface FileRouteTypes {
     | '/_app/coteries/$coterieId'
     | '/_app/coteries/new'
     | '/_app/coteries/'
+    | '/_app/marketplace/'
+    | '/_app/notifications/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -135,6 +168,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCoteriesNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/marketplace/': {
+      id: '/_app/marketplace/'
+      path: '/marketplace'
+      fullPath: '/marketplace/'
+      preLoaderRoute: typeof AppMarketplaceIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/notifications/': {
+      id: '/_app/notifications/'
+      path: '/notifications'
+      fullPath: '/notifications/'
+      preLoaderRoute: typeof AppNotificationsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -142,12 +189,16 @@ interface AppRouteChildren {
   AppCoteriesCoterieIdRoute: typeof AppCoteriesCoterieIdRoute
   AppCoteriesNewRoute: typeof AppCoteriesNewRoute
   AppCoteriesIndexRoute: typeof AppCoteriesIndexRoute
+  AppMarketplaceIndexRoute: typeof AppMarketplaceIndexRoute
+  AppNotificationsIndexRoute: typeof AppNotificationsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppCoteriesCoterieIdRoute: AppCoteriesCoterieIdRoute,
   AppCoteriesNewRoute: AppCoteriesNewRoute,
   AppCoteriesIndexRoute: AppCoteriesIndexRoute,
+  AppMarketplaceIndexRoute: AppMarketplaceIndexRoute,
+  AppNotificationsIndexRoute: AppNotificationsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
