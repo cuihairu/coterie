@@ -206,5 +206,34 @@ api DELETE "/api/v1/coteries/$CID/blocks/$USERID3" "$TOK" "" >/dev/null
 JR4=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"round two"}')
 expect "$(jget "['status']" "$JR4")" pending "unblocked user can apply again"
 
+step "abuse reports: flag a listed circle"
+REP=$(api POST "/api/v1/coteries/$CID/report" "$TOK2" '{"reason":"suspected fake subscription"}')
+expect "$(jget "['status']" "$REP")" open "member flagged the listed circle"
+RID=$(jget "['id']" "$REP")
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"reason":"again"}' "$BASE/api/v1/coteries/$CID/report")" 409 "duplicate open report refused"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"reason":"   "}' "$BASE/api/v1/coteries/$CID/report")" 422 "blank report reason rejected"
+
+# The admin walk needs an account the instance operator promoted via
+# ADMIN_EMAILS before this run: pass its credentials to cover it.
+if [ -n "${SMOKE_ADMIN_EMAIL:-}" ] && [ -n "${SMOKE_ADMIN_PASSWORD:-}" ]; then
+  step "platform admin: reports inbox and audit ledger"
+  AL=$(api POST /api/v1/auth/login "" "{\"email\":\"$SMOKE_ADMIN_EMAIL\",\"password\":\"$SMOKE_ADMIN_PASSWORD\"}")
+  ATOK=$(jget "['token']" "$AL")
+  [ -n "$ATOK" ] || { echo "FAIL admin login: $AL" >&2; exit 1; }
+  expect "$(code_of -H "Authorization: Bearer $TOK" "$BASE/api/v1/admin/reports")" 403 "non-admin cannot read the inbox"
+  case "$(api GET /api/v1/admin/reports "$ATOK")" in
+    *"$CID"*) echo "ok  admin inbox shows the report" ;;
+    *) echo "FAIL report missing from the admin inbox" >&2; exit 1 ;;
+  esac
+  DISM=$(api POST "/api/v1/admin/reports/$RID/dismiss" "$ATOK" '{"note":"smoke walk"}')
+  expect "$(jget "['status']" "$DISM")" dismissed "admin dismissed the report"
+  case "$(api GET "/api/v1/admin/audit-logs?action=report_decided&limit=20&offset=0" "$ATOK")" in
+    *"$RID"*) echo "ok  admin audit ledger records the decision" ;;
+    *) echo "FAIL decision missing from the audit ledger" >&2; exit 1 ;;
+  esac
+else
+  echo "note: admin walk not run (set SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD to cover it)"
+fi
+
 echo
 echo "SMOKE PASS — full MVP journey OK on $BASE"

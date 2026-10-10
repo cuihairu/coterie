@@ -84,12 +84,19 @@ Every route except `GET /healthz`, `POST /api/v1/auth/register`,
 live for 30 days).
 
 A complete smoke test of the MVP journey (register → provider → product →
-subscription → coterie → seats → invite → join → billing → settlement →
-notifications) against a running server:
+subscription → coterie → seats → invite → join → marketplace admission →
+billing → settlement → usage → disputes → blocks → reports → notifications)
+against a running server:
 
 ```bash
 scripts/smoke.sh http://localhost:8080
 ```
+
+`SMOKE_ADMIN_EMAIL` and `SMOKE_ADMIN_PASSWORD` extend the walk to the
+platform-admin surface (reports inbox, report decision, audit ledger); the
+account must be one the server promoted via `ADMIN_EMAILS`. Back-to-back
+runs can trip the auth rate limiter on the third registration — wait a
+minute between runs.
 
 ## API overview (v1)
 
