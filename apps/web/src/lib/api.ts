@@ -294,6 +294,23 @@ export const AUDIT_ACTIONS = [
   'report_decided',
 ] as const
 
+// Report is one user's flag on a publicly listed coterie; the admin
+// view joins coterie/reporter identities for triage.
+export interface Report {
+  id: string
+  coterie_id: string
+  reporter_id: string
+  reason: string
+  status: string
+  resolution_note?: string
+  decided_at?: string
+  created_at: string
+  coterie_name?: string
+  coterie_listing?: string
+  reporter_username?: string
+  reporter_email?: string
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }
