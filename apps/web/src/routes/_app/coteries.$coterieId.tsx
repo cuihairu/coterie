@@ -1325,6 +1325,8 @@ function SeatsTab({
   const qc = useQueryClient()
   const [assigning, setAssigning] = useState<string | null>(null)
   const [memberID, setMemberID] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
   const [error, setError] = useState('')
 
   const refresh = () => {
@@ -1355,6 +1357,20 @@ function SeatsTab({
       setError('')
       setAssigning(null)
       setMemberID('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  // updateSeat is the PATCH /seats/{id} surface: relabel, or take a
+  // seat out of circulation (free⇄disabled; occupied seats go through
+  // assign/release instead). Both land as seat_updated audit entries.
+  const updateSeat = useMutation({
+    mutationFn: ({ seatID, body }: { seatID: string; body: Record<string, unknown> }) =>
+      api<Seat>(`/seats/${seatID}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      setError('')
+      setEditing(null)
       refresh()
     },
     onError: (err) => setError(err.message),
@@ -1394,7 +1410,17 @@ function SeatsTab({
           <tbody>
             {items.map((s) => (
               <tr key={s.id} className="border-b border-slate-100">
-                <td className="py-2">{s.label}</td>
+                <td className="py-2">
+                  {editing === s.id ? (
+                    <input
+                      className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                    />
+                  ) : (
+                    s.label
+                  )}
+                </td>
                 <td className="py-2">{s.status}</td>
                 <td className="py-2 font-mono text-xs text-slate-700">
                   {s.member_id ? `${s.member_id.slice(0, 8)}…` : '—'}
@@ -1411,6 +1437,60 @@ function SeatsTab({
                       >
                         分配
                       </button>
+                    )}
+                    {assigning !== s.id && editing === s.id && (
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            updateSeat.mutate({ seatID: s.id, body: { label: editLabel.trim() } })
+                          }
+                          disabled={updateSeat.isPending || !editLabel.trim()}
+                          className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={() => setEditing(null)}
+                          className="text-xs text-slate-500 hover:underline"
+                        >
+                          取消
+                        </button>
+                      </span>
+                    )}
+                    {assigning !== s.id && editing !== s.id && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditing(s.id)
+                            setEditLabel(s.label)
+                          }}
+                          className="ml-2 text-xs text-slate-600 hover:underline"
+                        >
+                          编辑
+                        </button>
+                        {s.status !== 'occupied' &&
+                          (s.status === 'free' ? (
+                            <button
+                              onClick={() =>
+                                updateSeat.mutate({ seatID: s.id, body: { status: 'disabled' } })
+                              }
+                              disabled={updateSeat.isPending}
+                              className="ml-2 text-xs text-slate-500 hover:underline disabled:opacity-50"
+                            >
+                              停用
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                updateSeat.mutate({ seatID: s.id, body: { status: 'free' } })
+                              }
+                              disabled={updateSeat.isPending}
+                              className="ml-2 text-xs text-slate-500 hover:underline disabled:opacity-50"
+                            >
+                              启用
+                            </button>
+                          ))}
+                      </>
                     )}
                     {assigning === s.id && (
                       <span className="inline-flex items-center gap-1">
