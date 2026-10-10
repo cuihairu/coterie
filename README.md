@@ -173,9 +173,12 @@ Seats / Quota / Cost
   rollover), advanced billing (prorated split), disputes, reputation
 - **Phase 4** (complete): audit log, owner reputation badge in the marketplace,
   rate limiting, custom billing cycles, per-member usage limits,
-  Web Push notifications, resource sharing mode, the Stripe payment
-  channel (D24), the marketplace payment gate (D25), and abuse
+  resource sharing mode, the marketplace payment gate (D25), and abuse
   controls — platform admin, reports, and coterie blocks (D26)
+- **Remaining**: the Web Push public-key endpoint (the push channel and
+  subscriptions ship; the SPA still needs the server's VAPID public key
+  to subscribe) and the Stripe payment channel (D24) — both wait on
+  external keys or credentials
 - **Web client** (in progress): React + TypeScript SPA embedded in the
   Go binary — auth and session lifecycle, the create-circle wizard,
   seats (assign, release, relabel, disable), billing write actions, the
