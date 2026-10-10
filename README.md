@@ -4,6 +4,7 @@
   <p><strong>Open-source platform for shared digital services.</strong></p>
   <p>
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+    <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>
     <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange">
     <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white">
     <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
@@ -41,8 +42,13 @@ services and more.
 > The full REST API works
 > end to end: auth → catalog → subscription → coterie → seats →
 > invitations → billing → payments → notifications → usage records →
-> marketplace. Web and mobile clients have not started yet — the API is
-> the product for now ([design §9](docs/design.md#9-api-design)).
+> marketplace. A React + TypeScript web client covers the daily
+> journeys — register/login, the create-circle wizard, seats, billing
+> periods and settlements, the join-request inbox with the payment
+> gate, usage metering with per-period limits, disputes, the
+> marketplace, and notifications — and ships inside the same binary
+> (the server serves the SPA on the same port as the API)
+> ([design §9](docs/design.md#9-api-design)).
 
 ## Quick start
 
@@ -64,6 +70,9 @@ PostgreSQL next to it):
 ```bash
 docker compose -f deployments/docker-compose.yml up -d --build
 ```
+
+The server serves the web client on the same port as the API — open
+`http://localhost:8080` for the UI, `/api/v1/...` for endpoints.
 
 Deployment details (configuration, platform admins, upgrades) are covered
 in the [docs site](https://cuihairu.github.io/coterie/deployment).
@@ -166,6 +175,11 @@ Seats / Quota / Cost
   Web Push notifications, resource sharing mode, the Stripe payment
   channel (D24), the marketplace payment gate (D25), and abuse
   controls — platform admin, reports, and coterie blocks (D26)
+- **Web client** (in progress): React + TypeScript SPA embedded in the
+  Go binary — auth and session lifecycle, the create-circle wizard,
+  seats, billing write actions, the marketplace directory, the
+  join-request inbox with the payment gate, usage metering, and
+  disputes
 
 ## Tech stack
 
