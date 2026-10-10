@@ -122,7 +122,9 @@ function CoterieDetailPage() {
       {tab === 'seats' && (
         <SeatsTab subID={subID} query={seatsQuery} membersQuery={membersQuery} isOwner={isOwner} />
       )}
-      {tab === 'periods' && <PeriodsTab periods={periods} queries={contributionsQueries} />}
+      {tab === 'periods' && (
+        <PeriodsTab subID={subID} periods={periods} queries={contributionsQueries} isOwner={isOwner} />
+      )}
     </div>
   )
 }
@@ -395,49 +397,210 @@ function SeatsTab({
 }
 
 function PeriodsTab({
+  subID,
   periods,
   queries,
+  isOwner,
 }: {
+  subID?: string
   periods: BillingPeriod[]
   queries: UseQueryResult<ListResponse<Contribution>, Error>[]
+  isOwner: boolean
 }) {
-  if (periods.length === 0) return <p className="text-slate-500">暂无账期。</p>
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+  const [newStart, setNewStart] = useState(() => new Date().toISOString().slice(0, 10))
+  const [newEnd, setNewEnd] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [paying, setPaying] = useState<string | null>(null)
+  const [payRef, setPayRef] = useState('')
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['periods', subID] })
+    void qc.invalidateQueries({ queryKey: ['contributions'] })
+  }
+
+  const createPeriod = useMutation({
+    mutationFn: () =>
+      api<BillingPeriod>(`/subscriptions/${subID}/billing-periods`, {
+        method: 'POST',
+        body: JSON.stringify({ start_date: newStart, end_date: newEnd }),
+      }),
+    onSuccess: () => {
+      setError('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const generate = useMutation({
+    mutationFn: (periodID: string) =>
+      api<ListResponse<Contribution>>(`/billing-periods/${periodID}/contributions/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'equal' }),
+      }),
+    onSuccess: () => {
+      setError('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const closePeriod = useMutation({
+    mutationFn: (periodID: string) =>
+      api<BillingPeriod>(`/billing-periods/${periodID}/close`, { method: 'POST' }),
+    onSuccess: () => {
+      setError('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const recordPayment = useMutation({
+    mutationFn: (contributionID: string) =>
+      api<unknown>(`/contributions/${contributionID}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'manual', external_ref: payRef }),
+      }),
+    onSuccess: () => {
+      setError('')
+      setPaying(null)
+      setPayRef('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
   return (
-    <div className="space-y-4">
-      {periods.map((p, i) => {
-        const rows = queries[i]?.data?.items ?? []
-        return (
-          <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="font-medium text-slate-900">
-                {p.start_date} ~ {p.end_date}
-              </h3>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                {p.status}
-              </span>
-            </div>
-            {rows.length === 0 ? (
-              <p className="text-sm text-slate-400">本期无分摊。</p>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {rows.map((c) => (
-                    <tr key={c.id} className="border-t border-slate-100">
-                      <td className="py-1.5 font-mono text-xs text-slate-700">
-                        {c.member_id.slice(0, 8)}…
-                      </td>
-                      <td className="py-1.5 text-right">
-                        {c.amount} {c.currency}
-                      </td>
-                      <td className="py-1.5 text-right text-slate-500">{c.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )
-      })}
+    <div>
+      {isOwner && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <input
+            type="date"
+            value={newStart}
+            onChange={(e) => setNewStart(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-xs"
+          />
+          <span className="text-xs text-slate-400">至</span>
+          <input
+            type="date"
+            value={newEnd}
+            onChange={(e) => setNewEnd(e.target.value)}
+            className="rounded border border-slate-300 px-2 py-1 text-xs"
+          />
+          <button
+            onClick={() => createPeriod.mutate()}
+            disabled={createPeriod.isPending || !subID}
+            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {createPeriod.isPending ? '创建中…' : '新建账期'}
+          </button>
+          {error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      )}
+      {periods.length === 0 ? (
+        <p className="text-slate-500">暂无账期。</p>
+      ) : (
+        <div className="space-y-4">
+          {periods.map((p, i) => {
+            const rows = queries[i]?.data?.items ?? []
+            return (
+              <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="font-medium text-slate-900">
+                    {p.start_date} ~ {p.end_date}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                      {p.status}
+                    </span>
+                    {isOwner && p.status === 'open' && (
+                      <>
+                        <button
+                          onClick={() => generate.mutate(p.id)}
+                          disabled={generate.isPending}
+                          className="rounded px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                        >
+                          生成分摊
+                        </button>
+                        <button
+                          onClick={() => closePeriod.mutate(p.id)}
+                          disabled={closePeriod.isPending}
+                          className="rounded px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          关闭账期
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="text-sm text-slate-400">本期无分摊。</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {rows.map((c) => (
+                        <tr key={c.id} className="border-t border-slate-100">
+                          <td className="py-1.5 font-mono text-xs text-slate-700">
+                            {c.member_id.slice(0, 8)}…
+                          </td>
+                          <td className="py-1.5 text-right">
+                            {c.amount} {c.currency}
+                          </td>
+                          <td className="py-1.5 text-right text-slate-500">{c.status}</td>
+                          {isOwner && c.status === 'pending' && (
+                            <td className="py-1.5 text-right">
+                              {paying === c.id ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <input
+                                    className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                    placeholder="备注/流水号"
+                                    value={payRef}
+                                    onChange={(e) => setPayRef(e.target.value)}
+                                  />
+                                  <button
+                                    onClick={() => recordPayment.mutate(c.id)}
+                                    disabled={recordPayment.isPending}
+                                    className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                                  >
+                                    确认
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setPaying(null)
+                                      setPayRef('')
+                                    }}
+                                    className="text-xs text-slate-500 hover:underline"
+                                  >
+                                    取消
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setPaying(c.id)
+                                    setPayRef('')
+                                  }}
+                                  className="text-xs text-emerald-700 hover:underline"
+                                >
+                                  登记收款
+                                </button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
