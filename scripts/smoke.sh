@@ -148,5 +148,18 @@ expect "$(jget "['status']" "$DEC")" declined "owner declined the re-request"
 MINE=$(api GET /api/v1/me/join-requests "$TOK3")
 expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$MINE")" declined "history shows the decline"
 
+step "payment gate: accept holds at awaiting_payment until the charge lands"
+api PATCH "/api/v1/coteries/$CID" "$TOK" '{"payment_gate":true}' >/dev/null
+JR3=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"gate walk"}')
+JRID3=$(jget "['id']" "$JR3")
+GACC=$(api POST "/api/v1/join-requests/$JRID3/accept" "$TOK" "")
+expect "$(jget "['status']" "$GACC")" awaiting_payment "gated accept holds for payment"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" -H 'Content-Type: application/json' -d '{"method":"manual"}' "$BASE/api/v1/join-requests/$JRID3/payments")" 403 "requester cannot self-certify a manual charge"
+CHARGE=$(api POST "/api/v1/join-requests/$JRID3/payments" "$TOK" "{\"method\":\"manual\",\"external_ref\":\"admission smoke-$TAG\"}")
+expect "$(jget "['amount']" "$CHARGE")" 3.00 "admission amount is the share estimate"
+expect "$(jget "['status']" "$CHARGE")" succeeded "manual admission charge settled"
+expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$(api GET /api/v1/me/join-requests "$TOK3")")" accepted "charge admitted the requester"
+expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 3 "gated member joined"
+
 echo
 echo "SMOKE PASS — full MVP journey OK on $BASE"
