@@ -146,6 +146,13 @@ expect "$(code_of -X POST -H "Authorization: Bearer $TOK" -H 'Content-Type: appl
 api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"-10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-06T12:00:00Z\"}" >/dev/null
 expect "$(jget "['metadata']['used']" "$(api GET "/api/v1/seats/$SEATID" "$TOK")")" 5 "correction lowers the projected usage"
 
+step "fixed split: owner assigns exact shares"
+PER3=$(api POST "/api/v1/subscriptions/$SID/billing-periods" "$TOK" '{"start_date":"2026-12-01","end_date":"2027-01-01"}')
+PER3ID=$(jget "['id']" "$PER3")
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"mode":"fixed"}' "$BASE/api/v1/billing-periods/$PER3ID/contributions/generate")" 422 "fixed mode without items refused"
+FIX=$(api POST "/api/v1/billing-periods/$PER3ID/contributions/generate" "$TOK" "{\"mode\":\"fixed\",\"items\":[{\"member_id\":\"$OWNM\",\"amount\":\"4.00\"},{\"member_id\":\"$MID\",\"amount\":\"8.00\"}]}")
+expect "$(python3 -c "import sys,json;print(sorted(c['amount'] for c in json.load(sys.stdin)['items']))" <<<"$FIX")" "['4.00', '8.00']" "fixed shares land as assigned"
+
 step "dispute: member raises, owner decides"
 MEMCONTRIB=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$MID'][0])" <<<"$GEN2")
 DISP=$(api POST "/api/v1/contributions/$MEMCONTRIB/disputes" "$TOK2" '{"reason":"I streamed less than that"}')
