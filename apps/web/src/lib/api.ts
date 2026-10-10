@@ -311,6 +311,17 @@ export interface Report {
   reporter_email?: string
 }
 
+// BlockEntry is one owner block (D26): the barred user with display
+// identity. Blocking gates admission paths only — it never touches
+// existing membership.
+export interface BlockEntry {
+  coterie_id: string
+  user_id: string
+  username: string
+  email: string
+  created_at: string
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }
