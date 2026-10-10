@@ -183,6 +183,15 @@ export interface Subscription {
   max_seats: number
 }
 
+export interface Notification {
+  id: string
+  type: string
+  title: string
+  body: string
+  read_at?: string
+  created_at: string
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }
