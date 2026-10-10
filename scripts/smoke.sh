@@ -134,6 +134,18 @@ PER2ID=$(jget "['id']" "$PER2")
 GEN2=$(api POST "/api/v1/billing-periods/$PER2ID/contributions/generate" "$TOK" '{"mode":"usage"}')
 expect "$(python3 -c "import sys,json;print(sorted(c['amount'] for c in json.load(sys.stdin)['items']))" <<<"$GEN2")" "['3.00', '9.00']" "usage split is proportional"
 
+step "quota seat and the per-period usage limit (D21)"
+SP=$(api PATCH "/api/v1/subscriptions/$SID" "$TOK" '{"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"50"}}}')
+expect "$(jget "['sharing_policy']['usage_limit']['per_period']" "$SP")" 50 "sharing policy carries the limit"
+QS=$(api PATCH "/api/v1/seats/$SEATID" "$TOK" '{"metadata":{"quota":100,"unit":"credits"}}')
+expect "$(jget "['metadata']['unit']" "$QS")" credits "seat marked as a quota seat"
+api POST "/api/v1/seats/$SEATID/assign" "$TOK" "{\"member_id\":\"$MID\"}" >/dev/null
+api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"15\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-06T12:00:00Z\"}" >/dev/null
+expect "$(jget "['metadata']['used']" "$(api GET "/api/v1/seats/$SEATID" "$TOK")")" 15 "seat usage projected from the ledger"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d "{\"member_id\":\"$MID\",\"amount\":\"10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-06T12:00:00Z\"}" "$BASE/api/v1/subscriptions/$SID/usage-records")" 409 "record past the period limit refused"
+api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"-10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-06T12:00:00Z\"}" >/dev/null
+expect "$(jget "['metadata']['used']" "$(api GET "/api/v1/seats/$SEATID" "$TOK")")" 5 "correction lowers the projected usage"
+
 step "dispute: member raises, owner decides"
 MEMCONTRIB=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$MID'][0])" <<<"$GEN2")
 DISP=$(api POST "/api/v1/contributions/$MEMCONTRIB/disputes" "$TOK2" '{"reason":"I streamed less than that"}')
