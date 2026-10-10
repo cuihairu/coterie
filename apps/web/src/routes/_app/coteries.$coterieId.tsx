@@ -1157,8 +1157,28 @@ function MembersTab({
       setError('')
       setInviteToken(inv.token ?? '')
       void qc.invalidateQueries({ queryKey: ['members', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['invitations', coterieId] })
     },
     onError: (err) => setError(err.message),
+  })
+
+  // Invitation history answers "did my invite land?" — tokens never
+  // re-show, but accepted_at/expire_at decide each row's state.
+  // queryFn runs outside render, so the one "now" snapshot needed to
+  // judge expiry stays out of the render tree (react/purity).
+  const invitationsQuery = useQuery({
+    queryKey: ['invitations', coterieId],
+    queryFn: async () => {
+      const res = await api<ListResponse<Invitation>>(`/coteries/${coterieId}/invitations`)
+      const now = Date.now()
+      const expiredIds = new Set(
+        res.items
+          .filter((inv) => new Date(inv.expire_at).getTime() < now)
+          .map((inv) => inv.id),
+      )
+      return { items: res.items, expiredIds }
+    },
+    enabled: isOwner,
   })
 
   const remove = useMutation({
@@ -1216,6 +1236,48 @@ function MembersTab({
             </div>
           )}
           <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
+          {invitationsQuery.data && invitationsQuery.data.items.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1 text-xs font-medium text-slate-500">邀请记录</p>
+              <ul className="max-w-xl space-y-1">
+                {invitationsQuery.data.items.map((inv) => {
+                  const state = inv.accepted_at
+                    ? 'accepted'
+                    : invitationsQuery.data.expiredIds.has(inv.id)
+                      ? 'expired'
+                      : 'pending'
+                  const stateLabel =
+                    state === 'accepted' ? '已接受' : state === 'expired' ? '已过期' : '待使用'
+                  return (
+                    <li
+                      key={inv.id}
+                      className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 text-xs text-slate-600"
+                    >
+                      <span>
+                        {new Date(inv.created_at).toLocaleString()} · {inv.role}
+                        {state === 'pending' && (
+                          <span className="ml-1 text-slate-400">
+                            （{new Date(inv.expire_at).toLocaleString()} 前有效）
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={
+                          state === 'accepted'
+                            ? 'text-emerald-700'
+                            : state === 'expired'
+                              ? 'text-slate-400'
+                              : 'text-amber-700'
+                        }
+                      >
+                        {stateLabel}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       {!isOwner && (

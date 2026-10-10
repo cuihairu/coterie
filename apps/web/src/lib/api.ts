@@ -163,13 +163,16 @@ export interface Product {
   tier?: string
 }
 
+// Invitation mirrors the backend model: token is issued once (never
+// re-shown by the list), so history rows carry only state fields.
 export interface Invitation {
   id: string
   coterie_id: string
   role: string
-  status: string
   token?: string
-  expires_at?: string
+  expire_at: string
+  accepted_at?: string
+  created_at: string
 }
 
 export interface Subscription {
