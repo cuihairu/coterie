@@ -181,6 +181,31 @@ export interface Subscription {
   currency: string
   start_date: string
   max_seats: number
+  sharing_policy?: SharingPolicy | null
+}
+
+// SharingPolicy is the subscription's JSONB policy bag; usage_limit is
+// the D21 per-member per-period cap enforced on the ledger write.
+export interface SharingPolicy {
+  usage_limit?: UsageLimit
+  [key: string]: unknown
+}
+
+export interface UsageLimit {
+  unit: string
+  per_period: string
+}
+
+export interface UsageRecord {
+  id: string
+  subscription_id: string
+  member_id: string
+  seat_id?: string
+  amount: string
+  unit: string
+  metadata: Record<string, unknown>
+  recorded_at: string
+  created_at: string
 }
 
 export interface Notification {

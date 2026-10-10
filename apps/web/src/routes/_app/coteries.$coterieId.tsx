@@ -12,13 +12,17 @@ import type {
   ListResponse,
   Member,
   Seat,
+  SharingPolicy,
+  Subscription,
+  UsageLimit,
+  UsageRecord,
 } from '../../lib/api'
 
 export const Route = createFileRoute('/_app/coteries/$coterieId')({
   component: CoterieDetailPage,
 })
 
-type Tab = 'members' | 'seats' | 'periods' | 'requests'
+type Tab = 'members' | 'seats' | 'periods' | 'usage' | 'requests'
 
 // Mirrors the server lifecycle (internal/coterie/service.go transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -62,6 +66,16 @@ function CoterieDetailPage() {
     queryFn: () => api<ListResponse<BillingPeriod>>(`/subscriptions/${subID}/billing-periods`),
     enabled: !!subID,
   })
+  const subscriptionQuery = useQuery({
+    queryKey: ['subscription', subID],
+    queryFn: () => api<Subscription>(`/subscriptions/${subID}`),
+    enabled: !!subID,
+  })
+  const usageQuery = useQuery({
+    queryKey: ['usage', subID],
+    queryFn: () => api<ListResponse<UsageRecord>>(`/subscriptions/${subID}/usage-records`),
+    enabled: !!subID,
+  })
   const requestsQuery = useQuery({
     queryKey: ['join-requests', coterieId],
     queryFn: () => api<ListResponse<JoinRequest>>(`/coteries/${coterieId}/join-requests`),
@@ -88,6 +102,7 @@ function CoterieDetailPage() {
     { key: 'members', label: '成员' },
     { key: 'seats', label: '席位' },
     { key: 'periods', label: '账期' },
+    { key: 'usage', label: '用量' },
     ...(isOwner ? [{ key: 'requests' as Tab, label: '申请' }] : []),
   ]
 
@@ -130,6 +145,15 @@ function CoterieDetailPage() {
       )}
       {tab === 'periods' && (
         <PeriodsTab subID={subID} periods={periods} queries={contributionsQueries} isOwner={isOwner} />
+      )}
+      {tab === 'usage' && (
+        <UsageTab
+          subID={subID}
+          subscriptionQuery={subscriptionQuery}
+          usageQuery={usageQuery}
+          membersQuery={membersQuery}
+          isOwner={isOwner}
+        />
       )}
       {tab === 'requests' && isOwner && <RequestsTab coterieId={coterieId} query={requestsQuery} />}
     </div>
@@ -314,6 +338,226 @@ function RequestsTab({
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// UsageTab shows the metered consumption ledger (D9) for the coterie's
+// subscription — records are append-only, negative amounts are
+// corrections. The owner records usage and manages the D21 per-member
+// per-period cap stored in the subscription's sharing policy.
+function UsageTab({
+  subID,
+  subscriptionQuery,
+  usageQuery,
+  membersQuery,
+  isOwner,
+}: {
+  subID?: string
+  subscriptionQuery: UseQueryResult<Subscription, Error>
+  usageQuery: UseQueryResult<ListResponse<UsageRecord>, Error>
+  membersQuery: UseQueryResult<ListResponse<Member>, Error>
+  isOwner: boolean
+}) {
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+  const [memberID, setMemberID] = useState('')
+  const [unit, setUnit] = useState('')
+  const [amount, setAmount] = useState('')
+  const [editingLimit, setEditingLimit] = useState(false)
+  const [limitUnit, setLimitUnit] = useState('')
+  const [limitPer, setLimitPer] = useState('')
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['usage', subID] })
+  }
+
+  const record = useMutation({
+    mutationFn: () =>
+      api<UsageRecord>(`/subscriptions/${subID}/usage-records`, {
+        method: 'POST',
+        body: JSON.stringify({ member_id: memberID, unit, amount }),
+      }),
+    onSuccess: () => {
+      setError('')
+      setAmount('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const saveLimit = useMutation({
+    mutationFn: (limit: UsageLimit | null) => {
+      const sub = subscriptionQuery.data
+      const policy: SharingPolicy = { ...(sub?.sharing_policy ?? {}) }
+      if (limit) {
+        policy.usage_limit = limit
+      } else {
+        delete policy.usage_limit
+      }
+      return api<Subscription>(`/subscriptions/${subID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sharing_policy: policy }),
+      })
+    },
+    onSuccess: () => {
+      setError('')
+      setEditingLimit(false)
+      void qc.invalidateQueries({ queryKey: ['subscription', subID] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  if (subscriptionQuery.isLoading) return <p className="text-slate-500">加载中…</p>
+  if (subscriptionQuery.error)
+    return <p className="text-red-600">加载失败：{subscriptionQuery.error.message}</p>
+
+  const limit = subscriptionQuery.data?.sharing_policy?.usage_limit
+  const members = membersQuery.data?.items ?? []
+  // member_id on a record is the member row id; map it to the user id
+  // the member table displays.
+  const nameOf = new Map(members.map((m) => [m.id, m.user_id.slice(0, 8) + '…']))
+  const records = usageQuery.data?.items ?? []
+
+  return (
+    <div>
+      <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-slate-700">
+            {limit ? (
+              <>
+                每成员每期用量上限 <span className="font-medium">{limit.per_period}</span>{' '}
+                {limit.unit}
+                <span className="ml-1 text-xs text-slate-400">（超出记录返回 409）</span>
+              </>
+            ) : (
+              <span className="text-slate-500">未设用量上限。</span>
+            )}
+          </p>
+          {isOwner && !editingLimit && (
+            <button
+              onClick={() => {
+                setLimitUnit(limit?.unit ?? '')
+                setLimitPer(limit?.per_period ?? '')
+                setEditingLimit(true)
+              }}
+              className="text-sm text-emerald-700 hover:underline"
+            >
+              {limit ? '修改' : '设置上限'}
+            </button>
+          )}
+        </div>
+        {isOwner && editingLimit && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
+              placeholder="单位，如 credits"
+              value={limitUnit}
+              onChange={(e) => setLimitUnit(e.target.value)}
+            />
+            <input
+              className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
+              placeholder="每期上限"
+              value={limitPer}
+              onChange={(e) => setLimitPer(e.target.value)}
+            />
+            <button
+              onClick={() => {
+                if (!limitUnit.trim() || !limitPer.trim()) {
+                  setError('单位与上限均必填')
+                  return
+                }
+                saveLimit.mutate({ unit: limitUnit.trim(), per_period: limitPer.trim() })
+              }}
+              disabled={saveLimit.isPending}
+              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+            >
+              保存
+            </button>
+            <button
+              onClick={() => saveLimit.mutate(null)}
+              disabled={saveLimit.isPending}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              清除上限
+            </button>
+            <button
+              onClick={() => setEditingLimit(false)}
+              className="text-sm text-slate-500 hover:underline"
+            >
+              取消
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isOwner && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <select
+            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+            value={memberID}
+            onChange={(e) => setMemberID(e.target.value)}
+          >
+            <option value="">选择成员</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.user_id.slice(0, 8)}…（{m.role}）
+              </option>
+            ))}
+          </select>
+          <input
+            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            placeholder="单位，如 GB"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+          />
+          <input
+            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            placeholder="用量，负数为修正"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <button
+            onClick={() => record.mutate()}
+            disabled={record.isPending || !memberID || !unit.trim() || !amount.trim()}
+            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {record.isPending ? '记账中…' : '记账'}
+          </button>
+        </div>
+      )}
+      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+
+      {usageQuery.isLoading ? (
+        <p className="text-slate-500">加载中…</p>
+      ) : records.length === 0 ? (
+        <p className="text-slate-500">暂无用量记录。</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-slate-500">
+              <th className="py-2 font-medium">成员</th>
+              <th className="py-2 font-medium">用量</th>
+              <th className="py-2 font-medium">单位</th>
+              <th className="py-2 font-medium">记账时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => (
+              <tr key={r.id} className="border-b border-slate-100">
+                <td className="py-2 font-mono text-xs text-slate-700">
+                  {nameOf.get(r.member_id) ?? r.member_id.slice(0, 8) + '…'}
+                </td>
+                <td className={`py-2 font-medium ${r.amount.startsWith('-') ? 'text-red-600' : ''}`}>
+                  {r.amount}
+                </td>
+                <td className="py-2 text-slate-600">{r.unit}</td>
+                <td className="py-2 text-slate-500">{new Date(r.recorded_at).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
