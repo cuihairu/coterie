@@ -192,6 +192,27 @@ export interface Notification {
   created_at: string
 }
 
+export interface DirectoryEntry {
+  coterie_id: string
+  name: string
+  status: string
+  product_name: string
+  provider_name: string
+  price: string
+  currency: string
+  member_count: number
+  seats_total: number
+  seats_free: number
+  full: boolean
+  share_estimate: string
+  owner?: {
+    user_id: string
+    username: string
+    contributions: { paid: number; pending: number; waived: number; cancelled: number }
+    payment_ratio?: string
+  }
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }

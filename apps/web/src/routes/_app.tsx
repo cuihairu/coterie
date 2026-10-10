@@ -42,6 +42,9 @@ function AppLayout() {
             Coterie
           </Link>
           <div className="flex items-center gap-4 text-sm">
+            <Link to="/marketplace" className="text-slate-600 hover:text-slate-900">
+              广场
+            </Link>
             <Link to="/notifications" className="relative text-slate-600 hover:text-slate-900" title="通知">
               通知
               {unread > 0 && (
