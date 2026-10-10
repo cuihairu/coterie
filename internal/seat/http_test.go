@@ -197,6 +197,18 @@ func TestSeatUpdateAndDisable(t *testing.T) {
 		t.Fatalf("metadata not echoed: %v", body)
 	}
 
+	// Whitespace-only labels are rejected; padded labels are trimmed.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/seats/"+seatAID, `{"label":"   "}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("blank label status = %d, want 422: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/seats/"+seatAID, `{"label":"  Quota A  "}`, tok)
+	if code != http.StatusOK || body["label"] != "Quota A" {
+		t.Fatalf("trim status = %d body = %v", code, body)
+	}
+
 	// status occupied via PATCH → 422 (must use /assign).
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
 		srv.URL+"/api/v1/seats/"+seatAID, `{"status":"occupied"}`, tok)

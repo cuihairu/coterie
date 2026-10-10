@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -250,8 +251,15 @@ func (s *Service) Update(ctx context.Context, actor *user.User, seatID string, r
 	}
 
 	var details []api.Detail
-	if req.Label != nil && *req.Label == "" {
-		details = append(details, api.Detail{Field: "label", Message: "must not be empty"})
+	if req.Label != nil {
+		// Labels are display names: trim and store the trimmed value so
+		// whitespace-only or padded labels never land.
+		label := strings.TrimSpace(*req.Label)
+		if label == "" {
+			details = append(details, api.Detail{Field: "label", Message: "must not be empty"})
+		} else {
+			req.Label = &label
+		}
 	}
 	if req.Metadata != nil && !json.Valid(req.Metadata) {
 		details = append(details, api.Detail{Field: "metadata", Message: "must be valid JSON"})
