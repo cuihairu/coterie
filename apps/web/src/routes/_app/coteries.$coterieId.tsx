@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { api, getUser } from '../../lib/api'
 import type {
   AuditLog,
@@ -846,8 +846,11 @@ function MembersTab({
   isOwner: boolean
 }) {
   const qc = useQueryClient()
+  const router = useRouter()
   const [inviteToken, setInviteToken] = useState('')
   const [error, setError] = useState('')
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
 
   const invite = useMutation({
     mutationFn: () =>
@@ -863,9 +866,34 @@ function MembersTab({
     onError: (err) => setError(err.message),
   })
 
+  const remove = useMutation({
+    mutationFn: (memberID: string) => api<void>(`/members/${memberID}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setError('')
+      setConfirming(null)
+      void qc.invalidateQueries({ queryKey: ['members', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['coterie', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['seats'] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const leave = useMutation({
+    mutationFn: () => api<void>(`/coteries/${coterieId}/leave`, { method: 'POST' }),
+    onSuccess: () => {
+      // The circle is gone from this user's view; the list refetches
+      // fresh on arrival.
+      void qc.invalidateQueries({ queryKey: ['coteries'] })
+      router.navigate({ to: '/coteries' })
+    },
+    onError: (err) => setError(err.message),
+  })
+
   if (query.isLoading) return <p className="text-slate-500">加载中…</p>
   if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
   const items = query.data?.items ?? []
+  const me = getUser()
+  const myMember = me ? items.find((m) => m.user_id === me.id) : undefined
 
   return (
     <div>
@@ -895,6 +923,36 @@ function MembersTab({
           <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
         </div>
       )}
+      {!isOwner && (
+        <div className="mb-4 flex items-center gap-2">
+          {leaving ? (
+            <>
+              <span className="text-sm text-slate-600">退出后席位将释放，确认退出？</span>
+              <button
+                onClick={() => leave.mutate()}
+                disabled={leave.isPending}
+                className="rounded-lg bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+              >
+                确认退出
+              </button>
+              <button
+                onClick={() => setLeaving(false)}
+                className="text-sm text-slate-500 hover:underline"
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setLeaving(true)}
+              className="rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
+            >
+              退出共享圈
+            </button>
+          )}
+          {!isOwner && error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      )}
       {items.length === 0 ? (
         <p className="text-slate-500">暂无成员。</p>
       ) : (
@@ -904,19 +962,56 @@ function MembersTab({
               <th className="py-2 font-medium">用户</th>
               <th className="py-2 font-medium">角色</th>
               <th className="py-2 font-medium">加入时间</th>
+              {isOwner && <th className="py-2 font-medium" />}
             </tr>
           </thead>
           <tbody>
             {items.map((m) => (
               <tr key={m.id} className="border-b border-slate-100">
-                <td className="py-2 font-mono text-xs text-slate-700">{m.user_id.slice(0, 8)}…</td>
+                <td className="py-2 font-mono text-xs text-slate-700">
+                  {m.user_id.slice(0, 8)}
+                  {me && m.user_id === me.id && (
+                    <span className="ml-1 text-slate-400">（我）</span>
+                  )}
+                </td>
                 <td className="py-2">{m.role}</td>
                 <td className="py-2 text-slate-500">{new Date(m.joined_at).toLocaleDateString()}</td>
+                {isOwner && (
+                  <td className="py-2 text-right">
+                    {m.role !== 'owner' &&
+                      (confirming === m.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-xs text-slate-600">确认移除？</span>
+                          <button
+                            onClick={() => remove.mutate(m.id)}
+                            disabled={remove.isPending}
+                            className="text-xs text-rose-700 hover:underline disabled:opacity-50"
+                          >
+                            移除
+                          </button>
+                          <button
+                            onClick={() => setConfirming(null)}
+                            className="text-xs text-slate-500 hover:underline"
+                          >
+                            取消
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirming(m.id)}
+                          className="text-xs text-rose-700 hover:underline"
+                        >
+                          移除
+                        </button>
+                      ))}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {myMember && <p className="mt-2 text-xs text-slate-400">成员 {items.length} 人。</p>}
     </div>
   )
 }
