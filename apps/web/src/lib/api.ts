@@ -243,6 +243,15 @@ export interface JoinRequest {
   created_at: string
 }
 
+// MyJoinRequest is the caller's own request, joined with the target
+// circle's name — the marketplace cards restore their submitted state.
+export interface MyJoinRequest {
+  id: string
+  coterie_id: string
+  status: string
+  created_at: string
+}
+
 export interface DirectoryEntry {
   coterie_id: string
   name: string
@@ -262,6 +271,80 @@ export interface DirectoryEntry {
     contributions: { paid: number; pending: number; waived: number; cancelled: number }
     payment_ratio?: string
   }
+}
+
+// AuditLog is one append-only audit entry (D17): what changed, who
+// changed it, and the before/after snapshot of the touched fields.
+export interface AuditLog {
+  id: number
+  actor_id?: string
+  action: string
+  entity_type: string
+  entity_id: string
+  subscription_id?: string
+  coterie_id?: string
+  before?: Record<string, unknown>
+  after?: Record<string, unknown>
+  created_at: string
+}
+
+export const AUDIT_ACTIONS = [
+  'coterie_created',
+  'coterie_updated',
+  'member_removed',
+  'member_left',
+  'seat_assigned',
+  'seat_released',
+  'seat_updated',
+  'subscription_updated',
+  'contribution_updated',
+  'payment_recorded',
+  'period_closed',
+  'report_decided',
+] as const
+
+// Report is one user's flag on a publicly listed coterie; the admin
+// view joins coterie/reporter identities for triage.
+export interface Report {
+  id: string
+  coterie_id: string
+  reporter_id: string
+  reason: string
+  status: string
+  resolution_note?: string
+  decided_at?: string
+  created_at: string
+  coterie_name?: string
+  coterie_listing?: string
+  reporter_username?: string
+  reporter_email?: string
+}
+
+// BlockEntry is one owner block (D26): the barred user with display
+// identity. Blocking gates admission paths only — it never touches
+// existing membership.
+export interface BlockEntry {
+  coterie_id: string
+  user_id: string
+  username: string
+  email: string
+  created_at: string
+}
+
+// PaymentRecord is one settled payment against a contribution (D25):
+// method, status, and the optional external reference.
+export interface PaymentRecord {
+  id: string
+  contribution_id: string
+  subscription_id: string
+  payer_user_id: string
+  amount: string
+  currency: string
+  method: string
+  status: string
+  external_ref?: string
+  paid_at?: string
+  created_at: string
 }
 
 export interface ListResponse<T> {

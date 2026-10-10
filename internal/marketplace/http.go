@@ -28,6 +28,7 @@ func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware
 	mux.Handle("POST /api/v1/join-requests/{id}/decline", requireUser(http.HandlerFunc(h.decline)))
 	mux.Handle("DELETE /api/v1/join-requests/{id}", requireUser(http.HandlerFunc(h.cancel)))
 	mux.Handle("POST /api/v1/join-requests/{id}/payments", requireUser(http.HandlerFunc(h.payAdmission)))
+	mux.Handle("GET /api/v1/me/join-requests", requireUser(http.HandlerFunc(h.listMy)))
 	// The gate's channel confirmations are public; the adapter's
 	// signature check is the only gate (design D25).
 	mux.HandleFunc("POST /api/v1/marketplace/webhooks/{method}", h.webhook)
@@ -122,6 +123,27 @@ func (h *Handler) listRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	page := api.ParsePage(r)
 	views, total, err := h.svc.ListJoinRequests(r.Context(), u, r.PathValue("coterieID"), r.URL.Query().Get("status"), page)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, api.NewList(views, api.Meta{
+		Total:  total,
+		Limit:  page.Limit,
+		Offset: page.Offset,
+	}))
+}
+
+// listMy serves the applicant's own requests — the marketplace cards
+// restore their submitted state instead of re-posting after a reload.
+func (h *Handler) listMy(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	page := api.ParsePage(r)
+	views, total, err := h.svc.ListMyJoinRequests(r.Context(), u, page)
 	if err != nil {
 		api.WriteError(w, err)
 		return

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppAdminIndexRouteImport } from './routes/_app/admin.index'
 import { Route as AppCoteriesIndexRouteImport } from './routes/_app/coteries.index'
 import { Route as AppCoteriesCoterieIdRouteImport } from './routes/_app/coteries.$coterieId'
 import { Route as AppCoteriesNewRouteImport } from './routes/_app/coteries.new'
@@ -31,6 +32,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAdminIndexRoute = AppAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCoteriesIndexRoute = AppCoteriesIndexRouteImport.update({
   id: '/coteries/',
@@ -63,6 +69,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/coteries/new': typeof AppCoteriesNewRoute
+  '/admin/': typeof AppAdminIndexRoute
   '/coteries/': typeof AppCoteriesIndexRoute
   '/marketplace/': typeof AppMarketplaceIndexRoute
   '/notifications/': typeof AppNotificationsIndexRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/coteries/new': typeof AppCoteriesNewRoute
+  '/admin': typeof AppAdminIndexRoute
   '/coteries': typeof AppCoteriesIndexRoute
   '/marketplace': typeof AppMarketplaceIndexRoute
   '/notifications': typeof AppNotificationsIndexRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
   '/_app/coteries/new': typeof AppCoteriesNewRoute
+  '/_app/admin/': typeof AppAdminIndexRoute
   '/_app/coteries/': typeof AppCoteriesIndexRoute
   '/_app/marketplace/': typeof AppMarketplaceIndexRoute
   '/_app/notifications/': typeof AppNotificationsIndexRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/coteries/$coterieId'
     | '/coteries/new'
+    | '/admin/'
     | '/coteries/'
     | '/marketplace/'
     | '/notifications/'
@@ -103,6 +113,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/coteries/$coterieId'
     | '/coteries/new'
+    | '/admin'
     | '/coteries'
     | '/marketplace'
     | '/notifications'
@@ -113,6 +124,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/coteries/$coterieId'
     | '/_app/coteries/new'
+    | '/_app/admin/'
     | '/_app/coteries/'
     | '/_app/marketplace/'
     | '/_app/notifications/'
@@ -146,6 +158,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/admin/': {
+      id: '/_app/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AppAdminIndexRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/coteries/': {
       id: '/_app/coteries/'
@@ -188,6 +207,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppCoteriesCoterieIdRoute: typeof AppCoteriesCoterieIdRoute
   AppCoteriesNewRoute: typeof AppCoteriesNewRoute
+  AppAdminIndexRoute: typeof AppAdminIndexRoute
   AppCoteriesIndexRoute: typeof AppCoteriesIndexRoute
   AppMarketplaceIndexRoute: typeof AppMarketplaceIndexRoute
   AppNotificationsIndexRoute: typeof AppNotificationsIndexRoute
@@ -196,6 +216,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppCoteriesCoterieIdRoute: AppCoteriesCoterieIdRoute,
   AppCoteriesNewRoute: AppCoteriesNewRoute,
+  AppAdminIndexRoute: AppAdminIndexRoute,
   AppCoteriesIndexRoute: AppCoteriesIndexRoute,
   AppMarketplaceIndexRoute: AppMarketplaceIndexRoute,
   AppNotificationsIndexRoute: AppNotificationsIndexRoute,

@@ -95,6 +95,22 @@ func inbox(t *testing.T, client *http.Client, base, tok, coterieID, status strin
 	return out
 }
 
+// listMine returns the caller's own join requests.
+func listMine(t *testing.T, client *http.Client, base, tok string) []map[string]any {
+	t.Helper()
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/me/join-requests", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list my join requests: status = %d: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.(map[string]any))
+	}
+	return out
+}
+
 // decide posts accept/decline on a join request.
 func decide(t *testing.T, client *http.Client, base, tok, action, requestID string) (int, map[string]any) {
 	t.Helper()
@@ -412,6 +428,64 @@ func TestJoinRequestCancel(t *testing.T) {
 		base+"/api/v1/join-requests/00000000-0000-0000-0000-000000000000", "", reqToken)
 	if code != http.StatusNotFound {
 		t.Fatalf("unknown cancel: status = %d: %v", code, body)
+	}
+}
+
+// TestListMyJoinRequests covers the applicant's view of their own
+// requests: scoped to the caller, carrying the target circle's name,
+// and reflecting the owner's decision.
+func TestListMyJoinRequests(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, _, _, coterieA, _ := testsupport.SeedCircle(t, client, base, "jr-mine-a", "10.00", 3, 2, 0)
+	publish(t, client, base, tok, coterieA, "public")
+	tok2, _, _, coterieB, _ := testsupport.SeedCircle(t, client, base, "jr-mine-b", "20.00", 3, 2, 0)
+	publish(t, client, base, tok2, coterieB, "public")
+
+	mineToken, _ := testsupport.RegisterAndLogin(t, client, base, "jr-mine")
+	otherToken, _ := testsupport.RegisterAndLogin(t, client, base, "jr-mine-other")
+
+	if code, body := createRequest(t, client, base, mineToken, coterieA, `{}`); code != http.StatusCreated {
+		t.Fatalf("create A: status = %d: %v", code, body)
+	}
+	code, body := createRequest(t, client, base, mineToken, coterieB, `{}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create B: status = %d: %v", code, body)
+	}
+	requestID, _ := body["id"].(string)
+	if code, body := createRequest(t, client, base, otherToken, coterieA, `{}`); code != http.StatusCreated {
+		t.Fatalf("other create: status = %d: %v", code, body)
+	}
+
+	if code, _ := testsupport.DoJSON(t, client, http.MethodGet, base+"/api/v1/me/join-requests", ""); code != http.StatusUnauthorized {
+		t.Fatalf("anonymous list: code = %d", code)
+	}
+
+	views := listMine(t, client, base, mineToken)
+	if len(views) != 2 {
+		t.Fatalf("own list = %d views: %v", len(views), views)
+	}
+	if views[0]["coterie_id"] != coterieB {
+		t.Fatalf("newest-first order = %v", views[0])
+	}
+	byCoterie := map[string]string{}
+	for _, v := range views {
+		byCoterie[v["coterie_id"].(string)] = v["coterie_name"].(string)
+	}
+	if byCoterie[coterieA] == "" || byCoterie[coterieB] == "" {
+		t.Fatalf("own list names = %v", byCoterie)
+	}
+	if views := listMine(t, client, base, otherToken); len(views) != 1 {
+		t.Fatalf("other list = %d views: %v", len(views), views)
+	}
+
+	if code, body := decide(t, client, base, tok2, "decline", requestID); code != http.StatusOK {
+		t.Fatalf("decline: status = %d: %v", code, body)
+	}
+	for _, v := range listMine(t, client, base, mineToken) {
+		if v["coterie_id"] == coterieB && v["status"] != "declined" {
+			t.Fatalf("own list after decline = %v", v)
+		}
 	}
 }
 

@@ -45,6 +45,11 @@ function AppLayout() {
             <Link to="/marketplace" className="text-slate-600 hover:text-slate-900">
               广场
             </Link>
+            {user?.role === 'admin' && (
+              <Link to="/admin" className="text-slate-600 hover:text-slate-900">
+                举报处置
+              </Link>
+            )}
             <Link to="/notifications" className="relative text-slate-600 hover:text-slate-900" title="通知">
               通知
               {unread > 0 && (

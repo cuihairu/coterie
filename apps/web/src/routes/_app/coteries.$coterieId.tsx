@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { api, getUser } from '../../lib/api'
 import type {
+  AuditLog,
   BillingPeriod,
+  BlockEntry,
   Contribution,
   Coterie,
   Dispute,
@@ -12,18 +14,21 @@ import type {
   JoinRequest,
   ListResponse,
   Member,
+  PaymentRecord,
+  Report,
   Seat,
   SharingPolicy,
   Subscription,
   UsageLimit,
   UsageRecord,
 } from '../../lib/api'
+import { AUDIT_ACTIONS } from '../../lib/api'
 
 export const Route = createFileRoute('/_app/coteries/$coterieId')({
   component: CoterieDetailPage,
 })
 
-type Tab = 'members' | 'seats' | 'periods' | 'usage' | 'disputes' | 'requests'
+type Tab = 'members' | 'seats' | 'periods' | 'usage' | 'disputes' | 'audit' | 'requests'
 
 // Mirrors the server lifecycle (internal/coterie/service.go transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -105,6 +110,7 @@ function CoterieDetailPage() {
     { key: 'periods', label: '账期' },
     { key: 'usage', label: '用量' },
     ...(isOwner ? [{ key: 'disputes' as Tab, label: '争议' }] : []),
+    ...(isOwner ? [{ key: 'audit' as Tab, label: '审计' }] : []),
     ...(isOwner ? [{ key: 'requests' as Tab, label: '申请' }] : []),
   ]
 
@@ -122,6 +128,7 @@ function CoterieDetailPage() {
       </div>
 
       {isOwner && <LifecycleBar coterie={coterie} />}
+      {!isOwner && coterie.listing === 'public' && <ReportBar coterieId={coterieId} />}
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">
         {tabs.map((t) => (
@@ -164,7 +171,69 @@ function CoterieDetailPage() {
         />
       )}
       {tab === 'disputes' && isOwner && <DisputesTab subID={subID} membersQuery={membersQuery} />}
+      {tab === 'audit' && isOwner && <AuditTab coterieId={coterieId} />}
       {tab === 'requests' && isOwner && <RequestsTab coterieId={coterieId} query={requestsQuery} />}
+    </div>
+  )
+}
+
+// ReportBar is the non-owner flag surface (FR-15): anyone logged in
+// can flag a publicly listed circle; one open report per user.
+function ReportBar({ coterieId }: { coterieId: string }) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
+
+  const report = useMutation({
+    mutationFn: () =>
+      api<Report>(`/coteries/${coterieId}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      setDone(true)
+      setOpen(false)
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  if (done) {
+    return <p className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-500">已提交举报，平台管理员会处置。</p>
+  }
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+      {open ? (
+        <span className="inline-flex items-center gap-1">
+          <input
+            className="w-64 rounded border border-slate-300 px-2 py-1 text-xs"
+            placeholder="举报原因（必填）"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <button
+            onClick={() => report.mutate()}
+            disabled={report.isPending || !reason.trim()}
+            className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+          >
+            {report.isPending ? '提交中…' : '提交举报'}
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            className="text-xs text-slate-500 hover:underline"
+          >
+            取消
+          </button>
+          {error && <span className="text-xs text-red-600">{error}</span>}
+        </span>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="text-xs text-slate-500 hover:underline"
+        >
+          举报此圈
+        </button>
+      )}
     </div>
   )
 }
@@ -229,6 +298,7 @@ function RequestsTab({
   const [error, setError] = useState('')
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  const [blocking, setBlocking] = useState<string | null>(null)
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['join-requests', coterieId] })
@@ -244,6 +314,35 @@ function RequestsTab({
     onSuccess: () => {
       setError('')
       refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  // D26 blocklist: bars a user from the admission paths. It never
+  // removes membership, so it is offered on non-accepted rows only.
+  const blocksQuery = useQuery({
+    queryKey: ['blocks', coterieId],
+    queryFn: () => api<ListResponse<BlockEntry>>(`/coteries/${coterieId}/blocks`),
+  })
+  const blockedUsers = new Set((blocksQuery.data?.items ?? []).map((b) => b.user_id))
+
+  const block = useMutation({
+    mutationFn: (userID: string) =>
+      api<unknown>(`/coteries/${coterieId}/blocks/${userID}`, { method: 'PUT' }),
+    onSuccess: () => {
+      setError('')
+      setBlocking(null)
+      void qc.invalidateQueries({ queryKey: ['blocks', coterieId] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const unblock = useMutation({
+    mutationFn: (userID: string) =>
+      api<void>(`/coteries/${coterieId}/blocks/${userID}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setError('')
+      void qc.invalidateQueries({ queryKey: ['blocks', coterieId] })
     },
     onError: (err) => setError(err.message),
   })
@@ -266,12 +365,12 @@ function RequestsTab({
   if (query.isLoading) return <p className="text-slate-500">加载中…</p>
   if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
   const items = query.data?.items ?? []
-
-  if (items.length === 0) return <p className="text-slate-500">暂无加入申请。</p>
+  const blocks = blocksQuery.data?.items ?? []
 
   return (
     <div className="space-y-2">
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {items.length === 0 && <p className="text-slate-500">暂无加入申请。</p>}
       {items.map((r) => (
         <div key={r.id} className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
@@ -281,6 +380,11 @@ function RequestsTab({
                 <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                   {r.status}
                 </span>
+                {blockedUsers.has(r.user_id) && (
+                  <span className="ml-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-600">
+                    已封禁
+                  </span>
+                )}
               </p>
               {r.message && <p className="mt-1 text-sm text-slate-500">{r.message}</p>}
               <p className="mt-1 text-xs text-slate-400">
@@ -306,6 +410,33 @@ function RequestsTab({
                   </button>
                 </>
               )}
+              {r.status !== 'accepted' &&
+                (blocking === r.user_id ? (
+                  <>
+                    <button
+                      onClick={() => block.mutate(r.user_id)}
+                      disabled={block.isPending}
+                      className="text-xs text-rose-600 hover:underline disabled:opacity-50"
+                    >
+                      确认拉黑
+                    </button>
+                    <button
+                      onClick={() => setBlocking(null)}
+                      className="text-xs text-slate-500 hover:underline"
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  !blockedUsers.has(r.user_id) && (
+                    <button
+                      onClick={() => setBlocking(r.user_id)}
+                      className="text-xs text-rose-600 hover:underline"
+                    >
+                      拉黑
+                    </button>
+                  )
+                ))}
               {r.status === 'awaiting_payment' &&
                 (paying === r.id ? (
                   <span className="inline-flex items-center gap-1">
@@ -347,6 +478,30 @@ function RequestsTab({
           </div>
         </div>
       ))}
+
+      <h3 className="pt-2 text-sm font-medium text-slate-900">封禁名单</h3>
+      {blocks.length === 0 ? (
+        <p className="text-sm text-slate-400">暂无封禁用户。</p>
+      ) : (
+        blocks.map((b) => (
+          <div
+            key={b.user_id}
+            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3"
+          >
+            <p className="text-sm text-slate-700">
+              {b.username}
+              <span className="ml-2 text-xs text-slate-400">{b.email}</span>
+            </p>
+            <button
+              onClick={() => unblock.mutate(b.user_id)}
+              disabled={unblock.isPending}
+              className="text-xs text-slate-600 hover:underline disabled:opacity-50"
+            >
+              解封
+            </button>
+          </div>
+        ))
+      )}
     </div>
   )
 }
@@ -714,6 +869,124 @@ function DisputesTab({
   )
 }
 
+// Mirrors internal/audit/model.go actions for display.
+const AUDIT_LABEL: Record<string, string> = {
+  coterie_created: '建圈',
+  coterie_updated: '圈更新',
+  member_removed: '移除成员',
+  member_left: '成员退出',
+  seat_assigned: '席位分配',
+  seat_released: '席位释放',
+  seat_updated: '席位更新',
+  subscription_updated: '订阅更新',
+  contribution_updated: '分摊调整',
+  payment_recorded: '收款登记',
+  period_closed: '账期关闭',
+  report_decided: '举报裁定',
+}
+
+const AUDIT_PAGE = 20
+
+// AuditTab is the owner's read-only audit ledger (D17): every money
+// and membership change lands here in the same transaction that made
+// it. Filter by action, page through, inspect before/after snapshots.
+function AuditTab({ coterieId }: { coterieId: string }) {
+  const [action, setAction] = useState('')
+  const [offset, setOffset] = useState(0)
+
+  const query = useQuery({
+    queryKey: ['audit', coterieId, action, offset],
+    queryFn: () => {
+      const p = new URLSearchParams({ limit: String(AUDIT_PAGE), offset: String(offset) })
+      if (action) p.set('action', action)
+      return api<ListResponse<AuditLog>>(`/coteries/${coterieId}/audit-logs?${p}`)
+    },
+  })
+
+  if (query.isLoading) return <p className="text-slate-500">加载中…</p>
+  if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
+
+  const items = query.data?.items ?? []
+  const meta = query.data?.meta
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2">
+        <select
+          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+          value={action}
+          onChange={(e) => {
+            setAction(e.target.value)
+            setOffset(0)
+          }}
+        >
+          <option value="">全部动作</option>
+          {AUDIT_ACTIONS.map((a) => (
+            <option key={a} value={a}>
+              {AUDIT_LABEL[a] ?? a}
+            </option>
+          ))}
+        </select>
+        {meta && (
+          <span className="text-xs text-slate-400">
+            共 {meta.total} 条 · 第 {Math.floor(offset / AUDIT_PAGE) + 1} 页
+          </span>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <p className="text-slate-500">暂无审计记录。</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((l) => (
+            <div key={l.id} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                    {AUDIT_LABEL[l.action] ?? l.action}
+                  </span>
+                  <span className="ml-2 text-xs text-slate-500">
+                    操作人 {(l.actor_id ?? 'system').slice(0, 8)}…
+                    <span className="ml-1 text-slate-400">
+                      {l.entity_type} {l.entity_id.slice(0, 8)}…
+                    </span>
+                  </span>
+                </p>
+                <span className="shrink-0 text-xs text-slate-400">
+                  {new Date(l.created_at).toLocaleString()}
+                </span>
+              </div>
+              {(l.before || l.after) && (
+                <p className="mt-1 break-all font-mono text-xs text-slate-500">
+                  {l.before && <span>− {JSON.stringify(l.before)} </span>}
+                  {l.after && <span>+ {JSON.stringify(l.after)}</span>}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {meta && meta.total > AUDIT_PAGE && (
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE))}
+            disabled={offset === 0}
+            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            上一页
+          </button>
+          <button
+            onClick={() => setOffset(offset + AUDIT_PAGE)}
+            disabled={offset + AUDIT_PAGE >= meta.total}
+            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            下一页
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MembersTab({
   coterieId,
   query,
@@ -724,8 +997,11 @@ function MembersTab({
   isOwner: boolean
 }) {
   const qc = useQueryClient()
+  const router = useRouter()
   const [inviteToken, setInviteToken] = useState('')
   const [error, setError] = useState('')
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
 
   const invite = useMutation({
     mutationFn: () =>
@@ -741,9 +1017,34 @@ function MembersTab({
     onError: (err) => setError(err.message),
   })
 
+  const remove = useMutation({
+    mutationFn: (memberID: string) => api<void>(`/members/${memberID}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setError('')
+      setConfirming(null)
+      void qc.invalidateQueries({ queryKey: ['members', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['coterie', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['seats'] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const leave = useMutation({
+    mutationFn: () => api<void>(`/coteries/${coterieId}/leave`, { method: 'POST' }),
+    onSuccess: () => {
+      // The circle is gone from this user's view; the list refetches
+      // fresh on arrival.
+      void qc.invalidateQueries({ queryKey: ['coteries'] })
+      router.navigate({ to: '/coteries' })
+    },
+    onError: (err) => setError(err.message),
+  })
+
   if (query.isLoading) return <p className="text-slate-500">加载中…</p>
   if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
   const items = query.data?.items ?? []
+  const me = getUser()
+  const myMember = me ? items.find((m) => m.user_id === me.id) : undefined
 
   return (
     <div>
@@ -773,6 +1074,36 @@ function MembersTab({
           <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
         </div>
       )}
+      {!isOwner && (
+        <div className="mb-4 flex items-center gap-2">
+          {leaving ? (
+            <>
+              <span className="text-sm text-slate-600">退出后席位将释放，确认退出？</span>
+              <button
+                onClick={() => leave.mutate()}
+                disabled={leave.isPending}
+                className="rounded-lg bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+              >
+                确认退出
+              </button>
+              <button
+                onClick={() => setLeaving(false)}
+                className="text-sm text-slate-500 hover:underline"
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setLeaving(true)}
+              className="rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
+            >
+              退出共享圈
+            </button>
+          )}
+          {!isOwner && error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      )}
       {items.length === 0 ? (
         <p className="text-slate-500">暂无成员。</p>
       ) : (
@@ -782,19 +1113,56 @@ function MembersTab({
               <th className="py-2 font-medium">用户</th>
               <th className="py-2 font-medium">角色</th>
               <th className="py-2 font-medium">加入时间</th>
+              {isOwner && <th className="py-2 font-medium" />}
             </tr>
           </thead>
           <tbody>
             {items.map((m) => (
               <tr key={m.id} className="border-b border-slate-100">
-                <td className="py-2 font-mono text-xs text-slate-700">{m.user_id.slice(0, 8)}…</td>
+                <td className="py-2 font-mono text-xs text-slate-700">
+                  {m.user_id.slice(0, 8)}
+                  {me && m.user_id === me.id && (
+                    <span className="ml-1 text-slate-400">（我）</span>
+                  )}
+                </td>
                 <td className="py-2">{m.role}</td>
                 <td className="py-2 text-slate-500">{new Date(m.joined_at).toLocaleDateString()}</td>
+                {isOwner && (
+                  <td className="py-2 text-right">
+                    {m.role !== 'owner' &&
+                      (confirming === m.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-xs text-slate-600">确认移除？</span>
+                          <button
+                            onClick={() => remove.mutate(m.id)}
+                            disabled={remove.isPending}
+                            className="text-xs text-rose-700 hover:underline disabled:opacity-50"
+                          >
+                            移除
+                          </button>
+                          <button
+                            onClick={() => setConfirming(null)}
+                            className="text-xs text-slate-500 hover:underline"
+                          >
+                            取消
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirming(m.id)}
+                          className="text-xs text-rose-700 hover:underline"
+                        >
+                          移除
+                        </button>
+                      ))}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {myMember && <p className="mt-2 text-xs text-slate-400">成员 {items.length} 人。</p>}
     </div>
   )
 }
@@ -963,6 +1331,10 @@ function PeriodsTab({
   })
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  const [adjusting, setAdjusting] = useState<string | null>(null)
+  const [adjAmount, setAdjAmount] = useState('')
+  const [adjStatus, setAdjStatus] = useState('pending')
+  const [payHistory, setPayHistory] = useState<string | null>(null)
   const [disputing, setDisputing] = useState<string | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeEvidence, setDisputeEvidence] = useState('')
@@ -1047,6 +1419,32 @@ function PeriodsTab({
     onError: (err) => setError(err.message),
   })
 
+  // adjust is the owner's manual settlement patch (PATCH
+  // /contributions/{id}): re-amount a pending share or flip its
+  // status; both land in the audit ledger as contribution_updated.
+  const adjust = useMutation({
+    mutationFn: (contributionID: string) =>
+      api<Contribution>(`/contributions/${contributionID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ amount: adjAmount, status: adjStatus }),
+      }),
+    onSuccess: () => {
+      setError('')
+      setAdjusting(null)
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+  const adjAmountValid = /^\d+(\.\d{1,2})?$/.test(adjAmount.trim())
+
+  // Payment history for one contribution (D25): the records behind a
+  // settled row, incl. manual entries with their external reference.
+  const paymentsQuery = useQuery({
+    queryKey: ['payments', payHistory],
+    queryFn: () => api<ListResponse<PaymentRecord>>(`/contributions/${payHistory}/payments`),
+    enabled: !!payHistory,
+  })
+
   return (
     <div>
       {isOwner && (
@@ -1118,7 +1516,8 @@ function PeriodsTab({
                       {rows.map((c) => {
                         const mine = userIDOf.get(c.member_id) === myUserID
                         return (
-                        <tr key={c.id} className="border-t border-slate-100">
+                        <Fragment key={c.id}>
+                        <tr className="border-t border-slate-100">
                           <td className="py-1.5 font-mono text-xs text-slate-700">
                             {c.member_id.slice(0, 8)}…
                           </td>
@@ -1128,7 +1527,39 @@ function PeriodsTab({
                           <td className="py-1.5 text-right text-slate-500">{c.status}</td>
                           {isOwner && c.status === 'pending' && (
                             <td className="py-1.5 text-right">
-                              {paying === c.id ? (
+                              {adjusting === c.id ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <input
+                                    className="w-20 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                    placeholder="金额"
+                                    value={adjAmount}
+                                    onChange={(e) => setAdjAmount(e.target.value)}
+                                  />
+                                  <select
+                                    className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                    value={adjStatus}
+                                    onChange={(e) => setAdjStatus(e.target.value)}
+                                  >
+                                    <option value="pending">pending</option>
+                                    <option value="paid">paid</option>
+                                    <option value="waived">waived</option>
+                                    <option value="cancelled">cancelled</option>
+                                  </select>
+                                  <button
+                                    onClick={() => adjust.mutate(c.id)}
+                                    disabled={adjust.isPending || !adjAmountValid}
+                                    className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                                  >
+                                    确认
+                                  </button>
+                                  <button
+                                    onClick={() => setAdjusting(null)}
+                                    className="text-xs text-slate-500 hover:underline"
+                                  >
+                                    取消
+                                  </button>
+                                </span>
+                              ) : paying === c.id ? (
                                 <span className="inline-flex items-center gap-1">
                                   <input
                                     className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
@@ -1154,15 +1585,35 @@ function PeriodsTab({
                                   </button>
                                 </span>
                               ) : (
-                                <button
-                                  onClick={() => {
-                                    setPaying(c.id)
-                                    setPayRef('')
-                                  }}
-                                  className="text-xs text-emerald-700 hover:underline"
-                                >
-                                  登记收款
-                                </button>
+                                <span className="inline-flex items-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setPaying(c.id)
+                                      setPayRef('')
+                                    }}
+                                    className="text-xs text-emerald-700 hover:underline"
+                                  >
+                                    登记收款
+                                  </button>
+                                  {p.status === 'open' && (
+                                    <button
+                                      onClick={() => {
+                                        setAdjusting(c.id)
+                                        setAdjAmount(c.amount)
+                                        setAdjStatus(c.status)
+                                      }}
+                                      className="text-xs text-slate-600 hover:underline"
+                                    >
+                                      调整
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setPayHistory(payHistory === c.id ? null : c.id)}
+                                    className="text-xs text-slate-500 hover:underline"
+                                  >
+                                    收款记录
+                                  </button>
+                                </span>
                               )}
                             </td>
                           )}
@@ -1217,6 +1668,37 @@ function PeriodsTab({
                             </td>
                           )}
                         </tr>
+                        {payHistory === c.id && (
+                          <tr>
+                            <td colSpan={5} className="py-1.5">
+                              {paymentsQuery.isLoading ? (
+                                <p className="text-xs text-slate-400">加载中…</p>
+                              ) : (paymentsQuery.data?.items ?? []).length === 0 ? (
+                                <p className="text-xs text-slate-400">暂无收款记录。</p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    {(paymentsQuery.data?.items ?? []).map((pay) => (
+                                      <tr key={pay.id} className="border-t border-slate-100">
+                                        <td className="py-1 text-slate-700">{pay.method}</td>
+                                        <td className="py-1 text-slate-500">{pay.status}</td>
+                                        <td className="py-1 text-slate-500">
+                                          {pay.external_ref ?? '—'}
+                                        </td>
+                                        <td className="py-1 text-slate-500">
+                                          {pay.paid_at
+                                            ? new Date(pay.paid_at).toLocaleString()
+                                            : new Date(pay.created_at).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                         )
                       })}
                     </tbody>
