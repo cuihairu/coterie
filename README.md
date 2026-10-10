@@ -178,11 +178,12 @@ Seats / Quota / Cost
   controls — platform admin, reports, and coterie blocks (D26)
 - **Web client** (in progress): React + TypeScript SPA embedded in the
   Go binary — auth and session lifecycle, the create-circle wizard,
-  seats (assign, release, relabel, disable), billing write actions, the
-  join-request inbox with the payment gate, the owner blocklist, usage
-  metering, disputes, the marketplace directory with the owner's
-  listing toggle and request history, invitation history, subscription
-  settings, and the admin inbox with the platform audit ledger
+  seats (assign, release, relabel, disable), billing write actions with
+  all five split modes (D9), the join-request inbox with the payment
+  gate, the owner blocklist, usage metering, disputes, the marketplace
+  directory with the owner's listing toggle and request history,
+  invitation history, subscription settings, and the admin inbox with
+  the platform audit ledger
 
 ## Tech stack
 

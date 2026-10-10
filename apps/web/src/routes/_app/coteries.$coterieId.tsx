@@ -1652,6 +1652,14 @@ function PeriodsTab({
   })
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  // 拆分方式（D9）：均摊 / 按席位 / 按用量 / 按天数比例 / 手动指定。
+  const [genMode, setGenMode] = useState<'equal' | 'per_seat' | 'usage' | 'prorated' | 'fixed'>('equal')
+  const [fixedShares, setFixedShares] = useState<Record<string, string>>({})
+  const members = membersQuery.data?.items ?? []
+  // fixed 模式下留空的成员本期无分摊，至少给出一位成员即可生成。
+  const fixedReady = Object.values(fixedShares).some((amount) =>
+    /^\d+(\.\d{1,2})?$/.test(amount.trim()),
+  )
   const [adjusting, setAdjusting] = useState<string | null>(null)
   const [adjAmount, setAdjAmount] = useState('')
   const [adjStatus, setAdjStatus] = useState('pending')
@@ -1687,11 +1695,18 @@ function PeriodsTab({
   })
 
   const generate = useMutation({
-    mutationFn: (periodID: string) =>
-      api<ListResponse<Contribution>>(`/billing-periods/${periodID}/contributions/generate`, {
+    mutationFn: ({ periodID }: { periodID: string }) => {
+      const body: Record<string, unknown> = { mode: genMode }
+      if (genMode === 'fixed') {
+        body.items = Object.entries(fixedShares)
+          .filter(([, amount]) => amount.trim() !== '')
+          .map(([member_id, amount]) => ({ member_id, amount: amount.trim() }))
+      }
+      return api<ListResponse<Contribution>>(`/billing-periods/${periodID}/contributions/generate`, {
         method: 'POST',
-        body: JSON.stringify({ mode: 'equal' }),
-      }),
+        body: JSON.stringify(body),
+      })
+    },
     onSuccess: () => {
       setError('')
       refresh()
@@ -1811,9 +1826,23 @@ function PeriodsTab({
                     </span>
                     {isOwner && p.status === 'open' && (
                       <>
+                        <select
+                          value={genMode}
+                          onChange={(e) =>
+                            setGenMode(e.target.value as 'equal' | 'per_seat' | 'usage' | 'prorated' | 'fixed')
+                          }
+                          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                          title="分摊方式（D9）"
+                        >
+                          <option value="equal">均摊</option>
+                          <option value="per_seat">按席位</option>
+                          <option value="usage">按用量</option>
+                          <option value="prorated">按天数比例</option>
+                          <option value="fixed">手动指定</option>
+                        </select>
                         <button
-                          onClick={() => generate.mutate(p.id)}
-                          disabled={generate.isPending}
+                          onClick={() => generate.mutate({ periodID: p.id })}
+                          disabled={generate.isPending || (genMode === 'fixed' && !fixedReady)}
                           className="rounded px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                         >
                           生成分摊
@@ -1829,6 +1858,26 @@ function PeriodsTab({
                     )}
                   </div>
                 </div>
+                {isOwner && p.status === 'open' && genMode === 'fixed' && members.length > 0 && (
+                  <div className="mb-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+                    <div className="mb-1 text-slate-500">手动指定本期每位成员的金额（留空的成员本期无分摊）：</div>
+                    <div className="flex flex-wrap gap-2">
+                      {members.map((m) => (
+                        <label key={m.id} className="inline-flex items-center gap-1">
+                          <span className="font-mono">{m.id.slice(0, 8)}…</span>
+                          <input
+                            className="w-16 rounded border border-slate-300 px-1 py-0.5"
+                            placeholder="0.00"
+                            value={fixedShares[m.id] ?? ''}
+                            onChange={(e) =>
+                              setFixedShares({ ...fixedShares, [m.id]: e.target.value })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {rows.length === 0 ? (
                   <p className="text-sm text-slate-400">本期无分摊。</p>
                 ) : (
