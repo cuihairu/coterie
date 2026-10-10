@@ -128,6 +128,7 @@
 | POST | `/join-requests/{id}/accept` | Owner | 接受并分配席位 |
 | POST | `/join-requests/{id}/decline` | Owner | 拒绝 |
 | DELETE | `/join-requests/{id}` | Bearer | 申请人撤回 |
+| GET | `/me/join-requests` | Bearer | 自己的申请列表 |
 | POST | `/join-requests/{id}/payments` | Bearer | 付入圈费（支付闸门开启时） |
 | POST | `/marketplace/webhooks/{method}` | 公开 + 签名 | 闸门确认回调，确认即入圈 |
 

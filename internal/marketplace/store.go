@@ -193,6 +193,27 @@ func (s *Store) ListByCoterie(ctx context.Context, coterieID, status string, pag
 	return views, total, err
 }
 
+// ListMine returns the caller's own requests, newest first, joined
+// with the target circle's display name.
+func (s *Store) ListMine(ctx context.Context, userID string, page api.Page) ([]MyJoinRequestView, int64, error) {
+	q := s.db.WithContext(ctx).
+		Table("join_requests j").
+		Joins("JOIN coteries c ON c.id = j.coterie_id").
+		Where("j.user_id = ?", userID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var views []MyJoinRequestView
+	err := q.
+		Select("j.*, c.name AS coterie_name").
+		Order("j.created_at DESC, j.id ASC").
+		Limit(page.Limit).
+		Offset(page.Offset).
+		Scan(&views).Error
+	return views, total, err
+}
+
 // SetStatus moves a live request (pending, or awaiting payment under
 // the gate) to a decided state and reports whether the row changed.
 func (s *Store) SetStatus(ctx context.Context, id, status string) (bool, error) {

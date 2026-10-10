@@ -165,6 +165,13 @@ func (s *Service) ListJoinRequests(ctx context.Context, actor *user.User, coteri
 	return s.store.ListByCoterie(ctx, coterieID, strings.TrimSpace(status), page)
 }
 
+// ListMyJoinRequests returns the caller's own requests across circles,
+// newest first. The scope is strictly the caller — nothing is taken
+// from the coterie, so there is no capacity or role check here.
+func (s *Service) ListMyJoinRequests(ctx context.Context, actor *user.User, page api.Page) ([]MyJoinRequestView, int64, error) {
+	return s.store.ListMine(ctx, actor.ID, page)
+}
+
 // AcceptJoinRequest admits the requester as a member (same checks as
 // invitation acceptance) and closes the request. Capacity is
 // re-checked at admission time; the request stays pending when the

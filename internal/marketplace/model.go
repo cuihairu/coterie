@@ -82,6 +82,13 @@ type JoinRequestView struct {
 	Username string `json:"username"`
 }
 
+// MyJoinRequestView is a request the caller made, joined with the
+// target circle's display name for the marketplace card.
+type MyJoinRequestView struct {
+	JoinRequest
+	CoterieName string `json:"coterie_name"`
+}
+
 // AdmissionCharge statuses — same lifecycle words as payments.
 const (
 	ChargePending   = "pending"
