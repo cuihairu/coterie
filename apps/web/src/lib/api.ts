@@ -322,6 +322,22 @@ export interface BlockEntry {
   created_at: string
 }
 
+// PaymentRecord is one settled payment against a contribution (D25):
+// method, status, and the optional external reference.
+export interface PaymentRecord {
+  id: string
+  contribution_id: string
+  subscription_id: string
+  payer_user_id: string
+  amount: string
+  currency: string
+  method: string
+  status: string
+  external_ref?: string
+  paid_at?: string
+  created_at: string
+}
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }

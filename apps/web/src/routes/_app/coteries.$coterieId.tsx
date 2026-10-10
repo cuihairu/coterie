@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
@@ -14,6 +14,7 @@ import type {
   JoinRequest,
   ListResponse,
   Member,
+  PaymentRecord,
   Report,
   Seat,
   SharingPolicy,
@@ -1333,6 +1334,7 @@ function PeriodsTab({
   const [adjusting, setAdjusting] = useState<string | null>(null)
   const [adjAmount, setAdjAmount] = useState('')
   const [adjStatus, setAdjStatus] = useState('pending')
+  const [payHistory, setPayHistory] = useState<string | null>(null)
   const [disputing, setDisputing] = useState<string | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeEvidence, setDisputeEvidence] = useState('')
@@ -1435,6 +1437,14 @@ function PeriodsTab({
   })
   const adjAmountValid = /^\d+(\.\d{1,2})?$/.test(adjAmount.trim())
 
+  // Payment history for one contribution (D25): the records behind a
+  // settled row, incl. manual entries with their external reference.
+  const paymentsQuery = useQuery({
+    queryKey: ['payments', payHistory],
+    queryFn: () => api<ListResponse<PaymentRecord>>(`/contributions/${payHistory}/payments`),
+    enabled: !!payHistory,
+  })
+
   return (
     <div>
       {isOwner && (
@@ -1506,7 +1516,8 @@ function PeriodsTab({
                       {rows.map((c) => {
                         const mine = userIDOf.get(c.member_id) === myUserID
                         return (
-                        <tr key={c.id} className="border-t border-slate-100">
+                        <Fragment key={c.id}>
+                        <tr className="border-t border-slate-100">
                           <td className="py-1.5 font-mono text-xs text-slate-700">
                             {c.member_id.slice(0, 8)}…
                           </td>
@@ -1596,6 +1607,12 @@ function PeriodsTab({
                                       调整
                                     </button>
                                   )}
+                                  <button
+                                    onClick={() => setPayHistory(payHistory === c.id ? null : c.id)}
+                                    className="text-xs text-slate-500 hover:underline"
+                                  >
+                                    收款记录
+                                  </button>
                                 </span>
                               )}
                             </td>
@@ -1651,6 +1668,37 @@ function PeriodsTab({
                             </td>
                           )}
                         </tr>
+                        {payHistory === c.id && (
+                          <tr>
+                            <td colSpan={5} className="py-1.5">
+                              {paymentsQuery.isLoading ? (
+                                <p className="text-xs text-slate-400">加载中…</p>
+                              ) : (paymentsQuery.data?.items ?? []).length === 0 ? (
+                                <p className="text-xs text-slate-400">暂无收款记录。</p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    {(paymentsQuery.data?.items ?? []).map((pay) => (
+                                      <tr key={pay.id} className="border-t border-slate-100">
+                                        <td className="py-1 text-slate-700">{pay.method}</td>
+                                        <td className="py-1 text-slate-500">{pay.status}</td>
+                                        <td className="py-1 text-slate-500">
+                                          {pay.external_ref ?? '—'}
+                                        </td>
+                                        <td className="py-1 text-slate-500">
+                                          {pay.paid_at
+                                            ? new Date(pay.paid_at).toLocaleString()
+                                            : new Date(pay.created_at).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                         )
                       })}
                     </tbody>
