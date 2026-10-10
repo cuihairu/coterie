@@ -70,6 +70,9 @@ INV=$(api POST "/api/v1/coteries/$CID/invitations" "$TOK" '{"role":"member"}')
 ITOK=$(jget "['token']" "$INV")
 REG2=$(api POST /api/v1/auth/register "" "{\"username\":\"$TAG-m\",\"email\":\"$TAG-m@example.com\",\"password\":\"password-123\"}")
 TOK2=$(jget "['token']" "$REG2")
+# A 429 body has no token: the auth rate limiter rejects fast reruns.
+[ -n "$TOK2" ] || { echo "FAIL register member: $REG2" >&2; exit 1; }
+[ -n "$TOK2" ] || { echo "FAIL register member: $REG2" >&2; exit 1; }
 MEM=$(api POST /api/v1/invitations/accept "$TOK2" "{\"token\":\"$ITOK\"}")
 MID=$(jget "['id']" "$MEM")
 expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 2 "owner + member"
@@ -120,6 +123,27 @@ expect "$(jget "['amount']" "$PAID")" 6.00 "payment echoes the contribution amou
 STATUS=$(api GET "/api/v1/billing-periods/$PERID/contributions" "$TOK")
 expect "$(python3 -c "import sys,json;d=json.load(sys.stdin);print([c['status'] for c in d['items'] if c['id']=='$CONTRIB'][0])" <<<"$STATUS")" paid "contribution settled"
 
+step "usage metering and usage-based split"
+OWNM=$(python3 -c "import sys,json;print([m['id'] for m in json.load(sys.stdin)['items'] if m['role']=='owner'][0])" <<<"$(api GET "/api/v1/coteries/$CID/members" "$TOK")")
+api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$OWNM\",\"amount\":\"10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
+api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"30\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
+UML=$(api GET "/api/v1/subscriptions/$SID/usage-records" "$TOK")
+expect "$(python3 -c "import sys,json;print(sum(float(r['amount']) for r in json.load(sys.stdin)['items']))" <<<"$UML")" 40.0 "usage ledger sums to 40 credits"
+PER2=$(api POST "/api/v1/subscriptions/$SID/billing-periods" "$TOK" '{"start_date":"2026-11-01","end_date":"2026-12-01"}')
+PER2ID=$(jget "['id']" "$PER2")
+GEN2=$(api POST "/api/v1/billing-periods/$PER2ID/contributions/generate" "$TOK" '{"mode":"usage"}')
+expect "$(python3 -c "import sys,json;print(sorted(c['amount'] for c in json.load(sys.stdin)['items']))" <<<"$GEN2")" "['3.00', '9.00']" "usage split is proportional"
+
+step "dispute: member raises, owner decides"
+MEMCONTRIB=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$MID'][0])" <<<"$GEN2")
+DISP=$(api POST "/api/v1/contributions/$MEMCONTRIB/disputes" "$TOK2" '{"reason":"I streamed less than that"}')
+expect "$(jget "['status']" "$DISP")" open "dispute raised by the member"
+DISPID=$(jget "['id']" "$DISP")
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"decision":"rejected"}' "$BASE/api/v1/disputes/$DISPID/decide")" 403 "members cannot decide disputes"
+DECIDED=$(api POST "/api/v1/disputes/$DISPID/decide" "$TOK" '{"decision":"rejected","note":"ledger matches the provider export"}')
+expect "$(jget "['status']" "$DECIDED")" rejected "owner rejected the dispute"
+expect "$(jget "['status']" "$(api GET "/api/v1/disputes/$DISPID" "$TOK2")")" rejected "raiser still sees the dispute"
+
 step "member notifications"
 NOTIF=$(api GET /api/v1/notifications "$TOK2")
 COUNT=$(python3 -c "import sys,json;print(json.load(sys.stdin)['meta']['total'])" <<<"$NOTIF")
@@ -130,6 +154,8 @@ step "marketplace admission: join request, accept, leave, decline"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"public"}' >/dev/null
 REG3=$(api POST /api/v1/auth/register "" "{\"username\":\"$TAG-j\",\"email\":\"$TAG-j@example.com\",\"password\":\"password-123\"}")
 TOK3=$(jget "['token']" "$REG3")
+[ -n "$TOK3" ] || { echo "FAIL register requester: $REG3" >&2; exit 1; }
+[ -n "$TOK3" ] || { echo "FAIL register requester: $REG3" >&2; exit 1; }
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/coteries/$CID/join-requests")" 409 "existing member cannot re-apply"
 JR=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"count me in"}')
 JRID=$(jget "['id']" "$JR")
@@ -160,6 +186,25 @@ expect "$(jget "['amount']" "$CHARGE")" 3.00 "admission amount is the share esti
 expect "$(jget "['status']" "$CHARGE")" succeeded "manual admission charge settled"
 expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$(api GET /api/v1/me/join-requests "$TOK3")")" accepted "charge admitted the requester"
 expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 3 "gated member joined"
+
+step "owner blocklist: blocked users cannot re-apply"
+OWNERID=$(jget "['user']['id']" "$REG")
+USERID3=$(jget "['user']['id']" "$REG3")
+api POST "/api/v1/coteries/$CID/leave" "$TOK3" "" >/dev/null
+expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 2 "gate member left"
+expect "$(code_of -X PUT -H "Authorization: Bearer $TOK" "$BASE/api/v1/coteries/$CID/blocks/$OWNERID")" 422 "owner cannot self-block"
+expect "$(code_of -X PUT -H "Authorization: Bearer $TOK3" "$BASE/api/v1/coteries/$CID/blocks/$USERID3")" 403 "members cannot block"
+BLOCK=$(api PUT "/api/v1/coteries/$CID/blocks/$USERID3" "$TOK" "")
+expect "$(jget "['username']" "$BLOCK")" "$TAG-j" "owner blocked the leaver"
+expect "$(code_of -X PUT -H "Authorization: Bearer $TOK" "$BASE/api/v1/coteries/$CID/blocks/$USERID3")" 200 "replay block is idempotent"
+case "$(api GET "/api/v1/coteries/$CID/blocks" "$TOK")" in
+  *"$USERID3"*) echo "ok  blocklist names the user" ;;
+  *) echo "FAIL blocklist missing the user" >&2; exit 1 ;;
+esac
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" -H 'Content-Type: application/json' -d '{"message":"let me back"}' "$BASE/api/v1/coteries/$CID/join-requests")" 403 "blocked user cannot re-apply"
+api DELETE "/api/v1/coteries/$CID/blocks/$USERID3" "$TOK" "" >/dev/null
+JR4=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"round two"}')
+expect "$(jget "['status']" "$JR4")" pending "unblocked user can apply again"
 
 echo
 echo "SMOKE PASS — full MVP journey OK on $BASE"
