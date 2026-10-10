@@ -167,7 +167,7 @@ Seats / Quota / Cost
 
 Go(标准库 `net/http`、GORM)· PostgreSQL(手写 SQL 迁移,
 启动时由 golang-migrate 执行)· React + TypeScript(Vite、Tailwind
-CSS、shadcn/ui、TanStack Query / Router),详见[设计
+CSS、TanStack Query / Router),详见[设计
 文档](docs/design.md)。
 
 ## 参与贡献

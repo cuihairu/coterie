@@ -185,7 +185,7 @@ Seats / Quota / Cost
 
 Go (stdlib `net/http`, GORM) · PostgreSQL (hand-written SQL migrations,
 applied by golang-migrate on startup) · React + TypeScript (Vite, Tailwind
-CSS, shadcn/ui, TanStack Query / Router) — see the [design
+CSS, TanStack Query / Router) — see the [design
 doc](docs/design.md) for details.
 
 ## Contributing

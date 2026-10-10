@@ -353,7 +353,7 @@ Seats / Quota / Cost
 
 徽章（shields.io）保持最少必要：License、Go 版本、Docker 状态；CI 就绪后再加构建/覆盖率徽章。
 
-> 注：当前 `README.md` 仅有标题，重新开源前需要按本节重写。
+> 注：`README.md` / `README.zh.md` 已按本节重写（中英双语，含 CI 徽章、核心模型图与快速开始）。
 
 ---
 
