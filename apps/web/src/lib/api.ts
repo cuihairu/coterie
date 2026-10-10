@@ -243,6 +243,15 @@ export interface JoinRequest {
   created_at: string
 }
 
+// MyJoinRequest is the caller's own request, joined with the target
+// circle's name — the marketplace cards restore their submitted state.
+export interface MyJoinRequest {
+  id: string
+  coterie_id: string
+  status: string
+  created_at: string
+}
+
 export interface DirectoryEntry {
   coterie_id: string
   name: string
