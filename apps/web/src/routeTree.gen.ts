@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppCoteriesIndexRouteImport } from './routes/_app/coteries.index'
 import { Route as AppCoteriesCoterieIdRouteImport } from './routes/_app/coteries.$coterieId'
+import { Route as AppCoteriesNewRouteImport } from './routes/_app/coteries.new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,17 +40,24 @@ const AppCoteriesCoterieIdRoute = AppCoteriesCoterieIdRouteImport.update({
   path: '/coteries/$coterieId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCoteriesNewRoute = AppCoteriesNewRouteImport.update({
+  id: '/coteries/new',
+  path: '/coteries/new',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
+  '/coteries/new': typeof AppCoteriesNewRoute
   '/coteries/': typeof AppCoteriesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
+  '/coteries/new': typeof AppCoteriesNewRoute
   '/coteries': typeof AppCoteriesIndexRoute
 }
 export interface FileRoutesById {
@@ -58,19 +66,22 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/coteries/$coterieId': typeof AppCoteriesCoterieIdRoute
+  '/_app/coteries/new': typeof AppCoteriesNewRoute
   '/_app/coteries/': typeof AppCoteriesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/coteries/$coterieId' | '/coteries/'
+  fullPaths:
+    '/' | '/login' | '/coteries/$coterieId' | '/coteries/new' | '/coteries/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/coteries/$coterieId' | '/coteries'
+  to: '/' | '/login' | '/coteries/$coterieId' | '/coteries/new' | '/coteries'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/login'
     | '/_app/coteries/$coterieId'
+    | '/_app/coteries/new'
     | '/_app/coteries/'
   fileRoutesById: FileRoutesById
 }
@@ -117,16 +128,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCoteriesCoterieIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/coteries/new': {
+      id: '/_app/coteries/new'
+      path: '/coteries/new'
+      fullPath: '/coteries/new'
+      preLoaderRoute: typeof AppCoteriesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppCoteriesCoterieIdRoute: typeof AppCoteriesCoterieIdRoute
+  AppCoteriesNewRoute: typeof AppCoteriesNewRoute
   AppCoteriesIndexRoute: typeof AppCoteriesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppCoteriesCoterieIdRoute: AppCoteriesCoterieIdRoute,
+  AppCoteriesNewRoute: AppCoteriesNewRoute,
   AppCoteriesIndexRoute: AppCoteriesIndexRoute,
 }
 

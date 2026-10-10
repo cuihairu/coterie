@@ -71,13 +71,20 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 // UserByToken resolves a bearer token to its user, rejecting unknown,
-// revoked, and expired sessions with 401.
+// revoked, and expired sessions with 401. An expired row is deleted on
+// sight so dead sessions do not accumulate.
 func (s *Service) UserByToken(ctx context.Context, token string) (*user.User, error) {
 	sess, err := s.store.SessionByTokenHash(ctx, HashToken(token))
 	if err != nil {
 		return nil, err
 	}
-	if sess == nil || time.Now().UTC().After(sess.ExpiresAt) {
+	if sess == nil {
+		return nil, api.Unauthorized("invalid or expired session")
+	}
+	if time.Now().UTC().After(sess.ExpiresAt) {
+		// Hygiene only — the 401 is already decided; a failed delete
+		// must not mask it.
+		_ = s.store.DeleteSessionByTokenHash(ctx, sess.TokenHash)
 		return nil, api.Unauthorized("invalid or expired session")
 	}
 	u, err := s.users.Get(ctx, sess.UserID)
@@ -88,6 +95,11 @@ func (s *Service) UserByToken(ctx context.Context, token string) (*user.User, er
 }
 
 func (s *Service) issueSession(ctx context.Context, u *user.User) (*AuthResponse, error) {
+	// Bounding pass: drop this user's expired sessions before adding a
+	// fresh one, so returning users do not accumulate dead rows.
+	if err := s.store.DeleteExpiredSessionsForUser(ctx, u.ID); err != nil {
+		return nil, err
+	}
 	token, err := NewToken()
 	if err != nil {
 		return nil, err

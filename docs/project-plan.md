@@ -303,6 +303,10 @@ Reputation              ✅ 结算信誉派生只读投影（D15）
 11. [x] **GHCR 镜像发布**（§11.2）— nightly 测试通过后推 `ghcr.io/cuihairu/coterie`（nightly 滚动 tag + 日期 tag，amd64/arm64），compose 切到 registry 镜像；顺手收口 manual 支付重复流水号（409 而非 500）
 12. [x] **管理员审计查询面**（NFR-7 / D27）— `GET /api/v1/admin/audit-logs`（仅平台管理员），action/actor/coterie/subscription 过滤 + 分页，与 Owner 读取面共用同一只增表
 13. [x] **API 参考页**（文档站）— 全量端点平铺清单，鉴权/分页/错误信封约定
+14. [x] **Web 客户端起步**（§7.5）— React+TS+Vite+Tailwind+TanStack（Query/Router），登录/注册、圈列表、圈详情只读视图（成员/席位/账期分摊），CI web job（typecheck+build+lint）；顺手修 `GET /coteries` 越权（未按成员过滤，任何登录用户可见全量圈）
+15. [x] **CI compose 全栈冒烟** — 每 push 构建镜像起 compose 栈跑 `scripts/smoke.sh` 全旅程（needs: test）
+16. [x] **golangci-lint 入门禁** — v2 标准集（errcheck/govet/ineffassign/staticcheck/unused）+ CI step；存量 29 项全部收敛（含 VAPID 密钥解析迁 crypto/ecdh、moby client.New 迁移）
+17. [x] **单端口全栈与会话生命周期**（§7.5/§7.6、D8）— go:embed 把 Vite 产物打进二进制（多阶段 Dockerfile，node 构建段），非 API 路径 SPA 回退；客户端登出走 `POST /auth/logout` 服务端吊销、带令牌 401 自动清会话回登录页、进站经 `/auth/me` 验活；服务端过期会话见即删 + 登录时按用户清扫；建圈向导（provider→product→subscription→coterie）、邀请令牌一次性展示、席位增补/分配写操作
 
 ---
 

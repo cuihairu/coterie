@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { api } from '../../lib/api'
+import { api, getUser } from '../../lib/api'
 import type {
   BillingPeriod,
   Contribution,
   Coterie,
+  Invitation,
   ListResponse,
   Member,
   Seat,
@@ -17,6 +18,22 @@ export const Route = createFileRoute('/_app/coteries/$coterieId')({
 })
 
 type Tab = 'members' | 'seats' | 'periods'
+
+// Mirrors the server lifecycle (internal/coterie/service.go transitions).
+const NEXT_STATUS: Record<string, string[]> = {
+  draft: ['open', 'closed'],
+  open: ['active', 'closed'],
+  active: ['paused', 'closed'],
+  paused: ['active', 'closed'],
+  closed: [],
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  open: '发布',
+  active: '激活',
+  paused: '暂停',
+  closed: '关闭',
+}
 
 function CoterieDetailPage() {
   const { coterieId } = Route.useParams()
@@ -58,6 +75,10 @@ function CoterieDetailPage() {
     return <p className="text-red-600">加载失败：{coterieQuery.error.message}</p>
   if (!coterie) return null
 
+  const isOwner = (membersQuery.data?.items ?? []).some(
+    (m) => m.user_id === getUser()?.id && m.role === 'owner',
+  )
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'members', label: '成员' },
     { key: 'seats', label: '席位' },
@@ -69,13 +90,15 @@ function CoterieDetailPage() {
       <Link to="/coteries" className="text-sm text-slate-500 hover:text-slate-700">
         ← 返回圈列表
       </Link>
-      <div className="mt-2 mb-6">
+      <div className="mt-2 mb-4">
         <h1 className="text-xl font-semibold text-slate-900">{coterie.name}</h1>
         <p className="text-sm text-slate-500">
           状态 {coterie.status} · {coterie.listing === 'public' ? '公开目录' : '私有'} · 成员{' '}
           {coterie.member_count} · 席位 {coterie.seats_free}/{coterie.seats_total} 空闲
         </p>
       </div>
+
+      {isOwner && <LifecycleBar coterie={coterie} />}
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">
         {tabs.map((t) => (
@@ -93,66 +116,281 @@ function CoterieDetailPage() {
         ))}
       </div>
 
-      {tab === 'members' && <MembersTab query={membersQuery} />}
-      {tab === 'seats' && <SeatsTab query={seatsQuery} />}
+      {tab === 'members' && (
+        <MembersTab coterieId={coterieId} query={membersQuery} isOwner={isOwner} />
+      )}
+      {tab === 'seats' && (
+        <SeatsTab subID={subID} query={seatsQuery} membersQuery={membersQuery} isOwner={isOwner} />
+      )}
       {tab === 'periods' && <PeriodsTab periods={periods} queries={contributionsQueries} />}
     </div>
   )
 }
 
-function MembersTab({ query }: { query: UseQueryResult<ListResponse<Member>, Error> }) {
-  if (query.isLoading) return <p className="text-slate-500">加载中…</p>
-  if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
-  const items = query.data?.items ?? []
-  if (items.length === 0) return <p className="text-slate-500">暂无成员。</p>
+function LifecycleBar({ coterie }: { coterie: Coterie }) {
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+
+  const transition = useMutation({
+    mutationFn: (status: string) =>
+      api<Coterie>(`/coteries/${coterie.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => {
+      setError('')
+      void qc.invalidateQueries({ queryKey: ['coterie', coterie.id] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const nexts = NEXT_STATUS[coterie.status] ?? []
+  if (nexts.length === 0) return null
+
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left text-slate-500">
-          <th className="py-2 font-medium">用户</th>
-          <th className="py-2 font-medium">角色</th>
-          <th className="py-2 font-medium">加入时间</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((m) => (
-          <tr key={m.id} className="border-b border-slate-100">
-            <td className="py-2 font-mono text-xs text-slate-700">{m.user_id.slice(0, 8)}…</td>
-            <td className="py-2">{m.role}</td>
-            <td className="py-2 text-slate-500">{new Date(m.joined_at).toLocaleDateString()}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="mb-4 flex items-center gap-2">
+      {nexts.map((s) => (
+        <button
+          key={s}
+          onClick={() => transition.mutate(s)}
+          disabled={transition.isPending}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            s === 'closed'
+              ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+              : 'bg-emerald-700 text-white hover:bg-emerald-800'
+          } disabled:opacity-50`}
+        >
+          {STATUS_LABEL[s] ?? s}
+        </button>
+      ))}
+      {error && <span className="text-sm text-red-600">{error}</span>}
+    </div>
   )
 }
 
-function SeatsTab({ query }: { query: UseQueryResult<ListResponse<Seat>, Error> }) {
+function MembersTab({
+  coterieId,
+  query,
+  isOwner,
+}: {
+  coterieId: string
+  query: UseQueryResult<ListResponse<Member>, Error>
+  isOwner: boolean
+}) {
+  const qc = useQueryClient()
+  const [inviteToken, setInviteToken] = useState('')
+  const [error, setError] = useState('')
+
+  const invite = useMutation({
+    mutationFn: () =>
+      api<Invitation>(`/coteries/${coterieId}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify({ role: 'member' }),
+      }),
+    onSuccess: (inv) => {
+      setError('')
+      setInviteToken(inv.token ?? '')
+      void qc.invalidateQueries({ queryKey: ['members', coterieId] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
   if (query.isLoading) return <p className="text-slate-500">加载中…</p>
   if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
   const items = query.data?.items ?? []
-  if (items.length === 0) return <p className="text-slate-500">暂无席位。</p>
+
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left text-slate-500">
-          <th className="py-2 font-medium">席位</th>
-          <th className="py-2 font-medium">状态</th>
-          <th className="py-2 font-medium">成员</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((s) => (
-          <tr key={s.id} className="border-b border-slate-100">
-            <td className="py-2">{s.label}</td>
-            <td className="py-2">{s.status}</td>
-            <td className="py-2 font-mono text-xs text-slate-700">
-              {s.member_id ? `${s.member_id.slice(0, 8)}…` : '—'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      {isOwner && (
+        <div className="mb-4">
+          <button
+            onClick={() => invite.mutate()}
+            disabled={invite.isPending}
+            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {invite.isPending ? '生成中…' : '邀请成员'}
+          </button>
+          {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
+          {inviteToken && (
+            <div className="mt-2 flex max-w-xl items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+              <code className="flex-1 truncate font-mono text-xs text-emerald-900">
+                {inviteToken}
+              </code>
+              <button
+                onClick={() => void navigator.clipboard.writeText(inviteToken)}
+                className="rounded bg-white px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
+              >
+                复制
+              </button>
+            </div>
+          )}
+          <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
+        </div>
+      )}
+      {items.length === 0 ? (
+        <p className="text-slate-500">暂无成员。</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-slate-500">
+              <th className="py-2 font-medium">用户</th>
+              <th className="py-2 font-medium">角色</th>
+              <th className="py-2 font-medium">加入时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((m) => (
+              <tr key={m.id} className="border-b border-slate-100">
+                <td className="py-2 font-mono text-xs text-slate-700">{m.user_id.slice(0, 8)}…</td>
+                <td className="py-2">{m.role}</td>
+                <td className="py-2 text-slate-500">{new Date(m.joined_at).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function SeatsTab({
+  subID,
+  query,
+  membersQuery,
+  isOwner,
+}: {
+  subID?: string
+  query: UseQueryResult<ListResponse<Seat>, Error>
+  membersQuery: UseQueryResult<ListResponse<Member>, Error>
+  isOwner: boolean
+}) {
+  const qc = useQueryClient()
+  const [assigning, setAssigning] = useState<string | null>(null)
+  const [memberID, setMemberID] = useState('')
+  const [error, setError] = useState('')
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['seats', subID] })
+    void qc.invalidateQueries({ queryKey: ['coterie'] })
+  }
+
+  const provision = useMutation({
+    mutationFn: () =>
+      api<Seat[]>(`/subscriptions/${subID}/seats`, {
+        method: 'POST',
+        body: JSON.stringify({ count: 1 }),
+      }),
+    onSuccess: () => {
+      setError('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const assign = useMutation({
+    mutationFn: (seatID: string) =>
+      api<Seat>(`/seats/${seatID}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ member_id: memberID }),
+      }),
+    onSuccess: () => {
+      setError('')
+      setAssigning(null)
+      setMemberID('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  if (query.isLoading || membersQuery.isLoading) return <p className="text-slate-500">加载中…</p>
+  if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
+  const items = query.data?.items ?? []
+  const members = membersQuery.data?.items ?? []
+
+  return (
+    <div>
+      {isOwner && (
+        <div className="mb-4 flex items-center gap-2">
+          <button
+            onClick={() => provision.mutate()}
+            disabled={provision.isPending || !subID}
+            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {provision.isPending ? '增补中…' : '增补席位'}
+          </button>
+          {error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      )}
+      {items.length === 0 ? (
+        <p className="text-slate-500">暂无席位。</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-slate-500">
+              <th className="py-2 font-medium">席位</th>
+              <th className="py-2 font-medium">状态</th>
+              <th className="py-2 font-medium">成员</th>
+              {isOwner && <th className="py-2 font-medium" />}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((s) => (
+              <tr key={s.id} className="border-b border-slate-100">
+                <td className="py-2">{s.label}</td>
+                <td className="py-2">{s.status}</td>
+                <td className="py-2 font-mono text-xs text-slate-700">
+                  {s.member_id ? `${s.member_id.slice(0, 8)}…` : '—'}
+                </td>
+                {isOwner && (
+                  <td className="py-2 text-right">
+                    {s.status === 'free' && assigning !== s.id && (
+                      <button
+                        onClick={() => {
+                          setAssigning(s.id)
+                          setMemberID('')
+                        }}
+                        className="text-xs text-emerald-700 hover:underline"
+                      >
+                        分配
+                      </button>
+                    )}
+                    {assigning === s.id && (
+                      <span className="inline-flex items-center gap-1">
+                        <select
+                          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                          value={memberID}
+                          onChange={(e) => setMemberID(e.target.value)}
+                        >
+                          <option value="">选择成员…</option>
+                          {members.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.user_id.slice(0, 8)}…（{m.role}）
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => assign.mutate(s.id)}
+                          disabled={!memberID || assign.isPending}
+                          className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                        >
+                          确认
+                        </button>
+                        <button
+                          onClick={() => setAssigning(null)}
+                          className="text-xs text-slate-500 hover:underline"
+                        >
+                          取消
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   )
 }
 

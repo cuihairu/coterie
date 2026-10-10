@@ -1,9 +1,19 @@
 import { Link, Outlet, createFileRoute, redirect, useRouter } from '@tanstack/react-router'
-import { clearSession, getUser } from '../lib/api'
+import { api, clearSession, getToken, getUser, logout } from '../lib/api'
 
 export const Route = createFileRoute('/_app')({
-  beforeLoad: () => {
-    if (!getUser()) throw redirect({ to: '/login' })
+  beforeLoad: async () => {
+    // Entry verifies the stored token against the server so a revoked
+    // or expired session bounces at the door, not after a failed fetch.
+    if (!getToken()) throw redirect({ to: '/login' })
+    try {
+      await api('/auth/me')
+    } catch {
+      // A 401 already cleared and redirected in api(); anything else
+      // (server down) still sends the user to a clean login page.
+      clearSession()
+      throw redirect({ to: '/login' })
+    }
   },
   component: AppLayout,
 })
@@ -23,6 +33,9 @@ function AppLayout() {
             <span className="text-slate-500">{user?.email}</span>
             <button
               onClick={() => {
+                // Server-side revoke first; the local clear is what
+                // ends the client session either way.
+                void logout()
                 clearSession()
                 router.navigate({ to: '/login' })
               }}

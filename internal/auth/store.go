@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -54,5 +55,13 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (*user.User, erro
 func (s *Store) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
 	return s.db.WithContext(ctx).
 		Where("token_hash = ?", tokenHash).
+		Delete(&Session{}).Error
+}
+
+// DeleteExpiredSessionsForUser drops the user's expired sessions,
+// keeping the table bounded as users return.
+func (s *Store) DeleteExpiredSessionsForUser(ctx context.Context, userID string) error {
+	return s.db.WithContext(ctx).
+		Where("user_id = ? AND expires_at < ?", userID, time.Now().UTC()).
 		Delete(&Session{}).Error
 }

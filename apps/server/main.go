@@ -2,13 +2,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"embed"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +30,58 @@ import (
 	"github.com/cuihairu/coterie/providers/claude"
 	"gorm.io/gorm"
 )
+
+// web holds the built client (apps/web/dist). The Docker build copies
+// the Vite output over the placeholder; local `go run` serves the
+// placeholder, so develop against the Vite dev server on :5173.
+//
+//go:embed all:web
+var web embed.FS
+
+// webRoot is the client tree with the embed prefix stripped, so
+// request paths map straight onto dist/ entries.
+var webRoot = mustSub(web, "web")
+
+func mustSub(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		panic(fmt.Sprintf("embed web ui: %v", err))
+	}
+	return sub
+}
+
+// spaHandler serves the embedded client: real files win, everything
+// else falls back to index.html so client-side routes resolve.
+func spaHandler(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	f, err := webRoot.Open(name)
+	if err == nil {
+		_ = f.Close()
+		http.FileServerFS(webRoot).ServeHTTP(w, r)
+		return
+	}
+	index, err := webRoot.Open("index.html")
+	if err != nil {
+		http.Error(w, "web ui not built", http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { _ = index.Close() }()
+	data, err := io.ReadAll(index)
+	if err != nil {
+		http.Error(w, "web ui unreadable", http.StatusInternalServerError)
+		return
+	}
+	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(data))
+}
+
+// apiOnly reports whether a path belongs to the API mux rather than
+// the embedded client.
+func apiOnly(path string) bool {
+	return strings.HasPrefix(path, "/api/") || path == "/healthz"
+}
 
 func main() {
 	cfg := config.Load()
@@ -160,14 +217,26 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Info("promoted platform admins", "count", n)
 	}
 
+	api := app.New(db, log,
+		app.WithNotificationChannels(channels(db, cfg)...),
+		app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
+		app.WithMarketplaceAdapters(marketplaceAdapters(cfg, log)...),
+		app.WithProviderPlugins(providerPlugins(cfg, log)...),
+		app.WithRateLimits(cfg.RateLimitRegisterPerMin, cfg.RateLimitLoginPerMin))
+
+	// One port serves both the API and the embedded client: API paths
+	// go to the mux, everything else to the SPA.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if apiOnly(r.URL.Path) {
+			api.ServeHTTP(w, r)
+			return
+		}
+		spaHandler(w, r)
+	})
+
 	srv := &http.Server{
-		Addr: ":" + cfg.Port,
-		Handler: app.New(db, log,
-			app.WithNotificationChannels(channels(db, cfg)...),
-			app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
-			app.WithMarketplaceAdapters(marketplaceAdapters(cfg, log)...),
-			app.WithProviderPlugins(providerPlugins(cfg, log)...),
-			app.WithRateLimits(cfg.RateLimitRegisterPerMin, cfg.RateLimitLoginPerMin)),
+		Addr:              ":" + cfg.Port,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

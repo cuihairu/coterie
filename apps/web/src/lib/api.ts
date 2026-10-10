@@ -29,6 +29,14 @@ export function clearSession(): void {
   localStorage.removeItem(USER_KEY)
 }
 
+// expireLocalSession ends a dead session locally and returns to the
+// login page. Only reached for requests that carried a token, so
+// login/register failures never loop through here.
+function expireLocalSession(): void {
+  clearSession()
+  window.location.assign('/login')
+}
+
 export class ApiError extends Error {
   status: number
   code: string
@@ -49,6 +57,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`/api/v1${path}`, { ...init, headers })
   if (!res.ok) {
+    // A rejected session is dead: expired or revoked tokens log the
+    // user out locally instead of stranding the page with failures.
+    if (res.status === 401 && token) {
+      expireLocalSession()
+    }
     let code = 'unknown'
     let message = res.statusText
     try {
@@ -62,6 +75,16 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
+}
+
+// logout revokes the session server-side. Failures are tolerated: a
+// network error or an already-revoked token still logs out locally.
+export async function logout(): Promise<void> {
+  try {
+    await api<void>('/auth/logout', { method: 'POST' })
+  } catch {
+    // Local clear below is what actually ends the client session.
+  }
 }
 
 export interface User {
@@ -124,6 +147,40 @@ export interface Contribution {
   currency: string
   status: string
   paid_at?: string
+}
+
+export interface Provider {
+  id: string
+  slug: string
+  name: string
+  category: string
+}
+
+export interface Product {
+  id: string
+  provider_id: string
+  name: string
+  tier?: string
+}
+
+export interface Invitation {
+  id: string
+  coterie_id: string
+  role: string
+  status: string
+  token?: string
+  expires_at?: string
+}
+
+export interface Subscription {
+  id: string
+  product_id: string
+  owner_user_id: string
+  billing_cycle: string
+  price: string
+  currency: string
+  start_date: string
+  max_seats: number
 }
 
 export interface ListResponse<T> {
