@@ -264,6 +264,36 @@ export interface DirectoryEntry {
   }
 }
 
+// AuditLog is one append-only audit entry (D17): what changed, who
+// changed it, and the before/after snapshot of the touched fields.
+export interface AuditLog {
+  id: number
+  actor_id?: string
+  action: string
+  entity_type: string
+  entity_id: string
+  subscription_id?: string
+  coterie_id?: string
+  before?: Record<string, unknown>
+  after?: Record<string, unknown>
+  created_at: string
+}
+
+export const AUDIT_ACTIONS = [
+  'coterie_created',
+  'coterie_updated',
+  'member_removed',
+  'member_left',
+  'seat_assigned',
+  'seat_released',
+  'seat_updated',
+  'subscription_updated',
+  'contribution_updated',
+  'payment_recorded',
+  'period_closed',
+  'report_decided',
+] as const
+
 export interface ListResponse<T> {
   items: T[]
   meta: { total: number; limit: number; offset: number }
