@@ -282,6 +282,16 @@ function LifecycleBar({ coterie }: { coterie: Coterie }) {
       >
         {coterie.payment_gate ? '关闭支付闸门' : '开启支付闸门'}
       </button>
+      <button
+        onClick={() =>
+          transition.mutate({ listing: coterie.listing === 'public' ? 'private' : 'public' })
+        }
+        disabled={transition.isPending}
+        className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        title="公开后出现在市场目录，任何人可申请加入（D10）"
+      >
+        {coterie.listing === 'public' ? '下架（转私有）' : '上架公开目录'}
+      </button>
       {error && <span className="text-sm text-red-600">{error}</span>}
     </div>
   )
