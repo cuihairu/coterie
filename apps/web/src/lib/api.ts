@@ -180,7 +180,11 @@ export interface Subscription {
   price: string
   currency: string
   start_date: string
+  renewal_date?: string | null
   max_seats: number
+  max_members?: number | null
+  cycle_days?: number | null
+  auto_billing?: boolean
   sharing_policy?: SharingPolicy | null
 }
 
