@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,7 +61,10 @@ func NewService(db *gorm.DB, seats *seat.Service, notifier *notification.Service
 // coterie starts in draft, the owner becomes its first member (role
 // owner), and capacity seats are provisioned in the same transaction.
 func (s *Service) Create(ctx context.Context, actor *user.User, req CreateCoterieRequest) (*CoterieView, error) {
-	if req.Name == "" {
+	// Names are display strings: trim and store the trimmed value so
+	// whitespace-only or padded names never land.
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
 		return nil, api.Validation("invalid coterie",
 			api.Detail{Field: "name", Message: "is required"})
 	}
@@ -88,7 +92,7 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateCoteri
 	c := &Coterie{
 		ID:             uuid.NewString(),
 		SubscriptionID: sub.ID,
-		Name:           req.Name,
+		Name:           name,
 		Status:         StatusDraft,
 		// Opt-in exposure (D10): circles start invisible to the
 		// marketplace until the owner lists them.
@@ -190,11 +194,13 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	}
 
 	if req.Name != nil {
-		if *req.Name == "" {
+		// Same display-string rule as Create: trimmed, never blank.
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
 			return nil, api.Validation("invalid coterie",
 				api.Detail{Field: "name", Message: "must not be empty"})
 		}
-		c.Name = *req.Name
+		c.Name = name
 	}
 	if req.Listing != nil && *req.Listing != c.Listing {
 		if *req.Listing != ListingPrivate && *req.Listing != ListingPublic {
