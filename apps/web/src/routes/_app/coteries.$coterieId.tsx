@@ -1180,6 +1180,9 @@ function PeriodsTab({
   })
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  const [adjusting, setAdjusting] = useState<string | null>(null)
+  const [adjAmount, setAdjAmount] = useState('')
+  const [adjStatus, setAdjStatus] = useState('pending')
   const [disputing, setDisputing] = useState<string | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeEvidence, setDisputeEvidence] = useState('')
@@ -1264,6 +1267,24 @@ function PeriodsTab({
     onError: (err) => setError(err.message),
   })
 
+  // adjust is the owner's manual settlement patch (PATCH
+  // /contributions/{id}): re-amount a pending share or flip its
+  // status; both land in the audit ledger as contribution_updated.
+  const adjust = useMutation({
+    mutationFn: (contributionID: string) =>
+      api<Contribution>(`/contributions/${contributionID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ amount: adjAmount, status: adjStatus }),
+      }),
+    onSuccess: () => {
+      setError('')
+      setAdjusting(null)
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+  const adjAmountValid = /^\d+(\.\d{1,2})?$/.test(adjAmount.trim())
+
   return (
     <div>
       {isOwner && (
@@ -1345,7 +1366,39 @@ function PeriodsTab({
                           <td className="py-1.5 text-right text-slate-500">{c.status}</td>
                           {isOwner && c.status === 'pending' && (
                             <td className="py-1.5 text-right">
-                              {paying === c.id ? (
+                              {adjusting === c.id ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <input
+                                    className="w-20 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                    placeholder="金额"
+                                    value={adjAmount}
+                                    onChange={(e) => setAdjAmount(e.target.value)}
+                                  />
+                                  <select
+                                    className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                    value={adjStatus}
+                                    onChange={(e) => setAdjStatus(e.target.value)}
+                                  >
+                                    <option value="pending">pending</option>
+                                    <option value="paid">paid</option>
+                                    <option value="waived">waived</option>
+                                    <option value="cancelled">cancelled</option>
+                                  </select>
+                                  <button
+                                    onClick={() => adjust.mutate(c.id)}
+                                    disabled={adjust.isPending || !adjAmountValid}
+                                    className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                                  >
+                                    确认
+                                  </button>
+                                  <button
+                                    onClick={() => setAdjusting(null)}
+                                    className="text-xs text-slate-500 hover:underline"
+                                  >
+                                    取消
+                                  </button>
+                                </span>
+                              ) : paying === c.id ? (
                                 <span className="inline-flex items-center gap-1">
                                   <input
                                     className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
@@ -1371,15 +1424,29 @@ function PeriodsTab({
                                   </button>
                                 </span>
                               ) : (
-                                <button
-                                  onClick={() => {
-                                    setPaying(c.id)
-                                    setPayRef('')
-                                  }}
-                                  className="text-xs text-emerald-700 hover:underline"
-                                >
-                                  登记收款
-                                </button>
+                                <span className="inline-flex items-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setPaying(c.id)
+                                      setPayRef('')
+                                    }}
+                                    className="text-xs text-emerald-700 hover:underline"
+                                  >
+                                    登记收款
+                                  </button>
+                                  {p.status === 'open' && (
+                                    <button
+                                      onClick={() => {
+                                        setAdjusting(c.id)
+                                        setAdjAmount(c.amount)
+                                        setAdjStatus(c.status)
+                                      }}
+                                      className="text-xs text-slate-600 hover:underline"
+                                    >
+                                      调整
+                                    </button>
+                                  )}
+                                </span>
                               )}
                             </td>
                           )}
