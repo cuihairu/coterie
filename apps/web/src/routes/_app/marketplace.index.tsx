@@ -41,17 +41,28 @@ function MarketplacePage() {
 
 function EntryCard({ entry }: { entry: DirectoryEntry }) {
   const [error, setError] = useState('')
-  const [requested, setRequested] = useState(false)
+  const [requestID, setRequestID] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
   const request = useMutation({
     mutationFn: () =>
-      api<unknown>(`/coteries/${entry.coterie_id}/join-requests`, {
+      api<{ id: string }>(`/coteries/${entry.coterie_id}/join-requests`, {
         method: 'POST',
         body: JSON.stringify({}),
       }),
+    onSuccess: (r) => {
+      setError('')
+      setRequestID(r.id)
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  const cancel = useMutation({
+    mutationFn: () => api<void>(`/join-requests/${requestID}`, { method: 'DELETE' }),
     onSuccess: () => {
       setError('')
-      setRequested(true)
+      setRequestID(null)
+      setConfirming(false)
     },
     onError: (err) => setError(err.message),
   })
@@ -89,8 +100,35 @@ function EntryCard({ entry }: { entry: DirectoryEntry }) {
       <div className="mt-3">
         {entry.full ? (
           <span className="text-xs text-slate-400">圈已满员。</span>
-        ) : requested ? (
-          <span className="text-xs text-emerald-700">已提交申请，等待 Owner 处理。</span>
+        ) : requestID ? (
+          <>
+            <span className="text-xs text-emerald-700">已提交申请，等待 Owner 处理。</span>
+            {confirming ? (
+              <>
+                <button
+                  onClick={() => cancel.mutate()}
+                  disabled={cancel.isPending}
+                  className="ml-2 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {cancel.isPending ? '撤回中…' : '确认撤回'}
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="ml-1 rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  保留
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setConfirming(true)}
+                disabled={cancel.isPending}
+                className="ml-2 rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                撤回申请
+              </button>
+            )}
+          </>
         ) : (
           <button
             onClick={() => request.mutate()}
