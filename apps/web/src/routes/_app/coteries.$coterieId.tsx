@@ -22,13 +22,13 @@ import type {
   UsageLimit,
   UsageRecord,
 } from '../../lib/api'
-import { AUDIT_ACTIONS } from '../../lib/api'
+import { AUDIT_ACTIONS, AUDIT_LABEL } from '../../lib/api'
 
 export const Route = createFileRoute('/_app/coteries/$coterieId')({
   component: CoterieDetailPage,
 })
 
-type Tab = 'members' | 'seats' | 'periods' | 'usage' | 'disputes' | 'audit' | 'requests'
+type Tab = 'members' | 'seats' | 'periods' | 'usage' | 'settings' | 'disputes' | 'audit' | 'requests'
 
 // Mirrors the server lifecycle (internal/coterie/service.go transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -109,6 +109,7 @@ function CoterieDetailPage() {
     { key: 'seats', label: '席位' },
     { key: 'periods', label: '账期' },
     { key: 'usage', label: '用量' },
+    ...(isOwner ? [{ key: 'settings' as Tab, label: '订阅' }] : []),
     ...(isOwner ? [{ key: 'disputes' as Tab, label: '争议' }] : []),
     ...(isOwner ? [{ key: 'audit' as Tab, label: '审计' }] : []),
     ...(isOwner ? [{ key: 'requests' as Tab, label: '申请' }] : []),
@@ -169,6 +170,9 @@ function CoterieDetailPage() {
           membersQuery={membersQuery}
           isOwner={isOwner}
         />
+      )}
+      {tab === 'settings' && isOwner && (
+        <SubscriptionTab subID={subID} subscriptionQuery={subscriptionQuery} />
       )}
       {tab === 'disputes' && isOwner && <DisputesTab subID={subID} membersQuery={membersQuery} />}
       {tab === 'audit' && isOwner && <AuditTab coterieId={coterieId} />}
@@ -277,6 +281,16 @@ function LifecycleBar({ coterie }: { coterie: Coterie }) {
         title="开启后同意加入需先收准入费（D25）"
       >
         {coterie.payment_gate ? '关闭支付闸门' : '开启支付闸门'}
+      </button>
+      <button
+        onClick={() =>
+          transition.mutate({ listing: coterie.listing === 'public' ? 'private' : 'public' })
+        }
+        disabled={transition.isPending}
+        className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        title="公开后出现在市场目录，任何人可申请加入（D10）"
+      >
+        {coterie.listing === 'public' ? '下架（转私有）' : '上架公开目录'}
       </button>
       {error && <span className="text-sm text-red-600">{error}</span>}
     </div>
@@ -726,6 +740,146 @@ function UsageTab({
   )
 }
 
+// SubscriptionTab is the owner's subscription settings (PATCH
+// /subscriptions/{id}): price, billing cycle with the D20 custom-days
+// pairing, renewal date, and the auto-billing toggle. Local edits win
+// over the fetched subscription until saved; every save lands in the
+// audit ledger as subscription_updated.
+function SubscriptionTab({
+  subID,
+  subscriptionQuery,
+}: {
+  subID?: string
+  subscriptionQuery: UseQueryResult<Subscription, Error>
+}) {
+  const qc = useQueryClient()
+  const sub = subscriptionQuery.data
+  const [error, setError] = useState('')
+  const [price, setPrice] = useState<string | null>(null)
+  const [cycle, setCycle] = useState<string | null>(null)
+  const [cycleDays, setCycleDays] = useState('')
+  const [renewal, setRenewal] = useState<string | null>(null)
+  const [autoBilling, setAutoBilling] = useState<boolean | null>(null)
+
+  // Local edits win over the fetched subscription until saved; the
+  // fallbacks keep the payload total until the query resolves.
+  const effPrice = price ?? sub?.price ?? ''
+  const effCycle = cycle ?? sub?.billing_cycle ?? 'monthly'
+  const effRenewal = renewal ?? sub?.renewal_date ?? ''
+  const effAuto = autoBilling ?? sub?.auto_billing ?? false
+  const effDays = cycleDays === '' ? (sub?.cycle_days ?? 0) : Number(cycleDays)
+  const priceValid = /^\d+(\.\d{1,2})?$/.test(effPrice.trim())
+  const daysValid = effCycle !== 'custom' || (effDays >= 1 && effDays <= 365)
+
+  // Only the fields the owner actually touched: the audit entry
+  // snapshots what the request names, so no-op fields would pollute
+  // the ledger with null → null rows.
+  const payload: Record<string, unknown> = {}
+  if (price !== null && effPrice.trim() !== sub?.price) payload.price = effPrice.trim()
+  if (cycle !== null && effCycle !== sub?.billing_cycle) payload.billing_cycle = effCycle
+  if (
+    cycle !== null ||
+    cycleDays !== '' ||
+    (effCycle === 'custom' && effDays !== (sub?.cycle_days ?? 0))
+  ) {
+    // Leaving a custom cycle always clears the days (D20 pairing
+    // rule); entering one requires 1..365.
+    payload.cycle_days = effCycle === 'custom' ? effDays : 0
+  }
+  if (renewal !== null && effRenewal !== (sub?.renewal_date ?? '')) payload.renewal_date = effRenewal
+  if (autoBilling !== null && effAuto !== (sub?.auto_billing ?? false)) payload.auto_billing = effAuto
+
+  const save = useMutation({
+    mutationFn: () =>
+      api<Subscription | undefined>(`/subscriptions/${subID}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      setError('')
+      setPrice(null)
+      setCycle(null)
+      setCycleDays('')
+      setRenewal(null)
+      setAutoBilling(null)
+      void qc.invalidateQueries({ queryKey: ['subscription', subID] })
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  if (!sub) return <p className="text-slate-500">加载中…</p>
+
+  const input = 'rounded border border-slate-300 px-2 py-1 text-xs'
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+        <div>
+          <span className="mb-1 block text-xs font-medium text-slate-500">价格（{sub.currency}）</span>
+          <input
+            className={input}
+            placeholder="如 15.00"
+            value={effPrice}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+        </div>
+        <div>
+          <span className="mb-1 block text-xs font-medium text-slate-500">计费周期</span>
+          <select className={input} value={effCycle} onChange={(e) => setCycle(e.target.value)}>
+            <option value="monthly">按月</option>
+            <option value="yearly">按年</option>
+            <option value="custom">自定义天数</option>
+          </select>
+        </div>
+        {effCycle === 'custom' && (
+          <div>
+            <span className="mb-1 block text-xs font-medium text-slate-500">周期天数</span>
+            <input
+              className={input}
+              type="number"
+              min={1}
+              max={365}
+              value={cycleDays === '' ? (sub.cycle_days ?? '') : cycleDays}
+              onChange={(e) => setCycleDays(e.target.value)}
+            />
+          </div>
+        )}
+        <div>
+          <span className="mb-1 block text-xs font-medium text-slate-500">自动续期日</span>
+          <input
+            className={input}
+            type="date"
+            value={effRenewal}
+            onChange={(e) => setRenewal(e.target.value)}
+          />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={effAuto}
+              onChange={(e) => setAutoBilling(e.target.checked)}
+            />
+            到期自动滚动账期
+          </label>
+        </div>
+      </div>
+      <p className="mb-3 text-xs text-slate-400">
+        开始日期 {sub.start_date} · 席位上限 {sub.max_seats}
+        {sub.max_members ? ` · 成员上限 ${sub.max_members}` : ''}（不可在此修改）
+      </p>
+      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+      <button
+        onClick={() => save.mutate()}
+        disabled={save.isPending || !subID || !priceValid || !daysValid || Object.keys(payload).length === 0}
+        className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+      >
+        {save.isPending ? '保存中…' : Object.keys(payload).length === 0 ? '无改动' : '保存订阅设置'}
+      </button>
+    </div>
+  )
+}
+
 // DisputesTab is the owner's dispute ledger (D14): members raise
 // disputes from the contribution rows; the owner decides resolved or
 // rejected — one-way, never mutating the contribution itself. The
@@ -870,20 +1024,7 @@ function DisputesTab({
 }
 
 // Mirrors internal/audit/model.go actions for display.
-const AUDIT_LABEL: Record<string, string> = {
-  coterie_created: '建圈',
-  coterie_updated: '圈更新',
-  member_removed: '移除成员',
-  member_left: '成员退出',
-  seat_assigned: '席位分配',
-  seat_released: '席位释放',
-  seat_updated: '席位更新',
-  subscription_updated: '订阅更新',
-  contribution_updated: '分摊调整',
-  payment_recorded: '收款登记',
-  period_closed: '账期关闭',
-  report_decided: '举报裁定',
-}
+
 
 const AUDIT_PAGE = 20
 
@@ -1013,8 +1154,28 @@ function MembersTab({
       setError('')
       setInviteToken(inv.token ?? '')
       void qc.invalidateQueries({ queryKey: ['members', coterieId] })
+      void qc.invalidateQueries({ queryKey: ['invitations', coterieId] })
     },
     onError: (err) => setError(err.message),
+  })
+
+  // Invitation history answers "did my invite land?" — tokens never
+  // re-show, but accepted_at/expire_at decide each row's state.
+  // queryFn runs outside render, so the one "now" snapshot needed to
+  // judge expiry stays out of the render tree (react/purity).
+  const invitationsQuery = useQuery({
+    queryKey: ['invitations', coterieId],
+    queryFn: async () => {
+      const res = await api<ListResponse<Invitation>>(`/coteries/${coterieId}/invitations`)
+      const now = Date.now()
+      const expiredIds = new Set(
+        res.items
+          .filter((inv) => new Date(inv.expire_at).getTime() < now)
+          .map((inv) => inv.id),
+      )
+      return { items: res.items, expiredIds }
+    },
+    enabled: isOwner,
   })
 
   const remove = useMutation({
@@ -1072,6 +1233,48 @@ function MembersTab({
             </div>
           )}
           <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
+          {invitationsQuery.data && invitationsQuery.data.items.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1 text-xs font-medium text-slate-500">邀请记录</p>
+              <ul className="max-w-xl space-y-1">
+                {invitationsQuery.data.items.map((inv) => {
+                  const state = inv.accepted_at
+                    ? 'accepted'
+                    : invitationsQuery.data.expiredIds.has(inv.id)
+                      ? 'expired'
+                      : 'pending'
+                  const stateLabel =
+                    state === 'accepted' ? '已接受' : state === 'expired' ? '已过期' : '待使用'
+                  return (
+                    <li
+                      key={inv.id}
+                      className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 text-xs text-slate-600"
+                    >
+                      <span>
+                        {new Date(inv.created_at).toLocaleString()} · {inv.role}
+                        {state === 'pending' && (
+                          <span className="ml-1 text-slate-400">
+                            （{new Date(inv.expire_at).toLocaleString()} 前有效）
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={
+                          state === 'accepted'
+                            ? 'text-emerald-700'
+                            : state === 'expired'
+                              ? 'text-slate-400'
+                              : 'text-amber-700'
+                        }
+                      >
+                        {stateLabel}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       {!isOwner && (
@@ -1181,6 +1384,9 @@ function SeatsTab({
   const qc = useQueryClient()
   const [assigning, setAssigning] = useState<string | null>(null)
   const [memberID, setMemberID] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editLabel, setEditLabel] = useState('')
+  const [releasing, setReleasing] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const refresh = () => {
@@ -1211,6 +1417,32 @@ function SeatsTab({
       setError('')
       setAssigning(null)
       setMemberID('')
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  // updateSeat is the PATCH /seats/{id} surface: relabel, or take a
+  // seat out of circulation (free⇄disabled; occupied seats go through
+  // assign/release instead). Both land as seat_updated audit entries.
+  const updateSeat = useMutation({
+    mutationFn: ({ seatID, body }: { seatID: string; body: Record<string, unknown> }) =>
+      api<Seat>(`/seats/${seatID}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      setError('')
+      setEditing(null)
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  // releaseSeat frees an occupied seat — the only way back from
+  // occupied besides the member leaving; disabling one is a 409.
+  const releaseSeat = useMutation({
+    mutationFn: (seatID: string) => api<Seat>(`/seats/${seatID}/release`, { method: 'POST' }),
+    onSuccess: () => {
+      setError('')
+      setReleasing(null)
       refresh()
     },
     onError: (err) => setError(err.message),
@@ -1250,7 +1482,17 @@ function SeatsTab({
           <tbody>
             {items.map((s) => (
               <tr key={s.id} className="border-b border-slate-100">
-                <td className="py-2">{s.label}</td>
+                <td className="py-2">
+                  {editing === s.id ? (
+                    <input
+                      className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                    />
+                  ) : (
+                    s.label
+                  )}
+                </td>
                 <td className="py-2">{s.status}</td>
                 <td className="py-2 font-mono text-xs text-slate-700">
                   {s.member_id ? `${s.member_id.slice(0, 8)}…` : '—'}
@@ -1267,6 +1509,85 @@ function SeatsTab({
                       >
                         分配
                       </button>
+                    )}
+                    {assigning !== s.id && editing === s.id && (
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() =>
+                            updateSeat.mutate({ seatID: s.id, body: { label: editLabel.trim() } })
+                          }
+                          disabled={updateSeat.isPending || !editLabel.trim()}
+                          className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
+                        >
+                          保存
+                        </button>
+                        <button
+                          onClick={() => setEditing(null)}
+                          className="text-xs text-slate-500 hover:underline"
+                        >
+                          取消
+                        </button>
+                      </span>
+                    )}
+                    {assigning !== s.id && editing !== s.id && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditing(s.id)
+                            setEditLabel(s.label)
+                          }}
+                          className="ml-2 text-xs text-slate-600 hover:underline"
+                        >
+                          编辑
+                        </button>
+                        {s.status !== 'occupied' &&
+                          (s.status === 'free' ? (
+                            <button
+                              onClick={() =>
+                                updateSeat.mutate({ seatID: s.id, body: { status: 'disabled' } })
+                              }
+                              disabled={updateSeat.isPending}
+                              className="ml-2 text-xs text-slate-500 hover:underline disabled:opacity-50"
+                            >
+                              停用
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                updateSeat.mutate({ seatID: s.id, body: { status: 'free' } })
+                              }
+                              disabled={updateSeat.isPending}
+                              className="ml-2 text-xs text-slate-500 hover:underline disabled:opacity-50"
+                            >
+                              启用
+                            </button>
+                          ))}
+                        {s.status === 'occupied' &&
+                          (releasing === s.id ? (
+                            <span className="inline-flex items-center gap-1">
+                              <button
+                                onClick={() => releaseSeat.mutate(s.id)}
+                                disabled={releaseSeat.isPending}
+                                className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                              >
+                                确认释放
+                              </button>
+                              <button
+                                onClick={() => setReleasing(null)}
+                                className="text-xs text-slate-500 hover:underline"
+                              >
+                                取消
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setReleasing(s.id)}
+                              className="ml-2 text-xs text-slate-500 hover:underline"
+                            >
+                              释放
+                            </button>
+                          ))}
+                      </>
                     )}
                     {assigning === s.id && (
                       <span className="inline-flex items-center gap-1">

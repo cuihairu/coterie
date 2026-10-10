@@ -110,7 +110,8 @@ The full endpoint reference lives on the [docs site](https://cuihairu.github.io/
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public; entries carry a derived owner reputation badge) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments` (payment gate) · `POST /api/v1/marketplace/webhooks/{method}` (public) |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · push endpoints `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
-| Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs` (owner, read-only) |
+| Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs` (owner, read-only) · `GET /api/v1/admin/audit-logs` (admin, platform-wide) |
+| Abuse | `POST /api/v1/coteries/{id}/report` (flag a listed circle) · `GET/POST /api/v1/admin/reports` (admin inbox) · `PUT/DELETE /api/v1/coteries/{id}/blocks/{userID}` (owner blocklist) |
 
 Errors use a single envelope `{"error": {"code", "message", "details?}}`;
 lists use `{"items": [...], "meta": {total, limit, offset}}`. Details in the
@@ -177,9 +178,11 @@ Seats / Quota / Cost
   controls — platform admin, reports, and coterie blocks (D26)
 - **Web client** (in progress): React + TypeScript SPA embedded in the
   Go binary — auth and session lifecycle, the create-circle wizard,
-  seats, billing write actions, the marketplace directory, the
-  join-request inbox with the payment gate, usage metering, and
-  disputes
+  seats (assign, release, relabel, disable), billing write actions, the
+  join-request inbox with the payment gate, the owner blocklist, usage
+  metering, disputes, the marketplace directory with the owner's
+  listing toggle and request history, invitation history, subscription
+  settings, and the admin inbox with the platform audit ledger
 
 ## Tech stack
 

@@ -163,13 +163,16 @@ export interface Product {
   tier?: string
 }
 
+// Invitation mirrors the backend model: token is issued once (never
+// re-shown by the list), so history rows carry only state fields.
 export interface Invitation {
   id: string
   coterie_id: string
   role: string
-  status: string
   token?: string
-  expires_at?: string
+  expire_at: string
+  accepted_at?: string
+  created_at: string
 }
 
 export interface Subscription {
@@ -180,7 +183,11 @@ export interface Subscription {
   price: string
   currency: string
   start_date: string
+  renewal_date?: string | null
   max_seats: number
+  max_members?: number | null
+  cycle_days?: number | null
+  auto_billing?: boolean
   sharing_policy?: SharingPolicy | null
 }
 
@@ -302,6 +309,23 @@ export const AUDIT_ACTIONS = [
   'period_closed',
   'report_decided',
 ] as const
+
+// AUDIT_LABEL renders each action as a short Chinese tag; unknown
+// actions fall back to the raw string at the call site.
+export const AUDIT_LABEL: Record<string, string> = {
+  coterie_created: '建圈',
+  coterie_updated: '圈更新',
+  member_removed: '移除成员',
+  member_left: '成员退出',
+  seat_assigned: '席位分配',
+  seat_released: '席位释放',
+  seat_updated: '席位更新',
+  subscription_updated: '订阅更新',
+  contribution_updated: '分摊调整',
+  payment_recorded: '收款登记',
+  period_closed: '账期关闭',
+  report_decided: '举报裁定',
+}
 
 // Report is one user's flag on a publicly listed coterie; the admin
 // view joins coterie/reporter identities for triage.

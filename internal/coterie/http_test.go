@@ -109,6 +109,13 @@ func TestCoterieCreationAndLifecycle(t *testing.T) {
 		t.Fatalf("failed create must roll back, got %d coteries", len(items))
 	}
 
+	// Whitespace-only names are rejected before anything persists.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+"/api/v1/coteries",
+		fmt.Sprintf(`{"subscription_id":%q,"name":"   "}`, subID), tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("blank name create status = %d, want 422: %v", code, body)
+	}
+
 	// Happy path: draft, owner auto-joined, 3 seats provisioned.
 	c := createCoterie(t, client, srv.URL, tok, subID, "Launch Circle", 3)
 	id, _ := c["id"].(string)
@@ -140,6 +147,18 @@ func TestCoterieCreationAndLifecycle(t *testing.T) {
 		srv.URL+"/api/v1/coteries/"+id, `{"name":"Hijack"}`, other)
 	if code != http.StatusForbidden {
 		t.Fatalf("non-owner patch status = %d, want 403: %v", code, body)
+	}
+
+	// Blank renames are rejected; padded renames are trimmed.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/coteries/"+id, `{"name":"   "}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("blank rename status = %d, want 422: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+"/api/v1/coteries/"+id, `{"name":"  Renamed  "}`, tok)
+	if code != http.StatusOK || body["name"] != "Renamed" {
+		t.Fatalf("trim rename: status = %d body = %v", code, body)
 	}
 
 	// Legal walk: draft→open→active⇄paused→closed.
