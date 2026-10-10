@@ -68,7 +68,7 @@
 | GET | `/subscriptions/{subID}/seats` | Bearer | 席位列表 |
 | POST | `/subscriptions/{subID}/seats` | Owner | 追加席位 |
 | GET | `/seats/{id}` | Bearer | 席位详情 |
-| PATCH | `/seats/{id}` | Owner | 元数据/策略（如用量上限） |
+| PATCH | `/seats/{id}` | Owner | 改名/元数据/停用启用（occupied 需先 release） |
 | POST | `/seats/{id}/assign` | Owner | 指派给成员 |
 | POST | `/seats/{id}/release` | Owner | 释放 |
 
