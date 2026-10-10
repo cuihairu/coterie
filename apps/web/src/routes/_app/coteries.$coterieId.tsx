@@ -1327,6 +1327,7 @@ function SeatsTab({
   const [memberID, setMemberID] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
+  const [releasing, setReleasing] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   const refresh = () => {
@@ -1371,6 +1372,18 @@ function SeatsTab({
     onSuccess: () => {
       setError('')
       setEditing(null)
+      refresh()
+    },
+    onError: (err) => setError(err.message),
+  })
+
+  // releaseSeat frees an occupied seat — the only way back from
+  // occupied besides the member leaving; disabling one is a 409.
+  const releaseSeat = useMutation({
+    mutationFn: (seatID: string) => api<Seat>(`/seats/${seatID}/release`, { method: 'POST' }),
+    onSuccess: () => {
+      setError('')
+      setReleasing(null)
       refresh()
     },
     onError: (err) => setError(err.message),
@@ -1488,6 +1501,31 @@ function SeatsTab({
                               className="ml-2 text-xs text-slate-500 hover:underline disabled:opacity-50"
                             >
                               启用
+                            </button>
+                          ))}
+                        {s.status === 'occupied' &&
+                          (releasing === s.id ? (
+                            <span className="inline-flex items-center gap-1">
+                              <button
+                                onClick={() => releaseSeat.mutate(s.id)}
+                                disabled={releaseSeat.isPending}
+                                className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                              >
+                                确认释放
+                              </button>
+                              <button
+                                onClick={() => setReleasing(null)}
+                                className="text-xs text-slate-500 hover:underline"
+                              >
+                                取消
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setReleasing(s.id)}
+                              className="ml-2 text-xs text-slate-500 hover:underline"
+                            >
+                              释放
                             </button>
                           ))}
                       </>
