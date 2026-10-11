@@ -18,8 +18,12 @@ func run(w io.Writer) error {
 		return err
 	}
 	enc := base64.RawURLEncoding
-	fmt.Fprintln(w, "VAPID_PUBLIC_KEY="+enc.EncodeToString(priv.PublicKey().Bytes()))
-	fmt.Fprintln(w, "VAPID_PRIVATE_KEY="+enc.EncodeToString(priv.Bytes()))
+	if _, err := fmt.Fprintln(w, "VAPID_PUBLIC_KEY="+enc.EncodeToString(priv.PublicKey().Bytes())); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "VAPID_PRIVATE_KEY="+enc.EncodeToString(priv.Bytes())); err != nil {
+		return err
+	}
 	return nil
 }
 
