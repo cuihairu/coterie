@@ -10,6 +10,11 @@
 - [ ] 依赖与安全告警按需处理（dependabot；code scanning 见下条，暂不启用）
 - [ ] 每批 PR 合并后 README/文档站同步
 
+最近一次分诊（2026-10-11）：dependabot 开放告警 0；npm audit 两棵树 0 漏洞；
+govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdlib 漏洞，
+仅剩 x/crypto 的 openpgp 模块级公告（未导入该子包，Fixed: N/A，常驻噪音）；
+已合 PR #21 无用户可见 API 变化，README 无需同步。
+
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 

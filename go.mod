@@ -1,11 +1,12 @@
 module github.com/cuihairu/coterie
 
 go 1.26.0
+toolchain go1.27.2
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
+	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/moby/moby/client v0.6.2
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
