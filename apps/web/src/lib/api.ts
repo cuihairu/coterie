@@ -77,13 +77,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// logout revokes the session server-side. Failures are tolerated: a
-// network error or an already-revoked token still logs out locally.
+// logout revokes the session server-side. Failures are tolerated so a
+// network error or an already-revoked token never blocks a sign-out;
+// the caller clears the local session right after calling this.
 export async function logout(): Promise<void> {
   try {
     await api<void>('/auth/logout', { method: 'POST' })
   } catch {
-    // Local clear below is what actually ends the client session.
+    // The caller's local clear is what ends the client session.
   }
 }
 
