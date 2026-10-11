@@ -39,8 +39,9 @@ jobs:
         run: go test ./... -count=1
 
   web:
-    # The client gate: typecheck + build + lint. routeTree.gen.ts is
-    # committed, so tsc runs before the router plugin regenerates it.
+    # The client gate: typecheck + build + lint + unit tests.
+    # routeTree.gen.ts is committed, so tsc runs before the router
+    # plugin regenerates it.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -62,6 +63,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm test
 
   smoke:
     # Full-stack smoke: build the image from this push, boot the compose
