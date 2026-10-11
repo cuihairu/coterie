@@ -312,7 +312,17 @@ function RequestsTab({
   const [error, setError] = useState('')
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  const [payMethod, setPayMethod] = useState('')
   const [blocking, setBlocking] = useState<string | null>(null)
+
+  // The charge can go through any configured channel, not just manual —
+  // the list is the server's registered adapters (manual is always on).
+  const methodsQuery = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => api<ListResponse<string>>('/payments/methods'),
+  })
+  const methods = methodsQuery.data?.items ?? []
+  const chargeMethod = payMethod || methods[0] || 'manual'
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['join-requests', coterieId] })
@@ -365,7 +375,7 @@ function RequestsTab({
     mutationFn: (requestID: string) =>
       api<JoinRequest>(`/join-requests/${requestID}/payments`, {
         method: 'POST',
-        body: JSON.stringify({ method: 'manual', external_ref: payRef }),
+        body: JSON.stringify({ method: chargeMethod, external_ref: payRef }),
       }),
     onSuccess: () => {
       setError('')
@@ -454,6 +464,19 @@ function RequestsTab({
               {r.status === 'awaiting_payment' &&
                 (paying === r.id ? (
                   <span className="inline-flex items-center gap-1">
+                    {methods.length > 1 && (
+                      <select
+                        className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                        value={chargeMethod}
+                        onChange={(e) => setPayMethod(e.target.value)}
+                      >
+                        {methods.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <input
                       className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
                       placeholder="备注/流水号"
@@ -1652,6 +1675,7 @@ function PeriodsTab({
   })
   const [paying, setPaying] = useState<string | null>(null)
   const [payRef, setPayRef] = useState('')
+  const [payMethod, setPayMethod] = useState('')
   const [adjusting, setAdjusting] = useState<string | null>(null)
   const [adjAmount, setAdjAmount] = useState('')
   const [adjStatus, setAdjStatus] = useState('pending')
@@ -1672,6 +1696,15 @@ function PeriodsTab({
     void qc.invalidateQueries({ queryKey: ['contributions'] })
     void qc.invalidateQueries({ queryKey: ['disputes', subID] })
   }
+
+  // The charge can go through any configured channel, not just manual —
+  // the list is the server's registered adapters (manual is always on).
+  const methodsQuery = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: () => api<ListResponse<string>>('/payments/methods'),
+  })
+  const methods = methodsQuery.data?.items ?? []
+  const chargeMethod = payMethod || methods[0] || 'manual'
 
   const createPeriod = useMutation({
     mutationFn: () =>
@@ -1713,7 +1746,7 @@ function PeriodsTab({
     mutationFn: (contributionID: string) =>
       api<unknown>(`/contributions/${contributionID}/payments`, {
         method: 'POST',
-        body: JSON.stringify({ method: 'manual', external_ref: payRef }),
+        body: JSON.stringify({ method: chargeMethod, external_ref: payRef }),
       }),
     onSuccess: () => {
       setError('')
@@ -1882,6 +1915,19 @@ function PeriodsTab({
                                 </span>
                               ) : paying === c.id ? (
                                 <span className="inline-flex items-center gap-1">
+                                  {methods.length > 1 && (
+                                    <select
+                                      className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                                      value={chargeMethod}
+                                      onChange={(e) => setPayMethod(e.target.value)}
+                                    >
+                                      {methods.map((m) => (
+                                        <option key={m} value={m}>
+                                          {m}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
                                   <input
                                     className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
                                     placeholder="备注/流水号"
