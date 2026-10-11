@@ -29,9 +29,9 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/users` | Bearer | 用户列表 |
-| POST | `/users` | Bearer | 创建用户 |
-| GET | `/users/{id}` | Bearer | 用户详情 |
+| GET | `/users` | Bearer | 用户列表（展示投影：id / username / avatar，email/role 等不外露，见 D29） |
+| POST | `/users` | Bearer | 创建用户（回显创建载荷） |
+| GET | `/users/{id}` | Bearer | 用户详情（同上投影；本人完整字段走 `/auth/me`） |
 | GET | `/users/{id}/reputation` | Bearer | 结算信誉（只读投影） |
 
 ## 目录：Provider 与 Product
