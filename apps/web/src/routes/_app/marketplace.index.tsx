@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { DirectoryEntry, ListResponse, MyJoinRequest } from '../../lib/api'
+import { Pager } from '../../components/Pager'
+
+const PAGE_SIZE = 20
 
 export const Route = createFileRoute('/_app/marketplace/')({
   component: MarketplacePage,
@@ -12,17 +15,24 @@ export const Route = createFileRoute('/_app/marketplace/')({
 // reputation badge (D18) and the equal-split share estimate, plus the
 // join-request action that starts the Request → accept journey.
 function MarketplacePage() {
+  // The directory sorts oldest first, so without paging every circle
+  // past the server's default limit would be unreachable.
+  const [offset, setOffset] = useState(0)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['marketplace'],
-    queryFn: () => api<ListResponse<DirectoryEntry>>('/marketplace/coteries'),
+    queryKey: ['marketplace', offset],
+    queryFn: () =>
+      api<ListResponse<DirectoryEntry>>(
+        `/marketplace/coteries?${new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })}`,
+      ),
   })
 
   // The caller's own requests restore the card state after a reload —
   // without it a submitted request would show the create button again
-  // and the next click would 409.
+  // and the next click would 409. One page of 100 covers a person's
+  // whole application history.
   const mineQuery = useQuery({
     queryKey: ['my-join-requests'],
-    queryFn: () => api<ListResponse<MyJoinRequest>>('/me/join-requests'),
+    queryFn: () => api<ListResponse<MyJoinRequest>>('/me/join-requests?limit=100'),
   })
   // History is per-user per-coterie, so one circle can carry several
   // decided rows — the newest decides what the card shows.
@@ -49,6 +59,15 @@ function MarketplacePage() {
             <EntryCard key={e.coterie_id} entry={e} myRequest={byCoterie.get(e.coterie_id)} />
           ))}
         </div>
+      )}
+      {data && (
+        <Pager
+          offset={offset}
+          pageSize={PAGE_SIZE}
+          total={data.meta.total}
+          onOffsetChange={setOffset}
+          className="mt-6 flex items-center gap-3"
+        />
       )}
     </div>
   )
