@@ -138,6 +138,15 @@ expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api
 expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/payments/webhooks/manual")" 422 "sync-only channel cannot confirm"
 expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/marketplace/webhooks/nosuch")" 404 "unknown gate channel refused"
 
+step "single-port web app: one server for API and client"
+# The Docker build embeds the real Vite output; a local build serves
+# the committed placeholder. Both are HTML, and both fall back to
+# index.html for client-side routes.
+expect "$(code_of "$BASE/")" 200 "root serves the embedded client"
+expect "$(curl -s -o /dev/null -w '%{content_type}' "$BASE/")" "text/html; charset=utf-8" "root is html"
+expect "$(code_of "$BASE/circles/deep/link")" 200 "spa fallback resolves client routes"
+expect "$(code_of "$BASE/api/v1/nope")" 404 "api paths stay on the api mux"
+
 step "usage metering and usage-based split"
 OWNM=$(python3 -c "import sys,json;print([m['id'] for m in json.load(sys.stdin)['items'] if m['role']=='owner'][0])" <<<"$(api GET "/api/v1/coteries/$CID/members" "$TOK")")
 api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$OWNM\",\"amount\":\"10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
