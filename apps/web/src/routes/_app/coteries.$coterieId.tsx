@@ -1402,8 +1402,16 @@ function SeatsTab({
   const [memberID, setMemberID] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
+  // 席位计量类型（D4/D23）：quota 配额 / resource 资源，与 used 投影
+  // 共用同一条账本归集管线；普通席位不参与计量。
+  const [editKind, setEditKind] = useState<'none' | 'quota' | 'resource'>('none')
+  const [editCapacity, setEditCapacity] = useState('')
+  const [editUnit, setEditUnit] = useState('')
   const [releasing, setReleasing] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const editValid =
+    !!editLabel.trim() &&
+    (editKind === 'none' || (Number(editCapacity) > 0 && !!editUnit.trim()))
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['seats', subID] })
@@ -1464,6 +1472,33 @@ function SeatsTab({
     onError: (err) => setError(err.message),
   })
 
+  // saveSeatEdit builds the PATCH body: the label always travels; the
+  // metadata only travels when the metering actually changed, so a
+  // plain relabel never rewrites the projected `used`. Switching the
+  // kind clears the old key — quota and resource are the same ledger
+  // pipeline (D23), only the metadata name differs.
+  const saveSeatEdit = (s: Seat) => {
+    const body: Record<string, unknown> = { label: editLabel.trim() }
+    const md = s.metadata ?? {}
+    const prevKind: 'none' | 'quota' | 'resource' =
+      md.quota !== undefined ? 'quota' : md.resource !== undefined ? 'resource' : 'none'
+    if (editKind === 'none') {
+      if (prevKind !== 'none') body.metadata = {}
+      return updateSeat.mutate({ seatID: s.id, body })
+    }
+    const capacity = Number(editCapacity)
+    const unit = editUnit.trim()
+    if (!(capacity > 0) || !unit) return
+    if (prevKind !== editKind || String(md[editKind]) !== String(capacity) || String(md.unit ?? '') !== unit) {
+      body.metadata = {
+        [editKind]: capacity,
+        unit,
+        used: prevKind === editKind && md.used !== undefined ? md.used : 0,
+      }
+    }
+    updateSeat.mutate({ seatID: s.id, body })
+  }
+
   if (query.isLoading || membersQuery.isLoading) return <p className="text-slate-500">加载中…</p>
   if (query.error) return <p className="text-red-600">加载失败：{query.error.message}</p>
   const items = query.data?.items ?? []
@@ -1496,17 +1531,61 @@ function SeatsTab({
             </tr>
           </thead>
           <tbody>
-            {items.map((s) => (
+            {items.map((s) => {
+            const md = s.metadata ?? {}
+            const kind: 'none' | 'quota' | 'resource' =
+              md.quota !== undefined ? 'quota' : md.resource !== undefined ? 'resource' : 'none'
+            return (
               <tr key={s.id} className="border-b border-slate-100">
                 <td className="py-2">
                   {editing === s.id ? (
-                    <input
-                      className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
-                      value={editLabel}
-                      onChange={(e) => setEditLabel(e.target.value)}
-                    />
+                    <div className="space-y-1">
+                      <input
+                        className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                        value={editLabel}
+                        onChange={(e) => setEditLabel(e.target.value)}
+                      />
+                      <div className="flex items-center gap-1">
+                        <select
+                          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                          value={editKind}
+                          onChange={(e) =>
+                            setEditKind(e.target.value as 'none' | 'quota' | 'resource')
+                          }
+                          title="席位计量类型（D4/D23）"
+                        >
+                          <option value="none">普通席位</option>
+                          <option value="quota">配额席位</option>
+                          <option value="resource">资源席位</option>
+                        </select>
+                        {editKind !== 'none' && (
+                          <>
+                            <input
+                              className="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                              placeholder="容量"
+                              value={editCapacity}
+                              onChange={(e) => setEditCapacity(e.target.value)}
+                            />
+                            <input
+                              className="w-14 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                              placeholder="单位"
+                              value={editUnit}
+                              onChange={(e) => setEditUnit(e.target.value)}
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
                   ) : (
-                    s.label
+                    <span>
+                      {s.label}
+                      {kind !== 'none' && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
+                          {kind === 'quota' ? '配额' : '资源'} {String(md[kind])} {String(md.unit ?? '')}
+                          {md.used !== undefined ? ` · 已用 ${String(md.used)}` : ''}
+                        </span>
+                      )}
+                    </span>
                   )}
                 </td>
                 <td className="py-2">{s.status}</td>
@@ -1529,10 +1608,8 @@ function SeatsTab({
                     {assigning !== s.id && editing === s.id && (
                       <span className="inline-flex items-center gap-1">
                         <button
-                          onClick={() =>
-                            updateSeat.mutate({ seatID: s.id, body: { label: editLabel.trim() } })
-                          }
-                          disabled={updateSeat.isPending || !editLabel.trim()}
+                          onClick={() => saveSeatEdit(s)}
+                          disabled={updateSeat.isPending || !editValid}
                           className="text-xs text-emerald-700 hover:underline disabled:opacity-50"
                         >
                           保存
@@ -1551,6 +1628,16 @@ function SeatsTab({
                           onClick={() => {
                             setEditing(s.id)
                             setEditLabel(s.label)
+                            const cur = s.metadata ?? {}
+                            const curKind: 'none' | 'quota' | 'resource' =
+                              cur.quota !== undefined
+                                ? 'quota'
+                                : cur.resource !== undefined
+                                  ? 'resource'
+                                  : 'none'
+                            setEditKind(curKind)
+                            setEditCapacity(curKind === 'none' ? '' : String(cur[curKind]))
+                            setEditUnit(curKind === 'none' ? '' : String(cur.unit ?? ''))
                           }}
                           className="ml-2 text-xs text-slate-600 hover:underline"
                         >
@@ -1637,7 +1724,8 @@ function SeatsTab({
                   </td>
                 )}
               </tr>
-            ))}
+            )
+            })}
           </tbody>
         </table>
       )}
