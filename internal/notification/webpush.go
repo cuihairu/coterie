@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -65,7 +64,6 @@ func parseVapidKeys(publicB64, privateB64, subject string) *vapidKeys {
 	if err != nil || len(priv) != 32 {
 		return nil
 	}
-	d := new(big.Int).SetBytes(priv)
 	// ecdh parses and validates the same uncompressed point encoding the
 	// deprecated elliptic.Unmarshal accepted; deriving the public key
 	// also pins the pair together — a private key that does not match
@@ -78,10 +76,12 @@ func parseVapidKeys(publicB64, privateB64, subject string) *vapidKeys {
 	if !bytes.Equal(pubKey, pub) {
 		return nil
 	}
-	x := new(big.Int).SetBytes(pubKey[1:33])
-	y := new(big.Int).SetBytes(pubKey[33:])
+	signer, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), priv)
+	if err != nil {
+		return nil
+	}
 	return &vapidKeys{
-		signer:   &ecdsa.PrivateKey{D: d, PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}},
+		signer:   signer,
 		Public65: pub,
 		Subject:  subject,
 	}
