@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { DirectoryEntry, ListResponse, MyJoinRequest } from '../../lib/api'
+import { Pager } from '../../components/Pager'
 
 const PAGE_SIZE = 20
 
@@ -59,23 +60,14 @@ function MarketplacePage() {
           ))}
         </div>
       )}
-      {data && data.meta.total > PAGE_SIZE && (
-        <div className="mt-6 flex items-center gap-3">
-          <button
-            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-            disabled={offset === 0}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <button
-            onClick={() => setOffset(offset + PAGE_SIZE)}
-            disabled={offset + PAGE_SIZE >= data.meta.total}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+      {data && (
+        <Pager
+          offset={offset}
+          pageSize={PAGE_SIZE}
+          total={data.meta.total}
+          onOffsetChange={setOffset}
+          className="mt-6 flex items-center gap-3"
+        />
       )}
     </div>
   )

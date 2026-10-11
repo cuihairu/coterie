@@ -4,6 +4,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import { AUDIT_ACTIONS, AUDIT_LABEL } from '../../lib/api'
 import type { AuditLog, ListResponse, Report } from '../../lib/api'
+import { Pager } from '../../components/Pager'
 
 export const Route = createFileRoute('/_app/admin/')({
   component: AdminPage,
@@ -164,23 +165,13 @@ function ReportsInbox() {
         </div>
       )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {reportsQuery.data && reportsQuery.data.meta.total > REPORTS_PAGE_SIZE && (
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={() => setOffset(Math.max(0, offset - REPORTS_PAGE_SIZE))}
-            disabled={offset === 0}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <button
-            onClick={() => setOffset(offset + REPORTS_PAGE_SIZE)}
-            disabled={offset + REPORTS_PAGE_SIZE >= reportsQuery.data.meta.total}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+      {reportsQuery.data && (
+        <Pager
+          offset={offset}
+          pageSize={REPORTS_PAGE_SIZE}
+          total={reportsQuery.data.meta.total}
+          onOffsetChange={setOffset}
+        />
       )}
     </div>
   )
@@ -267,23 +258,13 @@ function AuditLedger() {
           ))}
         </div>
       )}
-      {query.data && query.data.meta.total > AUDIT_PAGE_SIZE && (
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE_SIZE))}
-            disabled={offset === 0}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <button
-            onClick={() => setOffset(offset + AUDIT_PAGE_SIZE)}
-            disabled={offset + AUDIT_PAGE_SIZE >= query.data.meta.total}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+      {query.data && (
+        <Pager
+          offset={offset}
+          pageSize={AUDIT_PAGE_SIZE}
+          total={query.data.meta.total}
+          onOffsetChange={setOffset}
+        />
       )}
     </section>
   )
