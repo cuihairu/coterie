@@ -122,6 +122,12 @@ expect "$(jget "['status']" "$PAID")" succeeded "payment recorded via manual ada
 expect "$(jget "['amount']" "$PAID")" 6.00 "payment echoes the contribution amount"
 STATUS=$(api GET "/api/v1/billing-periods/$PERID/contributions" "$TOK")
 expect "$(python3 -c "import sys,json;d=json.load(sys.stdin);print([c['status'] for c in d['items'] if c['id']=='$CONTRIB'][0])" <<<"$STATUS")" paid "contribution settled"
+PAYID=$(jget "['id']" "$PAID")
+expect "$(jget "['id']" "$(api GET "/api/v1/payments/$PAYID" "$TOK")")" "$PAYID" "payment detail read back"
+case "$(api GET /api/v1/payments/methods "$TOK")" in
+  *manual*) echo "ok  payment methods list manual" ;;
+  *) echo "FAIL manual missing from payment methods" >&2; exit 1 ;;
+esac
 
 step "usage metering and usage-based split"
 OWNM=$(python3 -c "import sys,json;print([m['id'] for m in json.load(sys.stdin)['items'] if m['role']=='owner'][0])" <<<"$(api GET "/api/v1/coteries/$CID/members" "$TOK")")
@@ -129,6 +135,9 @@ api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$OW
 api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"30\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
 UML=$(api GET "/api/v1/subscriptions/$SID/usage-records" "$TOK")
 expect "$(python3 -c "import sys,json;print(sum(float(r['amount']) for r in json.load(sys.stdin)['items']))" <<<"$UML")" 40.0 "usage ledger sums to 40 credits"
+ROW=$(python3 -c "import sys,json;i=json.load(sys.stdin)['items'][0];print(i['id'],i['member_id'])" <<<"$UML")
+URID=${ROW% *}; URMEMBER=${ROW#* }
+expect "$(jget "['member_id']" "$(api GET "/api/v1/usage-records/$URID" "$TOK")")" "$URMEMBER" "usage record detail read back"
 PER2=$(api POST "/api/v1/subscriptions/$SID/billing-periods" "$TOK" '{"start_date":"2026-11-01","end_date":"2026-12-01"}')
 PER2ID=$(jget "['id']" "$PER2")
 GEN2=$(api POST "/api/v1/billing-periods/$PER2ID/contributions/generate" "$TOK" '{"mode":"usage"}')
@@ -168,13 +177,16 @@ NOTIF=$(api GET /api/v1/notifications "$TOK2")
 COUNT=$(python3 -c "import sys,json;print(json.load(sys.stdin)['meta']['total'])" <<<"$NOTIF")
 [ "$COUNT" -ge 2 ] || { echo "FAIL notifications: expected payment_due + seat_assigned, got $COUNT" >&2; exit 1; }
 echo "ok  member inbox has $COUNT notifications"
+NID=$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['id'])" <<<"$NOTIF")
+RD=$(api POST "/api/v1/notifications/$NID/read" "$TOK2" "")
+[ -n "$(jget "['read_at']" "$RD")" ] && echo "ok  marking read stamps read_at"
 
 step "marketplace admission: join request, accept, leave, decline"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"public"}' >/dev/null
 REG3=$(api POST /api/v1/auth/register "" "{\"username\":\"$TAG-j\",\"email\":\"$TAG-j@example.com\",\"password\":\"password-123\"}")
 TOK3=$(jget "['token']" "$REG3")
 [ -n "$TOK3" ] || { echo "FAIL register requester: $REG3" >&2; exit 1; }
-[ -n "$TOK3" ] || { echo "FAIL register requester: $REG3" >&2; exit 1; }
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" "$BASE/api/v1/notifications/$NID/read")" 404 "another user cannot read foreign notifications"
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/coteries/$CID/join-requests")" 409 "existing member cannot re-apply"
 JR=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"count me in"}')
 JRID=$(jget "['id']" "$JR")
@@ -224,6 +236,16 @@ expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" -H 'Content-Type: app
 api DELETE "/api/v1/coteries/$CID/blocks/$USERID3" "$TOK" "" >/dev/null
 JR4=$(api POST "/api/v1/coteries/$CID/join-requests" "$TOK3" '{"message":"round two"}')
 expect "$(jget "['status']" "$JR4")" pending "unblocked user can apply again"
+expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK" "$BASE/api/v1/join-requests/$(jget "['id']" "$JR4")")" 403 "owner cannot withdraw another's request"
+api DELETE "/api/v1/join-requests/$(jget "['id']" "$JR4")" "$TOK3" "" >/dev/null
+expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$(api GET /api/v1/me/join-requests "$TOK3")")" cancelled "requester withdrew the request"
+
+step "owner audit trail"
+case "$(api GET "/api/v1/coteries/$CID/audit-logs" "$TOK")" in
+  *member_left*) echo "ok  audit trail records the leave" ;;
+  *) echo "FAIL member_left missing from the coterie audit trail" >&2; exit 1 ;;
+esac
+expect "$(code_of -H "Authorization: Bearer $TOK2" "$BASE/api/v1/coteries/$CID/audit-logs")" 403 "members cannot read the audit trail"
 
 step "abuse reports: flag a listed circle"
 REP=$(api POST "/api/v1/coteries/$CID/report" "$TOK2" '{"reason":"suspected fake subscription"}')
