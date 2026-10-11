@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import type { UseQueryResult } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { api, getUser } from '../../lib/api'
+import { chargeMethodFor, PaymentMethodSelect } from '../../components/PaymentMethodSelect'
 import type {
   AuditLog,
   BillingPeriod,
@@ -322,7 +323,7 @@ function RequestsTab({
     queryFn: () => api<ListResponse<string>>('/payments/methods'),
   })
   const methods = methodsQuery.data?.items ?? []
-  const chargeMethod = payMethod || methods[0] || 'manual'
+  const chargeMethod = chargeMethodFor(methods, payMethod)
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['join-requests', coterieId] })
@@ -464,19 +465,11 @@ function RequestsTab({
               {r.status === 'awaiting_payment' &&
                 (paying === r.id ? (
                   <span className="inline-flex items-center gap-1">
-                    {methods.length > 1 && (
-                      <select
-                        className="rounded border border-slate-300 px-1 py-0.5 text-xs"
-                        value={chargeMethod}
-                        onChange={(e) => setPayMethod(e.target.value)}
-                      >
-                        {methods.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <PaymentMethodSelect
+                      methods={methods}
+                      value={chargeMethod}
+                      onChange={setPayMethod}
+                    />
                     <input
                       className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
                       placeholder="备注/流水号"
@@ -1704,7 +1697,7 @@ function PeriodsTab({
     queryFn: () => api<ListResponse<string>>('/payments/methods'),
   })
   const methods = methodsQuery.data?.items ?? []
-  const chargeMethod = payMethod || methods[0] || 'manual'
+  const chargeMethod = chargeMethodFor(methods, payMethod)
 
   const createPeriod = useMutation({
     mutationFn: () =>
@@ -1915,19 +1908,11 @@ function PeriodsTab({
                                 </span>
                               ) : paying === c.id ? (
                                 <span className="inline-flex items-center gap-1">
-                                  {methods.length > 1 && (
-                                    <select
-                                      className="rounded border border-slate-300 px-1 py-0.5 text-xs"
-                                      value={chargeMethod}
-                                      onChange={(e) => setPayMethod(e.target.value)}
-                                    >
-                                      {methods.map((m) => (
-                                        <option key={m} value={m}>
-                                          {m}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
+                                  <PaymentMethodSelect
+                                    methods={methods}
+                                    value={chargeMethod}
+                                    onChange={setPayMethod}
+                                  />
                                   <input
                                     className="w-32 rounded border border-slate-300 px-1 py-0.5 text-xs"
                                     placeholder="备注/流水号"
