@@ -56,6 +56,64 @@ func TestUserLifecycle(t *testing.T) {
 	}
 }
 
+// Directory reads serve the summary projection only: email, role,
+// status, locale, timezone, and timestamps never reach another
+// session's response (maintainer decision, 2026-10-11).
+func TestUserDirectoryProjection(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _ := testsupport.RegisterAndLogin(t, client, srv.URL, "user-proj")
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+usersPath,
+		`{"username":"dana","email":"dana@example.com"}`, tok)
+	if code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %v", code, body)
+	}
+	id, _ := body["id"].(string)
+
+	leaky := []string{"email", "role", "status", "locale", "timezone", "created_at", "updated_at"}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+usersPath+"/"+id, "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200: %v", code, body)
+	}
+	if body["username"] != "dana" {
+		t.Fatalf("summary username = %v, want dana", body["username"])
+	}
+	for _, key := range leaky {
+		if _, ok := body[key]; ok {
+			t.Fatalf("get response leaks %q: %v", key, body)
+		}
+	}
+
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+usersPath, "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200: %v", code, body)
+	}
+	items, _ := body["items"].([]any)
+	if len(items) == 0 {
+		t.Fatalf("list empty: %v", body)
+	}
+	first, _ := items[0].(map[string]any)
+	if first["username"] == "" {
+		t.Fatalf("list entry missing username: %v", first)
+	}
+	for _, key := range leaky {
+		if _, ok := first[key]; ok {
+			t.Fatalf("list entry leaks %q: %v", key, first)
+		}
+	}
+
+	// The owner's own view keeps the contact fields.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet, srv.URL+"/api/v1/auth/me", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("me status = %d, want 200: %v", code, body)
+	}
+	if body["email"] == "" {
+		t.Fatalf("me lost the email: %v", body)
+	}
+}
+
 func TestUserConflicts(t *testing.T) {
 	db := testsupport.NewDB(t)
 	srv := testsupport.NewServer(t, db)

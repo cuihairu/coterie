@@ -84,12 +84,19 @@ Every route except `GET /healthz`, `POST /api/v1/auth/register`,
 live for 30 days).
 
 A complete smoke test of the MVP journey (register → provider → product →
-subscription → coterie → seats → invite → join → billing → settlement →
-notifications) against a running server:
+subscription → coterie → seats → invite → join → marketplace admission →
+billing → settlement → usage → disputes → blocks → reports → notifications)
+against a running server:
 
 ```bash
 scripts/smoke.sh http://localhost:8080
 ```
+
+`SMOKE_ADMIN_EMAIL` and `SMOKE_ADMIN_PASSWORD` extend the walk to the
+platform-admin surface (reports inbox, report decision, audit ledger); the
+account must be one the server promoted via `ADMIN_EMAILS`. Back-to-back
+runs can trip the auth rate limiter on the third registration — wait a
+minute between runs.
 
 ## API overview (v1)
 
@@ -173,17 +180,20 @@ Seats / Quota / Cost
   rollover), advanced billing (prorated split), disputes, reputation
 - **Phase 4** (complete): audit log, owner reputation badge in the marketplace,
   rate limiting, custom billing cycles, per-member usage limits,
-  Web Push notifications, resource sharing mode, the Stripe payment
-  channel (D24), the marketplace payment gate (D25), and abuse
+  resource sharing mode, the marketplace payment gate (D25), and abuse
   controls — platform admin, reports, and coterie blocks (D26)
+- **Remaining**: the Web Push public-key endpoint (the push channel and
+  subscriptions ship; the SPA still needs the server's VAPID public key
+  to subscribe) and the Stripe payment channel (D24) — both wait on
+  external keys or credentials
 - **Web client** (in progress): React + TypeScript SPA embedded in the
   Go binary — auth and session lifecycle, the create-circle wizard,
-  seats (assign, release, relabel, disable), billing write actions with
-  all five split modes (D9), the join-request inbox with the payment
-  gate, the owner blocklist, usage metering, disputes, the marketplace
-  directory with the owner's listing toggle and request history,
-  invitation history, subscription settings, and the admin inbox with
-  the platform audit ledger
+  seats (assign, release, relabel, disable, quota/resource metering),
+  billing write actions with all five split modes (D9), the
+  join-request inbox with the payment gate, the owner blocklist, usage
+  metering, disputes, the marketplace directory with the owner's
+  listing toggle and request history, invitation history, subscription
+  settings, and the admin inbox with the platform audit ledger
 
 ## Tech stack
 

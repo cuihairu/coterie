@@ -24,6 +24,9 @@ services:
     environment:
       DATABASE_URL: postgres://coterie:coterie@postgres:5432/coterie?sslmode=disable
       PORT: "8080"
+      # Payment channels on top of the always-on manual adapter
+      # (.env.example); empty keeps the single-channel default.
+      PAYMENT_METHODS: ${PAYMENT_METHODS:-}
     ports:
       - "8080:8080"
     depends_on:

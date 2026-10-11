@@ -4,12 +4,15 @@ import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import { AUDIT_ACTIONS, AUDIT_LABEL } from '../../lib/api'
 import type { AuditLog, ListResponse, Report } from '../../lib/api'
+import { Pager } from '../../components/Pager'
 
 export const Route = createFileRoute('/_app/admin/')({
   component: AdminPage,
 })
 
 type Status = 'open' | 'resolved' | 'dismissed'
+
+const REPORTS_PAGE_SIZE = 20
 
 function AdminPage() {
   return (
@@ -26,13 +29,19 @@ function AdminPage() {
 function ReportsInbox() {
   const qc = useQueryClient()
   const [status, setStatus] = useState<Status>('open')
+  // A spam wave can push the inbox past the server's default limit;
+  // page it instead of silently hiding reports.
+  const [offset, setOffset] = useState(0)
   const [error, setError] = useState('')
   const [deciding, setDeciding] = useState<string | null>(null)
   const [note, setNote] = useState('')
 
   const reportsQuery = useQuery({
-    queryKey: ['reports', status],
-    queryFn: () => api<{ items: Report[]; meta: { total: number } }>(`/admin/reports?status=${status}`),
+    queryKey: ['reports', status, offset],
+    queryFn: () =>
+      api<{ items: Report[]; meta: { total: number } }>(
+        `/admin/reports?${new URLSearchParams({ status, limit: String(REPORTS_PAGE_SIZE), offset: String(offset) })}`,
+      ),
   })
 
   const decide = useMutation({
@@ -60,7 +69,10 @@ function ReportsInbox() {
         {(['open', 'resolved', 'dismissed'] as Status[]).map((s) => (
           <button
             key={s}
-            onClick={() => setStatus(s)}
+            onClick={() => {
+              setStatus(s)
+              setOffset(0)
+            }}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               status === s ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
             }`}
@@ -153,6 +165,14 @@ function ReportsInbox() {
         </div>
       )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {reportsQuery.data && (
+        <Pager
+          offset={offset}
+          pageSize={REPORTS_PAGE_SIZE}
+          total={reportsQuery.data.meta.total}
+          onOffsetChange={setOffset}
+        />
+      )}
     </div>
   )
 }
@@ -238,23 +258,13 @@ function AuditLedger() {
           ))}
         </div>
       )}
-      {query.data && query.data.meta.total > AUDIT_PAGE_SIZE && (
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={() => setOffset(Math.max(0, offset - AUDIT_PAGE_SIZE))}
-            disabled={offset === 0}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <button
-            onClick={() => setOffset(offset + AUDIT_PAGE_SIZE)}
-            disabled={offset + AUDIT_PAGE_SIZE >= query.data.meta.total}
-            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+      {query.data && (
+        <Pager
+          offset={offset}
+          pageSize={AUDIT_PAGE_SIZE}
+          total={query.data.meta.total}
+          onOffsetChange={setOffset}
+        />
       )}
     </section>
   )

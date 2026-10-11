@@ -1,7 +1,11 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { ListResponse, Notification } from '../../lib/api'
+import { Pager } from '../../components/Pager'
+
+const PAGE_SIZE = 20
 
 export const Route = createFileRoute('/_app/notifications/')({
   component: NotificationsPage,
@@ -9,9 +13,15 @@ export const Route = createFileRoute('/_app/notifications/')({
 
 function NotificationsPage() {
   const qc = useQueryClient()
+  // The inbox grows without bound; page it or older notifications
+  // silently drop off past the server's default limit.
+  const [offset, setOffset] = useState(0)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<ListResponse<Notification>>('/notifications'),
+    queryKey: ['notifications', 'list', offset],
+    queryFn: () =>
+      api<ListResponse<Notification>>(
+        `/notifications?${new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })}`,
+      ),
   })
 
   const markRead = useMutation({
@@ -69,6 +79,14 @@ function NotificationsPage() {
             )
           })}
         </div>
+      )}
+      {data && (
+        <Pager
+          offset={offset}
+          pageSize={PAGE_SIZE}
+          total={data.meta.total}
+          onOffsetChange={setOffset}
+        />
       )}
     </div>
   )
