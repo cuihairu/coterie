@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { ListResponse, Notification } from '../../lib/api'
+
+const PAGE_SIZE = 20
 
 export const Route = createFileRoute('/_app/notifications/')({
   component: NotificationsPage,
@@ -9,9 +12,15 @@ export const Route = createFileRoute('/_app/notifications/')({
 
 function NotificationsPage() {
   const qc = useQueryClient()
+  // The inbox grows without bound; page it or older notifications
+  // silently drop off past the server's default limit.
+  const [offset, setOffset] = useState(0)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<ListResponse<Notification>>('/notifications'),
+    queryKey: ['notifications', 'list', offset],
+    queryFn: () =>
+      api<ListResponse<Notification>>(
+        `/notifications?${new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })}`,
+      ),
   })
 
   const markRead = useMutation({
@@ -68,6 +77,24 @@ function NotificationsPage() {
               </div>
             )
           })}
+        </div>
+      )}
+      {data && data.meta.total > PAGE_SIZE && (
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+            disabled={offset === 0}
+            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            上一页
+          </button>
+          <button
+            onClick={() => setOffset(offset + PAGE_SIZE)}
+            disabled={offset + PAGE_SIZE >= data.meta.total}
+            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >
+            下一页
+          </button>
         </div>
       )}
     </div>
