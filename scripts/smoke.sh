@@ -130,6 +130,12 @@ case "$(api GET /api/v1/payments/methods "$TOK")" in
   *) echo "FAIL manual missing from payment methods" >&2; exit 1 ;;
 esac
 
+step "public webhook gate: signature is the only way in"
+expect "$(code_of "$BASE/healthz")" 200 "healthz is public"
+expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/payments/webhooks/nosuch")" 404 "unknown payment channel refused"
+expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/payments/webhooks/manual")" 422 "sync-only channel cannot confirm"
+expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/marketplace/webhooks/nosuch")" 404 "unknown gate channel refused"
+
 step "usage metering and usage-based split"
 OWNM=$(python3 -c "import sys,json;print([m['id'] for m in json.load(sys.stdin)['items'] if m['role']=='owner'][0])" <<<"$(api GET "/api/v1/coteries/$CID/members" "$TOK")")
 api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$OWNM\",\"amount\":\"10\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
