@@ -56,6 +56,7 @@ SUB=$(api POST /api/v1/subscriptions "$TOK" "{\"product_id\":\"$PRID\",\"owner_u
 SID=$(jget "['id']" "$SUB")
 [ -n "$SID" ] || { echo "FAIL subscription" >&2; exit 1; }
 echo "ok  subscription $SID"
+expect "$(python3 -c "import sys,json;print(any(s['id']=='$SID' for s in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/subscriptions "$TOK")")" True "owner lists the subscription"
 
 step "coterie with capacity 2, publish open"
 COT=$(api POST /api/v1/coteries "$TOK" "{\"subscription_id\":\"$SID\",\"name\":\"Smoke Circle\",\"capacity\":2}")
@@ -64,6 +65,7 @@ expect "$(jget "['status']" "$COT")" draft "coterie starts in draft"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"status":"open"}' >/dev/null
 expect "$(jget "['status']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" open "published open"
 expect "$(code_of -X PATCH -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"name":"   "}' "$BASE/api/v1/coteries/$CID")" 422 "blank rename rejected"
+expect "$(python3 -c "import sys,json;print(any(c['id']=='$CID' for c in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/coteries "$TOK")")" True "owner lists the coterie"
 
 step "invite and join a member"
 INV=$(api POST "/api/v1/coteries/$CID/invitations" "$TOK" '{"role":"member"}')
@@ -71,7 +73,6 @@ ITOK=$(jget "['token']" "$INV")
 REG2=$(api POST /api/v1/auth/register "" "{\"username\":\"$TAG-m\",\"email\":\"$TAG-m@example.com\",\"password\":\"password-123\"}")
 TOK2=$(jget "['token']" "$REG2")
 # A 429 body has no token: the auth rate limiter rejects fast reruns.
-[ -n "$TOK2" ] || { echo "FAIL register member: $REG2" >&2; exit 1; }
 [ -n "$TOK2" ] || { echo "FAIL register member: $REG2" >&2; exit 1; }
 MEM=$(api POST /api/v1/invitations/accept "$TOK2" "{\"token\":\"$ITOK\"}")
 MID=$(jget "['id']" "$MEM")
@@ -161,6 +162,15 @@ PER3ID=$(jget "['id']" "$PER3")
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"mode":"fixed"}' "$BASE/api/v1/billing-periods/$PER3ID/contributions/generate")" 422 "fixed mode without items refused"
 FIX=$(api POST "/api/v1/billing-periods/$PER3ID/contributions/generate" "$TOK" "{\"mode\":\"fixed\",\"items\":[{\"member_id\":\"$OWNM\",\"amount\":\"4.00\"},{\"member_id\":\"$MID\",\"amount\":\"8.00\"}]}")
 expect "$(python3 -c "import sys,json;print(sorted(c['amount'] for c in json.load(sys.stdin)['items']))" <<<"$FIX")" "['4.00', '8.00']" "fixed shares land as assigned"
+FIXOWN=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$OWNM'][0])" <<<"$FIX")
+ADJ=$(api PATCH "/api/v1/contributions/$FIXOWN" "$TOK" '{"amount":"5.00"}')
+expect "$(jget "['amount']" "$ADJ")" 5.00 "owner adjusted a pending share"
+expect "$(code_of -X PATCH -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"amount":"9.99"}' "$BASE/api/v1/contributions/$FIXOWN")" 403 "members cannot adjust contributions"
+expect "$(jget "['status']" "$(api PATCH "/api/v1/contributions/$FIXOWN" "$TOK" '{"status":"waived"}')")" waived "owner waived the share"
+expect "$(code_of -X PATCH -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"amount":"6.00"}' "$BASE/api/v1/contributions/$FIXOWN")" 409 "amount frozen once waived"
+expect "$(jget "['status']" "$(api POST "/api/v1/billing-periods/$PER3ID/close" "$TOK" "")")" closed "owner closed the period"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK" "$BASE/api/v1/billing-periods/$PER3ID/close")" 409 "closing a closed period refused"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" "$BASE/api/v1/billing-periods/$PER3ID/close")" 403 "members cannot close periods"
 
 step "dispute: member raises, owner decides"
 MEMCONTRIB=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$MID'][0])" <<<"$GEN2")
@@ -171,6 +181,7 @@ expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: app
 DECIDED=$(api POST "/api/v1/disputes/$DISPID/decide" "$TOK" '{"decision":"rejected","note":"ledger matches the provider export"}')
 expect "$(jget "['status']" "$DECIDED")" rejected "owner rejected the dispute"
 expect "$(jget "['status']" "$(api GET "/api/v1/disputes/$DISPID" "$TOK2")")" rejected "raiser still sees the dispute"
+expect "$(python3 -c "import sys,json;d=json.load(sys.stdin)['items'];print([x['status'] for x in d if x['id']=='$DISPID'][0])" <<<"$(api GET "/api/v1/subscriptions/$SID/disputes" "$TOK")")" rejected "owner dispute list carries the decision"
 
 step "member notifications"
 NOTIF=$(api GET /api/v1/notifications "$TOK2")
@@ -180,6 +191,17 @@ echo "ok  member inbox has $COUNT notifications"
 NID=$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['id'])" <<<"$NOTIF")
 RD=$(api POST "/api/v1/notifications/$NID/read" "$TOK2" "")
 [ -n "$(jget "['read_at']" "$RD")" ] && echo "ok  marking read stamps read_at"
+
+step "push subscription registry"
+P256DH=BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+PAUTH=AAECAwQFBgcICQoLDA0ODw
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d "{\"endpoint\":\"http://push.example.com/x\",\"keys\":{\"p256dh\":\"$P256DH\",\"auth\":\"$PAUTH\"}}" "$BASE/api/v1/push/subscriptions")" 422 "push endpoint must be https"
+PSUB=$(api POST /api/v1/push/subscriptions "$TOK2" "{\"endpoint\":\"https://push.example.com/send/smoke-$TAG\",\"keys\":{\"p256dh\":\"$P256DH\",\"auth\":\"$PAUTH\"}}")
+PSID=$(jget "['id']" "$PSUB")
+expect "$(jget "['endpoint']" "$PSUB")" "https://push.example.com/send/smoke-$TAG" "push subscription registered"
+expect "$(python3 -c "import sys,json;print(any(s['id']=='$PSID' for s in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/push/subscriptions "$TOK2")")" True "push list shows the registration"
+expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK" "$BASE/api/v1/push/subscriptions/$PSID")" 404 "another user cannot delete foreign subscriptions"
+expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK2" "$BASE/api/v1/push/subscriptions/$PSID")" 204 "owner removed the subscription"
 
 step "marketplace admission: join request, accept, leave, decline"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"public"}' >/dev/null
@@ -247,12 +269,22 @@ case "$(api GET "/api/v1/coteries/$CID/audit-logs" "$TOK")" in
 esac
 expect "$(code_of -H "Authorization: Bearer $TOK2" "$BASE/api/v1/coteries/$CID/audit-logs")" 403 "members cannot read the audit trail"
 
+step "logout invalidates the session"
+expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" "$BASE/api/v1/auth/logout")" 204 "logout accepted"
+expect "$(code_of -H "Authorization: Bearer $TOK3" "$BASE/api/v1/auth/me")" 401 "logged-out token rejected"
+
 step "abuse reports: flag a listed circle"
 REP=$(api POST "/api/v1/coteries/$CID/report" "$TOK2" '{"reason":"suspected fake subscription"}')
 expect "$(jget "['status']" "$REP")" open "member flagged the listed circle"
 RID=$(jget "['id']" "$REP")
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"reason":"again"}' "$BASE/api/v1/coteries/$CID/report")" 409 "duplicate open report refused"
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d '{"reason":"   "}' "$BASE/api/v1/coteries/$CID/report")" 422 "blank report reason rejected"
+
+step "settlement reputation"
+USERID2=$(jget "['user']['id']" "$REG2")
+REP=$(api GET "/api/v1/users/$USERID2/reputation" "$TOK")
+expect "$(python3 -c "import sys,json;d=json.load(sys.stdin)['contributions'];print(d['paid'],d['pending'])" <<<"$REP")" "1 2" "reputation counts settled and pending shares"
+expect "$(code_of -H "Authorization: Bearer $TOK" "$BASE/api/v1/users/00000000-0000-0000-0000-000000000000/reputation")" 404 "unknown user has no reputation"
 
 # The admin walk needs an account the instance operator promoted via
 # ADMIN_EMAILS before this run: pass its credentials to cover it.
@@ -268,6 +300,9 @@ if [ -n "${SMOKE_ADMIN_EMAIL:-}" ] && [ -n "${SMOKE_ADMIN_PASSWORD:-}" ]; then
   esac
   DISM=$(api POST "/api/v1/admin/reports/$RID/dismiss" "$ATOK" '{"note":"smoke walk"}')
   expect "$(jget "['status']" "$DISM")" dismissed "admin dismissed the report"
+  REP2=$(api POST "/api/v1/coteries/$CID/report" "$TOK" '{"reason":"smoke resolve walk"}')
+  RID2=$(jget "['id']" "$REP2")
+  expect "$(jget "['status']" "$(api POST "/api/v1/admin/reports/$RID2/resolve" "$ATOK" '{"note":"handled in smoke"}')")" resolved "admin resolved the second report"
   case "$(api GET "/api/v1/admin/audit-logs?action=report_decided&limit=20&offset=0" "$ATOK")" in
     *"$RID"*) echo "ok  admin audit ledger records the decision" ;;
     *) echo "FAIL decision missing from the audit ledger" >&2; exit 1 ;;
