@@ -15,6 +15,12 @@ govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdli
 仅剩 x/crypto 的 openpgp 模块级公告（未导入该子包，Fixed: N/A，常驻噪音）；
 已合 PR #21 无用户可见 API 变化，README 无需同步。
 
+跳过项清偿（2026-10-12）：typescript 7.0.2 与 @types/node 26 两个 major
+经验证合入（#23，tsc/vitest/lint 全绿零代码改动）；vapidkeygen 补上
+密钥契约测试（#24，生成对须过服务端同款校验）；nightly 定时构建正常
+（10-10 schedule 成功）。零覆盖仅剩 apps/server 装配层与 testsupport
+（测试基建自身），属合理状态。
+
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 
