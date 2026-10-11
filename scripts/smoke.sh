@@ -50,12 +50,21 @@ PROD=$(api POST /api/v1/products "$TOK" "{\"provider_id\":\"$PID\",\"name\":\"Pr
 PRID=$(jget "['id']" "$PROD")
 [ -n "$PRID" ] || { echo "FAIL catalog" >&2; exit 1; }
 echo "ok  provider $PID / product $PRID"
+# Presence checks pass even when a filter is ignored, so assert the
+# narrowing: this video provider is listed unfiltered and hidden by
+# category=ai.
+case "$(api GET /api/v1/providers "")" in
+  *"$PID"*) echo "ok  unfiltered catalog lists the new provider" ;;
+  *) echo "FAIL new provider missing from the unfiltered catalog" >&2; exit 1 ;;
+esac
+expect "$(python3 -c "import sys,json;print(any(p['id']=='$PID' for p in json.load(sys.stdin)['items']))" <<<"$(api GET "/api/v1/providers?category=ai" "")")" False "category filter hides other categories"
 
 step "subscription with seat capacity"
 SUB=$(api POST /api/v1/subscriptions "$TOK" "{\"product_id\":\"$PRID\",\"owner_user_id\":\"$(jget "['user']['id']" "$REG")\",\"billing_cycle\":\"monthly\",\"price\":\"12.00\",\"currency\":\"USD\",\"start_date\":\"2026-10-01\",\"max_seats\":3}")
 SID=$(jget "['id']" "$SUB")
 [ -n "$SID" ] || { echo "FAIL subscription" >&2; exit 1; }
 echo "ok  subscription $SID"
+expect "$(code_of -H "Authorization: Bearer $TOK" "$BASE/api/v1/subscriptions?owner_user_id=00000000-0000-0000-0000-000000000000")" 403 "foreign owner filter refused"
 expect "$(python3 -c "import sys,json;print(any(s['id']=='$SID' for s in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/subscriptions "$TOK")")" True "owner lists the subscription"
 
 step "coterie with capacity 2, publish open"
@@ -84,16 +93,21 @@ expect "$(code_of "$BASE/api/v1/coteries/$CID/invitations")" 401 "invitation his
 step "marketplace listing: public lists, private hides"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"public"}' >/dev/null
 # The directory sorts oldest-first; repeated runs push new circles off
-# page 1. Filter to this run's product for a deterministic read.
-case "$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")" in
+# page 1. Filter to this run's product for a deterministic read, and
+# check the total so an ignored filter cannot pass as "empty".
+DIR=$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")
+case "$DIR" in
   *"$CID"*) echo "ok  listed circle in the directory" ;;
   *) echo "FAIL listed circle missing from directory" >&2; exit 1 ;;
 esac
+expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['meta']['total'])" <<<"$DIR")" 1 "directory filter narrows to this run"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"private"}' >/dev/null
-case "$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")" in
+DIR=$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")
+case "$DIR" in
   *"$CID"*) echo "FAIL private circle still in directory" >&2; exit 1 ;;
   *) echo "ok  private circle hidden" ;;
 esac
+expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['meta']['total'])" <<<"$DIR")" 0 "hidden circle drops the total"
 
 step "assign a seat to the member"
 SEAT=$(api POST "/api/v1/subscriptions/$SID/seats" "$TOK" '{"count":1}')
@@ -153,6 +167,7 @@ api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$OW
 api POST "/api/v1/subscriptions/$SID/usage-records" "$TOK" "{\"member_id\":\"$MID\",\"amount\":\"30\",\"unit\":\"credits\",\"recorded_at\":\"2026-11-05T12:00:00Z\"}" >/dev/null
 UML=$(api GET "/api/v1/subscriptions/$SID/usage-records" "$TOK")
 expect "$(python3 -c "import sys,json;print(sum(float(r['amount']) for r in json.load(sys.stdin)['items']))" <<<"$UML")" 40.0 "usage ledger sums to 40 credits"
+expect "$(python3 -c "import sys,json;i=json.load(sys.stdin)['items'];print(len(i)==1 and i[0]['member_id']=='$MID')" <<<"$(api GET "/api/v1/subscriptions/$SID/usage-records?member_id=$MID" "$TOK")")" True "member filter narrows the ledger"
 ROW=$(python3 -c "import sys,json;i=json.load(sys.stdin)['items'][0];print(i['id'],i['member_id'])" <<<"$UML")
 URID=${ROW% *}; URMEMBER=${ROW#* }
 expect "$(jget "['member_id']" "$(api GET "/api/v1/usage-records/$URID" "$TOK")")" "$URMEMBER" "usage record detail read back"
@@ -218,6 +233,7 @@ echo "ok  member inbox has $COUNT notifications"
 NID=$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['id'])" <<<"$NOTIF")
 RD=$(api POST "/api/v1/notifications/$NID/read" "$TOK2" "")
 [ -n "$(jget "['read_at']" "$RD")" ] && echo "ok  marking read stamps read_at"
+expect "$(python3 -c "import sys,json;print(all(n['id']!='$NID' for n in json.load(sys.stdin)['items']))" <<<"$(api GET "/api/v1/notifications?unread=true" "$TOK2")")" True "unread filter hides the read one"
 
 step "push subscription registry"
 P256DH=BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
