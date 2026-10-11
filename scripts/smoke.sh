@@ -83,12 +83,14 @@ expect "$(code_of "$BASE/api/v1/coteries/$CID/invitations")" 401 "invitation his
 
 step "marketplace listing: public lists, private hides"
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"public"}' >/dev/null
-case "$(api GET /api/v1/marketplace/coteries "")" in
+# The directory sorts oldest-first; repeated runs push new circles off
+# page 1. Filter to this run's product for a deterministic read.
+case "$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")" in
   *"$CID"*) echo "ok  listed circle in the directory" ;;
   *) echo "FAIL listed circle missing from directory" >&2; exit 1 ;;
 esac
 api PATCH "/api/v1/coteries/$CID" "$TOK" '{"listing":"private"}' >/dev/null
-case "$(api GET /api/v1/marketplace/coteries "")" in
+case "$(api GET "/api/v1/marketplace/coteries?product_id=$PRID" "")" in
   *"$CID"*) echo "FAIL private circle still in directory" >&2; exit 1 ;;
   *) echo "ok  private circle hidden" ;;
 esac
@@ -149,6 +151,16 @@ PER2=$(api POST "/api/v1/subscriptions/$SID/billing-periods" "$TOK" '{"start_dat
 PER2ID=$(jget "['id']" "$PER2")
 GEN2=$(api POST "/api/v1/billing-periods/$PER2ID/contributions/generate" "$TOK" '{"mode":"usage"}')
 expect "$(python3 -c "import sys,json;print(sorted(c['amount'] for c in json.load(sys.stdin)['items']))" <<<"$GEN2")" "['3.00', '9.00']" "usage split is proportional"
+# When the server registers the sandbox demo channel, prove the
+# sync-adapter seam: the charge settles instantly, like manual.
+case "$(api GET /api/v1/payments/methods "$TOK")" in
+  *sandbox*)
+    SBXOWN=$(python3 -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['items'] if c['member_id']=='$OWNM'][0])" <<<"$GEN2")
+    SBX=$(api POST "/api/v1/contributions/$SBXOWN/payments" "$TOK" "{\"method\":\"sandbox\",\"external_ref\":\"sandbox smoke-$TAG\"}")
+    expect "$(jget "['status']" "$SBX")" succeeded "sandbox channel settles instantly"
+    expect "$(jget "['method']" "$SBX")" sandbox "payment echoes the channel"
+    ;;
+esac
 
 step "quota seat and the per-period usage limit (D21)"
 SP=$(api PATCH "/api/v1/subscriptions/$SID" "$TOK" '{"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"50"}}}')

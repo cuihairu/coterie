@@ -78,6 +78,10 @@ jobs:
         run: docker build -t ghcr.io/cuihairu/coterie:nightly .
 
       - name: Boot the stack
+        # sandbox registers the demo sync channel, letting the smoke walk
+        # prove the multi-channel seam on top of the always-on manual one.
+        env:
+          PAYMENT_METHODS: sandbox
         run: docker compose -f deployments/docker-compose.yml up -d --wait
 
       - name: Wait for the API
