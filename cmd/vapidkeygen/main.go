@@ -8,16 +8,28 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 )
 
-func main() {
+func run(w io.Writer) error {
 	priv, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
+		return err
+	}
+	enc := base64.RawURLEncoding
+	if _, err := fmt.Fprintln(w, "VAPID_PUBLIC_KEY="+enc.EncodeToString(priv.PublicKey().Bytes())); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "VAPID_PRIVATE_KEY="+enc.EncodeToString(priv.Bytes())); err != nil {
+		return err
+	}
+	return nil
+}
+
+func main() {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "vapidkeygen:", err)
 		os.Exit(1)
 	}
-	enc := base64.RawURLEncoding
-	fmt.Println("VAPID_PUBLIC_KEY=" + enc.EncodeToString(priv.PublicKey().Bytes()))
-	fmt.Println("VAPID_PRIVATE_KEY=" + enc.EncodeToString(priv.Bytes()))
 }
