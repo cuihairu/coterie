@@ -273,6 +273,13 @@ step "logout invalidates the session"
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" "$BASE/api/v1/auth/logout")" 204 "logout accepted"
 expect "$(code_of -H "Authorization: Bearer $TOK3" "$BASE/api/v1/auth/me")" 401 "logged-out token rejected"
 
+step "user directory"
+DIRUSER=$(api POST /api/v1/users "$TOK" "{\"username\":\"$TAG-dir\",\"email\":\"$TAG-dir@example.com\",\"password\":\"password-123\"}")
+DIRID=$(jget "['id']" "$DIRUSER")
+expect "$(jget "['username']" "$DIRUSER")" "$TAG-dir" "owner provisioned a user without a session"
+expect "$(python3 -c "import sys,json;print(any(u['id']=='$DIRID' for u in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/users "$TOK")")" True "directory lists the new user"
+expect "$(jget "['id']" "$(api GET "/api/v1/users/$DIRID" "$TOK")")" "$DIRID" "directory entry reads back"
+
 step "abuse reports: flag a listed circle"
 REP=$(api POST "/api/v1/coteries/$CID/report" "$TOK2" '{"reason":"suspected fake subscription"}')
 expect "$(jget "['status']" "$REP")" open "member flagged the listed circle"
