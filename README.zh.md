@@ -99,7 +99,8 @@ scripts/smoke.sh http://localhost:8080
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries`(公开;条目附派生的 Owner 信誉徽标)· `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments`(支付闸门)· `POST /api/v1/marketplace/webhooks/{method}`(公开) |
 | Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · 推送端点 `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
-| Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs`(Owner 只读) |
+| Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs`(Owner 只读)· `GET /api/v1/admin/audit-logs`(管理员,平台全域) |
+| Abuse | `POST /api/v1/coteries/{id}/report`(举报已公开列出的圈)· `GET/POST /api/v1/admin/reports`(管理员收件箱)· `PUT/DELETE /api/v1/coteries/{id}/blocks/{userID}`(Owner 拉黑名单) |
 
 错误统一使用 `{"error": {"code", "message", "details?}}` 信封;
 列表使用 `{"items": [...], "meta": {total, limit, offset}}`。详见
@@ -160,8 +161,10 @@ Seats / Quota / Cost
   每成员用量上限、Web Push 通知、资源共享模式、Stripe 支付渠道(D24)、
   市场支付闸门(D25)、防滥用收口(平台管理员、举报与圈级拉黑,D26)
 - **Web 客户端(进行中)**:React + TypeScript SPA 嵌入 Go 二进制——
-  认证与建圈向导、席位、账期写操作、市场目录、含支付闸门的
-  加入申请收件箱、用量记账与争议
+  认证与会话生命周期、建圈向导、席位(分配、释放、改名、停用)、
+  账期写操作、含支付闸门的加入申请收件箱、Owner 拉黑名单、用量记账、
+  争议、市场目录(含 Owner 的公开开关与申请历史)、邀请历史、
+  订阅设置,以及管理员收件箱与平台审计台账
 
 ## 技术栈
 
