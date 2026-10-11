@@ -320,8 +320,20 @@ step "user directory"
 DIRUSER=$(api POST /api/v1/users "$TOK" "{\"username\":\"$TAG-dir\",\"email\":\"$TAG-dir@example.com\",\"password\":\"password-123\"}")
 DIRID=$(jget "['id']" "$DIRUSER")
 expect "$(jget "['username']" "$DIRUSER")" "$TAG-dir" "owner provisioned a user without a session"
-expect "$(python3 -c "import sys,json;print(any(u['id']=='$DIRID' for u in json.load(sys.stdin)['items']))" <<<"$(api GET /api/v1/users "$TOK")")" True "directory lists the new user"
-expect "$(jget "['id']" "$(api GET "/api/v1/users/$DIRID" "$TOK")")" "$DIRID" "directory entry reads back"
+DIRLIST=$(api GET /api/v1/users "$TOK")
+expect "$(python3 -c "import sys,json;print(any(u['id']=='$DIRID' for u in json.load(sys.stdin)['items']))" <<<"$DIRLIST")" True "directory lists the new user"
+DIRBODY=$(api GET "/api/v1/users/$DIRID" "$TOK")
+expect "$(jget "['id']" "$DIRBODY")" "$DIRID" "directory entry reads back"
+# D29: the directory is a display projection only — contact and
+# authorization fields must not cross to another session.
+case "$DIRBODY" in
+  *'"email"'*|*'"role"'*|*'"locale"'*) echo "FAIL directory leaks contact fields" >&2; exit 1 ;;
+  *) echo "ok  directory serves the summary projection only" ;;
+esac
+case "$DIRLIST" in
+  *'"email"'*|*'"role"'*) echo "FAIL directory list leaks contact fields" >&2; exit 1 ;;
+  *) echo "ok  directory list serves the projection too" ;;
+esac
 
 step "abuse reports: flag a listed circle"
 REP=$(api POST "/api/v1/coteries/$CID/report" "$TOK2" '{"reason":"suspected fake subscription"}')
