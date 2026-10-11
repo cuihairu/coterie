@@ -221,6 +221,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D26** | 防滥用收口 + Admin 基础面 | **平台管理员角色 + 举报 + 圈级拉黑** | NFR-7 最后两项（Report / Block）与 FR-14 的 Reports 职责一并收口：**平台管理员** = `users.role`（`'user'`/`'admin'`，默认 user），经 `ADMIN_EMAILS` 启动引导（幂等 UPDATE。实例运营者即管理员，自托管不建管理后台注册面）；管理员面 v1 只做举报处置（FR-14 明言 Admin 不参与圈的日常管理，不做用户管理与圈编辑）。**Report**：认证用户对公开列出的圈举报（非公开圈照旧 404 不泄露存在性，reason ≤1000 字符），`reports` 独立账本（open/resolved/dismissed + resolution_note，每用户每圈至多一条 open），管理员 `GET /api/v1/admin/reports` + `resolve/dismiss`；决定不通知报告者（避免泄露处置细节），审计留痕。**Block** 取圈级而非平台级：公开目录 + 支付闸门让恶意请求有了真实成本，Owner 拉黑是最直接的防滥用原语（平台级封禁属风控扩张，明确不做）；被拉黑者在加入请求与全部准入路径（`admitUser`：邀请接受 / marketplace accept / 闸门确认）一律 403，现有成员不自动移除（Owner 仍可手动移除）。迁移随实现分落（0016 角色 / 0017 拉黑 / 0018 举报）（[§6.3](#63-audit-logadr-d17)、[§6.6](#66-防滥用report-与-block)） |
 | **D27** | 管理员审计查询面 | **平台级审计只读端点** | NFR-7 审计面的最后一块（D17 读取面预留的「Admin 查询面」）：`GET /api/v1/admin/audit-logs`（仅平台管理员，走 D26 的 `requireAdmin`）跨订阅/圈查询全量账本，`?action=`（对已知动作清单校验）/ `?actor_id=` / `?coterie_id=` / `?subscription_id=` 过滤，`created_at DESC` 排序 + 统一分页信封。与 Owner 读取面共用同一张只增表，同样无编辑/删除面，不新增迁移 |
 | **D28** | M2a 批次收尾 | **PR #3 合并，m2a-auth-implementation 分支归档** | 平台认证（D8）+ 单端口全栈（go:embed 嵌入 Vite 产物、多阶段 Dockerfile、SPA 回退）+ 仪表盘写操作面（账期写操作、邀请加入、通知收件箱、市场目录、Owner 申请收件箱含 D25 支付闸门、用量记账含 D21 上限、争议发起与裁决）整批经 PR #3 于 **2026-10-10** 合并入 main（merge commit `74548e8`，CI test/web/smoke 全绿），`m2a-auth-implementation` 分支至此收尾；后续批次从 main 新开分支 |
+| **D29** | 用户目录投影 | **目录读取只回展示身份** | `GET /api/v1/users` 与 `GET /api/v1/users/{id}` 对任意已认证会话只回 `UserSummary`（`id` / `username` / `avatar_url`）：contact（email）、authorization（role/status）、偏好（locale/timezone）与时间戳一律不外露——目录是找人/展示面而非用户管理面（FR-14：Admin 也不做用户管理，平台级目录开放全字段属过度暴露）；本人完整视图仍走 `GET /auth/me`。`POST /users` 维持创建回显（调用方刚提交的载荷，非他人数据）。schema 不动：`username` 即展示名（marketplace 徽标、拉黑名单、申请列表同源），不另立 display_name 列 |
 
 
 ---
@@ -1016,7 +1017,7 @@ NFR-7 的防滥用清单四项至此收口：Rate Limit（D19）、Audit Log（D
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）、D26 防滥用收口（平台管理员 + Report + 圈级 Block）、D27 管理员审计查询面（平台级只读端点）。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）、D26 防滥用收口（平台管理员 + Report + 圈级 Block）、D27 管理员审计查询面（平台级只读端点）、D28 M2a 批次收尾、D29 用户目录投影（目录读取只回展示身份）。
 
 实现阶段仍需确认的细节：
 

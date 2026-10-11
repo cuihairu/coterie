@@ -25,6 +25,21 @@ const (
 	RoleAdmin = "admin"
 )
 
+// UserSummary is the directory-safe projection every other session may
+// read: a display identity and avatar. Contact (email), authorization
+// (role, status), and preference (locale, timezone) fields stay out of
+// responses another user can read; /auth/me remains the full self view.
+type UserSummary struct {
+	ID        string  `json:"id"`
+	Username  string  `json:"username"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
+// Summarize projects a user onto the directory-safe view.
+func Summarize(u *User) UserSummary {
+	return UserSummary{ID: u.ID, Username: u.Username, AvatarURL: u.AvatarURL}
+}
+
 // TableName aligns the model with the hand-written migration schema.
 func (User) TableName() string { return "users" }
 

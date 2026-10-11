@@ -40,7 +40,8 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		api.WriteError(w, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, u)
+	// Directory reads serve the safe view only; /auth/me is the full self.
+	api.WriteJSON(w, http.StatusOK, Summarize(u))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +51,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		api.WriteError(w, err)
 		return
 	}
-	api.WriteJSON(w, http.StatusOK, api.NewList(users, api.Meta{
+	summaries := make([]UserSummary, len(users))
+	for i := range users {
+		summaries[i] = Summarize(&users[i])
+	}
+	api.WriteJSON(w, http.StatusOK, api.NewList(summaries, api.Meta{
 		Total:  total,
 		Limit:  page.Limit,
 		Offset: page.Offset,
