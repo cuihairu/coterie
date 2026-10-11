@@ -6,6 +6,14 @@
 
 - **鉴权**：除标注「公开」的接口外都要 `Authorization: Bearer <token>`。令牌在注册/登录时签发，有效期 30 天，注销即失效。
 - **列表分页**：`?limit=`（默认 20，上限 100）与 `?offset=`，响应为 `{"items": [...], "meta": {"total", "limit", "offset"}}`。
+- **列表筛选**：筛选端点支持以下查询参数，可与 `limit`/`offset` 组合：
+  - `GET /providers?category=` · `GET /products?provider_id=` · `GET /marketplace/coteries?product_id=`
+  - `GET /subscriptions?owner_user_id=&product_id=`——结果始终限本人拥有的订阅；`owner_user_id` 只接受本人，传他人 403
+  - `GET /coteries?subscription_id=`——只返回自己是成员的圈
+  - `GET /notifications?unread=true`
+  - `GET /subscriptions/{id}/disputes?status=` · `GET /coteries/{id}/join-requests?status=` · `GET /admin/reports?status=`
+  - `GET /subscriptions/{id}/usage-records?member_id=&unit=&from=&to=`（`from`/`to` 为 `YYYY-MM-DD`）
+  - `GET /subscriptions/{id}/audit-logs?action=` · `GET /coteries/{id}/audit-logs?action=` · `GET /admin/audit-logs?action=&actor_id=&coterie_id=&subscription_id=`
 - **错误信封**：非 2xx 返回 `{"error": {"code", "message", "details"}}`；鉴权缺失/失效 401，无权 403，语义错误 422，状态冲突 409。
 
 权限标注：**公开** = 匿名可读；**Bearer** = 任意认证用户；**Owner** = 资源所属订阅的 Owner；**管理员** = 平台管理员（`ADMIN_EMAILS` 引导）。细粒度规则（如成员能否读）见设计文档。
