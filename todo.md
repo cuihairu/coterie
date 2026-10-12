@@ -28,8 +28,9 @@
 | FR-15 Audit Log | P1 | internal/audit（订阅/圈/平台三级账本），有测试 |
 | FR-16 Marketplace | P2 | internal/marketplace（目录+JoinRequest+D25 闸门），有测试 |
 
-端到端面：scripts/smoke.sh 119 检查全绿覆盖十一步旅程；全仓 23 个
-internal 包中 21 个有直接测试（apps/server 装配层与 testsupport 为合理例外）。
+端到端面：scripts/smoke.sh 冒烟全绿覆盖十一步旅程；全仓 23 个
+internal 包中 22 个有直接测试（唯一例外 testsupport 是测试基建自身；
+apps/server 装配层在 internal 之外）。
 
 NFR 层复核（2026-10-13，requirements §5 对代码）：NFR-1 无凭据表
 （迁移中无 license_key/api_key/recovery_code 类列）；NFR-2 的信息载体
@@ -49,7 +50,7 @@ env/.env.example 内确认无 sk_/whsec_ 真实凭据，维持等凭据；下一
 
 验收线复核（2026-10-13，requirements §3 MVP 旅程对两端）：十步
 （注册→Provider→Product→Subscription→Coterie→Seats→邀请→加入→
-记录费用→周期结算）逐步双面命中——API 面由 smoke 119 检查走通，
+记录费用→周期结算）逐步双面命中——API 面由 smoke 冒烟走通，
 Web 面逐页核实（login.tsx 注册；coteries.new 向导内联建
 Provider/Product/Subscription/Coterie；圈详情页 seats/billing-periods/
 generate/usage-records/invitations；圈列表页接受邀请），§3 验收线
@@ -112,7 +113,10 @@ npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为
 本轮用双向 diff 复核（正则提取 mux 注册 ↔ api.md 表行，占位符统一
 归一为 {id}）：代码 77 条 /api/v1 路由 + 根 /healthz，api.md 78 行
 （77 + 根 healthz），两侧零缺零多、逐条一致。旧值 82 系当时计数方法
-偏差，一致性结论本身不受影响；账面已改用本轮核实的数字。
+偏差，一致性结论本身不受影响；账面已改用本轮核实的数字。同轮勘误：
+「23 包 21 测」实为 22（唯一无测包是 testsupport 自身）；「smoke 119
+检查」不可复算（静态 104 expect + 16 case = 120，CI 日志按行计 116、
+零 FAIL），账面改记为「冒烟全绿」不带易漂移的具体数。
 
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
