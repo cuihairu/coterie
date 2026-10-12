@@ -6,7 +6,7 @@
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
     <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>
     <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange">
-    <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white">
+    <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white">
     <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
   </p>
 </div>
@@ -43,7 +43,7 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 
 ## 快速开始
 
-需要 Go 1.25+ 与一个 PostgreSQL 15+ 实例(迁移会在启动时
+需要 Go 1.26+ 与一个 PostgreSQL 15+ 实例(迁移会在启动时
 自动执行)。
 
 ```bash
