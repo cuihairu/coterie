@@ -61,6 +61,15 @@ FR 表 + plan bullets + NFR 七条 + §3 旅程。
 等用户明令，跳过；④Stripe D24——等凭据（仓库内复核仍无 sk_/whsec_），
 跳过。四条全部停在用户门槛，无自主余量。
 
+SPA 推送订阅 UI（2026-10-13，PR #32）：FIRE5X 续做令下按最近 git log
+定位的下一批——#27 时登记的「SPA 推送订阅 UI，SPA 侧零实现」。落地
+public/sw.js（展示解密后的 title/body，解不开也出可见通知）、
+lib/push.ts（启用流：特性检测→权限→注册 SW→取公钥(404=服务端未开)→
+subscribe→POST 登记；失败回滚本地订阅；关闭流按 endpoint 匹配 DELETE）、
+通知页 PushSetup 开关（不支持的浏览器整体隐藏）。vitest 35/35
+（新增 16：lib 12 + 组件 4）、tsc+vite 构建、oxlint 全绿；design.md
+§6.5 补 SPA 行，双语 README Web-client 条目同步。
+
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
 invitation/notification）与 Phase 2 七项（marketplace/provider 目录/
@@ -103,7 +112,7 @@ npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 
 ## 等外部密钥/凭据（暂挂）
-- [x] Web Push 公钥端点：已落地 `GET /api/v1/push/vapid-public-key`（Bearer；未配置推送时 404）。VAPID 密钥本就可由 `cmd/vapidkeygen` 自签生成，无需外部密钥。
+- [x] Web Push 公钥端点：已落地 `GET /api/v1/push/vapid-public-key`（Bearer；未配置推送时 404）。VAPID 密钥本就可由 `cmd/vapidkeygen` 自签生成，无需外部密钥。SPA 侧订阅 UI（sw.js + 通知页开关）已于 2026-10-13 落地（PR #32），D22 两端齐。
 - [ ] Stripe 支付渠道（D24）：等凭据。2026-10-12 补齐适配器分支测试（金额边界/溢出、默认描述、同步拒绝、坏响应、未来时间戳），除真实凭据验证外无遗留。
 
 验收：以用户审核结论为准；新任务由用户分配后按测试绿才 push 执行。
