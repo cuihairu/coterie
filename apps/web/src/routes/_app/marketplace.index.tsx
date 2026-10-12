@@ -4,6 +4,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { DirectoryEntry, ListResponse, MyJoinRequest } from '../../lib/api'
 import { Pager } from '../../components/Pager'
+import { ComplianceNotice } from '../../components/ComplianceNotice'
 
 const PAGE_SIZE = 20
 
@@ -51,6 +52,7 @@ function MarketplacePage() {
     <div>
       <h1 className="mb-1 text-xl font-semibold text-slate-900">共享广场</h1>
       <p className="mb-4 text-sm text-slate-500">公开目录中的共享圈，可申请加入。</p>
+      <ComplianceNotice />
       {items.length === 0 ? (
         <p className="text-slate-500">暂无公开圈。圈 Owner 可在圈详情中把圈设为公开。</p>
       ) : (

@@ -31,6 +31,22 @@
 端到端面：scripts/smoke.sh 119 检查全绿覆盖十一步旅程；全仓 23 个
 internal 包中 21 个有直接测试（apps/server 装配层与 testsupport 为合理例外）。
 
+NFR 层复核（2026-10-13，requirements §5 对代码）：NFR-1 无凭据表
+（迁移中无 license_key/api_key/recovery_code 类列）；NFR-2 的信息载体
+已有一级 Sharing Policy 字段与 provider/product metadata JSONB，但
+「UI 必须明确提示」此前缺失——本轮落地 ComplianceNotice 组件（建圈页
+与共享广场渲染，vitest 钉住条款/地区/共享权限三关键词），是否再把
+terms/region/eligibility 升为命名字段留审核拍板；NFR-3 compose/Dockerfile/
+单二进制齐（K8s/bare metal 是支持目标非交付物）；NFR-4 77 条 /api/v1
+路由即 API 面；NFR-5 代码内零硬编码 provider 分支；NFR-6 单租户无组织层；
+NFR-7 的 D17/D19/D26/FR-17/FR-18 均在代码中验证（audit/ratelimit/report/
+dispute/reputation 五包及测试在位）。
+
+挂起项触发复核（2026-10-13）：CodeQL 触发条件=用户明令，本轮巡检单
+明确「不许代拍板」，维持挂起；Stripe D24 触发条件=凭据到位，仓库/
+env/.env.example 内确认无 sk_/whsec_ 真实凭据，维持等凭据；下一批任务
+分配与逐仓审核签字均在用户手中，审核材料已备至 FR+NFR+plan 三层。
+
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
 invitation/notification）与 Phase 2 七项（marketplace/provider 目录/
