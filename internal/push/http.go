@@ -9,16 +9,31 @@ import (
 
 // Handler exposes the push registration endpoints over HTTP.
 type Handler struct {
-	svc *Service
+	svc         *Service
+	vapidPublic string
 }
 
 // RegisterRoutes wires the push endpoints onto mux; every route is
-// behind requireUser.
-func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware) {
-	h := &Handler{svc: svc}
+// behind requireUser, including the key discovery endpoint — the VAPID
+// key is public by nature, but the browser only needs it while signed
+// in, and this keeps the documented anonymous surface unchanged.
+func RegisterRoutes(mux *http.ServeMux, svc *Service, requireUser api.Middleware, vapidPublic string) {
+	h := &Handler{svc: svc, vapidPublic: vapidPublic}
 	mux.Handle("POST /api/v1/push/subscriptions", requireUser(http.HandlerFunc(h.register)))
 	mux.Handle("GET /api/v1/push/subscriptions", requireUser(http.HandlerFunc(h.list)))
 	mux.Handle("DELETE /api/v1/push/subscriptions/{id}", requireUser(http.HandlerFunc(h.delete)))
+	mux.Handle("GET /api/v1/push/vapid-public-key", requireUser(http.HandlerFunc(h.vapidKey)))
+}
+
+// vapidKey serves the server's VAPID public key so browsers can build
+// a push subscription (applicationServerKey); 404 when the push
+// channel has no keys configured, so clients can hide the flow.
+func (h *Handler) vapidKey(w http.ResponseWriter, _ *http.Request) {
+	if h.vapidPublic == "" {
+		api.WriteError(w, api.NotFound("push notifications are not configured"))
+		return
+	}
+	api.WriteJSON(w, http.StatusOK, map[string]string{"publicKey": h.vapidPublic})
 }
 
 func (h *Handler) register(w http.ResponseWriter, r *http.Request) {

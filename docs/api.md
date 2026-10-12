@@ -177,3 +177,4 @@
 | GET | `/push/subscriptions` | Bearer | 已注册的推送端点 |
 | POST | `/push/subscriptions` | Bearer | 注册 Web Push 端点 |
 | DELETE | `/push/subscriptions/{id}` | Bearer | 注销推送端点 |
+| GET | `/push/vapid-public-key` | Bearer | 服务端 VAPID 公钥（浏览器订阅推送用；未配置推送时 404） |

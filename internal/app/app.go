@@ -40,6 +40,7 @@ type options struct {
 	paymentAdapters      []payment.Adapter
 	marketplaceAdapters  []payment.Adapter
 	rateLimits           map[string]int
+	vapidPublicKey       string
 }
 
 // WithNotificationChannels registers outbound delivery channels (FR-12);
@@ -66,6 +67,12 @@ func WithPaymentAdapters(adapters ...payment.Adapter) Option {
 // from config in apps/server.
 func WithMarketplaceAdapters(adapters ...payment.Adapter) Option {
 	return func(o *options) { o.marketplaceAdapters = append(o.marketplaceAdapters, adapters...) }
+}
+
+// WithVapidPublicKey exposes the configured Web Push VAPID public key
+// (D22) on the push discovery endpoint; empty leaves that endpoint 404.
+func WithVapidPublicKey(key string) Option {
+	return func(o *options) { o.vapidPublicKey = key }
 }
 
 // WithRateLimits overrides the public-endpoint rate limits (design
@@ -116,7 +123,7 @@ func New(db *gorm.DB, log *slog.Logger, opts ...Option) http.Handler {
 		auth.RegisterRoutes(mux, authSvc)
 		user.RegisterRoutes(mux, user.NewService(db), requireUser)
 		pushSvc := push.NewService(db)
-		push.RegisterRoutes(mux, pushSvc, requireUser)
+		push.RegisterRoutes(mux, pushSvc, requireUser, o.vapidPublicKey)
 		pluginRegistry := provider.NewRegistry(o.providerPlugins...)
 		provider.RegisterRoutes(mux, provider.NewService(db), requireUser)
 		product.RegisterRoutes(mux, product.NewService(db), requireUser)

@@ -1,12 +1,15 @@
 package push_test
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/cuihairu/coterie/internal/app"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -124,5 +127,43 @@ func TestPushRequiresAuth(t *testing.T) {
 	code, _ = testsupport.DoJSON(t, client, http.MethodDelete, base+pushPath+"/"+strings.Repeat("0", 8), "")
 	if code != http.StatusUnauthorized {
 		t.Fatalf("anon delete: status = %d, want 401", code)
+	}
+}
+
+// TestVapidPublicKeyEndpoint covers the key discovery endpoint: behind
+// the session wall, 404 while the push channel is unconfigured, and the
+// configured key echoed verbatim once the option carries one.
+func TestVapidPublicKeyEndpoint(t *testing.T) {
+	keyPath := "/api/v1/push/vapid-public-key"
+
+	// Unconfigured: anon 401, then 404 behind the session wall.
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	code, _ := testsupport.DoJSON(t, client, http.MethodGet, base+keyPath, "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("anon key: status = %d, want 401", code)
+	}
+	tok, _ := testsupport.RegisterAndLogin(t, client, base, "push-key-off")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet, base+keyPath, "", tok)
+	if code != http.StatusNotFound {
+		t.Fatalf("unconfigured key: status = %d, want 404: %v", code, body)
+	}
+
+	// Configured: the option's key comes back verbatim.
+	priv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes())
+	srv2 := testsupport.NewServer(t, testsupport.NewDB(t), app.WithVapidPublicKey(pub))
+	client2, base2 := srv2.Client(), srv2.URL
+	tok2, _ := testsupport.RegisterAndLogin(t, client2, base2, "push-key-on")
+	code, body = testsupport.DoAuthJSON(t, client2, http.MethodGet, base2+keyPath, "", tok2)
+	if code != http.StatusOK {
+		t.Fatalf("configured key: status = %d, want 200: %v", code, body)
+	}
+	if got, _ := body["publicKey"].(string); got != pub {
+		t.Fatalf("publicKey = %q, want %q", got, pub)
 	}
 }
