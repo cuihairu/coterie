@@ -47,6 +47,20 @@ dispute/reputation 五包及测试在位）。
 env/.env.example 内确认无 sk_/whsec_ 真实凭据，维持等凭据；下一批任务
 分配与逐仓审核签字均在用户手中，审核材料已备至 FR+NFR+plan 三层。
 
+验收线复核（2026-10-13，requirements §3 MVP 旅程对两端）：十步
+（注册→Provider→Product→Subscription→Coterie→Seats→邀请→加入→
+记录费用→周期结算）逐步双面命中——API 面由 smoke 119 检查走通，
+Web 面逐页核实（login.tsx 注册；coteries.new 向导内联建
+Provider/Product/Subscription/Coterie；圈详情页 seats/billing-periods/
+generate/usage-records/invitations；圈列表页接受邀请），§3 验收线
+「每步都可通过 Web 与 API 完成」成立。至此审核证据四层齐：
+FR 表 + plan bullets + NFR 七条 + §3 旅程。
+
+续做令逐条过单（2026-10-13）：①用户逐仓审核——自主侧四层证据已尽，
+卡用户签字，跳过；②审核后分配下一批——依赖①，跳过；③CodeQL——
+等用户明令，跳过；④Stripe D24——等凭据（仓库内复核仍无 sk_/whsec_），
+跳过。四条全部停在用户门槛，无自主余量。
+
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
 invitation/notification）与 Phase 2 七项（marketplace/provider 目录/
