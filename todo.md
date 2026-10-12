@@ -66,7 +66,7 @@ npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 
 ## 等外部密钥/凭据（暂挂）
-- [ ] Web Push 公钥端点：推送通道与订阅端点已就绪，SPA 还需服务端 VAPID 公钥才能订阅；等外部密钥。
+- [x] Web Push 公钥端点：已落地 `GET /api/v1/push/vapid-public-key`（Bearer；未配置推送时 404）。VAPID 密钥本就可由 `cmd/vapidkeygen` 自签生成，无需外部密钥。
 - [ ] Stripe 支付渠道（D24）：等凭据。
 
 验收：以用户审核结论为准；新任务由用户分配后按测试绿才 push 执行。

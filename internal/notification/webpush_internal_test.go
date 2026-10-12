@@ -245,6 +245,27 @@ func TestParseVapidKeys(t *testing.T) {
 	}
 }
 
+// VapidPublicKey is the client-facing projection of the same parse:
+// valid triple to base64url point, anything else to "".
+func TestVapidPublicKey(t *testing.T) {
+	if got := VapidPublicKey("", "", ""); got != "" {
+		t.Fatalf("empty config: got %q", got)
+	}
+	priv, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := base64.RawURLEncoding
+	pub := enc.EncodeToString(priv.PublicKey().Bytes())
+	privB64 := enc.EncodeToString(priv.Bytes())
+	if got := VapidPublicKey(pub, privB64, "mailto:x"); got != pub {
+		t.Fatalf("valid config: got %q, want the printed point", got)
+	}
+	if got := VapidPublicKey(pub, enc.EncodeToString(priv.Bytes()[:16]), "mailto:x"); got != "" {
+		t.Fatalf("short private key: got %q", got)
+	}
+}
+
 func TestTrimPayload(t *testing.T) {
 	full := []byte(`{"title":"t","body":"` + strings.Repeat("b", 5000) + `"}`)
 	trimmed := string(trimPayload(full))

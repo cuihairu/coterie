@@ -219,6 +219,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	api := app.New(db, log,
 		app.WithNotificationChannels(channels(db, cfg)...),
+		app.WithVapidPublicKey(notification.VapidPublicKey(cfg.PushVapidPublicKey,
+			cfg.PushVapidPrivateKey, cfg.PushVapidSubject)),
 		app.WithPaymentAdapters(paymentAdapters(cfg, log)...),
 		app.WithMarketplaceAdapters(marketplaceAdapters(cfg, log)...),
 		app.WithProviderPlugins(providerPlugins(cfg, log)...),

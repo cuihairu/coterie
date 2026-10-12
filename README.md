@@ -116,7 +116,7 @@ The full endpoint reference lives on the [docs site](https://cuihairu.github.io/
 | Reputation | `GET /api/v1/users/{id}/reputation` (derived settlement stats) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries` (public; entries carry a derived owner reputation badge) · `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments` (payment gate) · `POST /api/v1/marketplace/webhooks/{method}` (public) |
-| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · push endpoints `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
+| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · push endpoints `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` · `GET /api/v1/push/vapid-public-key` (key for subscribing) |
 | Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs` (owner, read-only) · `GET /api/v1/admin/audit-logs` (admin, platform-wide) |
 | Abuse | `POST /api/v1/coteries/{id}/report` (flag a listed circle) · `GET/POST /api/v1/admin/reports` (admin inbox) · `PUT/DELETE /api/v1/coteries/{id}/blocks/{userID}` (owner blocklist) |
 
@@ -182,10 +182,9 @@ Seats / Quota / Cost
   rate limiting, custom billing cycles, per-member usage limits,
   resource sharing mode, the marketplace payment gate (D25), and abuse
   controls — platform admin, reports, and coterie blocks (D26)
-- **Remaining**: the Web Push public-key endpoint (the push channel and
-  subscriptions ship; the SPA still needs the server's VAPID public key
-  to subscribe) and the Stripe payment channel (D24) — both wait on
-  external keys or credentials
+- **Remaining**: the Stripe payment channel (D24) — waits on external
+  credentials (Web Push is fully wired: channel, subscriptions, and the
+  VAPID public-key endpoint; keys come from `cmd/vapidkeygen`)
 - **Web client** (in progress): React + TypeScript SPA embedded in the
   Go binary — auth and session lifecycle, the create-circle wizard,
   seats (assign, release, relabel, disable, quota/resource metering),

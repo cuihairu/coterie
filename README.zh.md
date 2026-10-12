@@ -103,7 +103,7 @@ scripts/smoke.sh http://localhost:8080
 | Reputation | `GET /api/v1/users/{id}/reputation`(推导的结算统计) |
 | Usage | `POST/GET /api/v1/subscriptions/{id}/usage-records` · `GET /api/v1/usage-records/{id}` |
 | Marketplace | `GET /api/v1/marketplace/coteries`(公开;条目附派生的 Owner 信誉徽标)· `POST/GET /api/v1/coteries/{id}/join-requests` · `POST /api/v1/join-requests/{id}/accept` · `decline` · `DELETE /api/v1/join-requests/{id}` · `POST /api/v1/join-requests/{id}/payments`(支付闸门)· `POST /api/v1/marketplace/webhooks/{method}`(公开) |
-| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · 推送端点 `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` |
+| Notifications | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · 推送端点 `POST/GET /api/v1/push/subscriptions` · `DELETE /api/v1/push/subscriptions/{id}` · `GET /api/v1/push/vapid-public-key`(订阅用公钥) |
 | Audit | `GET /api/v1/subscriptions/{id}/audit-logs` · `GET /api/v1/coteries/{id}/audit-logs`(Owner 只读)· `GET /api/v1/admin/audit-logs`(管理员,平台全域) |
 | Abuse | `POST /api/v1/coteries/{id}/report`(举报已公开列出的圈)· `GET/POST /api/v1/admin/reports`(管理员收件箱)· `PUT/DELETE /api/v1/coteries/{id}/blocks/{userID}`(Owner 拉黑名单) |
 
@@ -165,9 +165,8 @@ Seats / Quota / Cost
 - **Phase 4(已完成)**:审计日志、市场 Owner 信誉徽标、限速、自定义计费周期、
   每成员用量上限、资源共享模式、市场支付闸门(D25)、
   防滥用收口(平台管理员、举报与圈级拉黑,D26)
-- **剩余**:Web Push 公钥端点(推送通道与订阅端点已就绪;SPA 还需要
-  服务端的 VAPID 公钥才能订阅)与 Stripe 支付渠道(D24)——都在等
-  外部密钥或凭据
+- **剩余**:Stripe 支付渠道(D24)——等外部凭据(Web Push 已完整:
+  通道、订阅端点与 VAPID 公钥端点齐备,密钥由 `cmd/vapidkeygen` 生成)
 - **Web 客户端(进行中)**:React + TypeScript SPA 嵌入 Go 二进制——
   认证与会话生命周期、建圈向导、席位(分配、释放、改名、停用、
   配额/资源计量)、账期写操作(全部五种拆分模式,D9)、

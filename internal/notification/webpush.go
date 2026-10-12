@@ -228,6 +228,18 @@ func (c *PushChannel) Name() string { return "push" }
 // Enabled reports whether configuration is present.
 func (c *PushChannel) Enabled() bool { return c.store != nil && c.keys != nil }
 
+// VapidPublicKey returns the configured VAPID identity as base64url
+// (the uncompressed P-256 point) when the key triple parses — the same
+// condition that enables PushChannel — and "" otherwise. Clients pass
+// it as the applicationServerKey of pushManager.subscribe (D22).
+func VapidPublicKey(publicB64, privateB64, subject string) string {
+	keys := parseVapidKeys(publicB64, privateB64, subject)
+	if keys == nil {
+		return ""
+	}
+	return b64url.EncodeToString(keys.Public65)
+}
+
 // Deliver pushes the notification to every endpoint the user has
 // registered, pruning the ones the push service reports gone.
 func (c *PushChannel) Deliver(ctx context.Context, n *Notification) error {
