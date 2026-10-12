@@ -31,6 +31,13 @@
 端到端面：scripts/smoke.sh 119 检查全绿覆盖十一步旅程；全仓 23 个
 internal 包中 21 个有直接测试（apps/server 装配层与 testsupport 为合理例外）。
 
+逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
+（user/provider/product/subscription/coterie/member/seat/contribution/
+invitation/notification）与 Phase 2 七项（marketplace/provider 目录/
+payment 适配器/email/webhook/usage/quota）全部落地——12 个模块目录
+各有测试（notification 4 份最多）；两条目标流程的 17 条关键路由
+（注册→…→结算、browse→…→入圈）逐一在 mux 命中，无缺项。
+
 ## 维护项（常规）
 - [x] 依赖与安全告警按需处理（dependabot；code scanning 见下条，暂不启用）——2026-10-12 三轮执行：告警 0、audit 0/0、govulncheck 可达 0，过期项仅 vitepress 有意 pin（已登记）
 - [x] 每批 PR 合并后 README/文档站同步——2026-10-12 核对：api.md 82 路由与代码一致；修掉 README Go 版本徽章 1.25+→1.26+ 漂移（#26）
