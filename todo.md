@@ -50,6 +50,12 @@ govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdli
 可达 0（openpgp 模块级噪音同前）；新过期项仅 @tanstack/react-query
 5.104.1→5.104.2 patch，随本轮合入。#23/#24 无 API 变化，README 无需同步。
 
+一致性复查（2026-10-12 第二轮）：docs/api.md 82 条路由与代码 mux 注册
+逐条一致（healthz 根路径亦一致）；修掉 README.md/README.zh.md 徽章与
+前置声明仍写 Go 1.25+ 的漂移（实际底线 1.26）；code scanning 维持未
+启用（按用户明令暂挂，登记在案）；vitepress 维持 alpha pin（latest
+1.6.4 正是已修漏洞线）。
+
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 
