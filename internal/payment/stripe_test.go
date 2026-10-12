@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cuihairu/coterie/internal/payment"
+	"github.com/cuihairu/coterie/pkg/api"
 )
 
 const testWebhookSecret = "whsec_test"
@@ -209,4 +211,138 @@ func TestStripeWebhookEnvelopeShape(t *testing.T) {
 	if err != nil || !ok || event.ExternalRef != "pi_full" || !event.Succeeded {
 		t.Fatalf("full event: event = %+v ok = %v err = %v", event, ok, err)
 	}
+}
+
+// The remaining adapter branches: minor-unit edge cases, the default
+// description, the synchronous-charge guard, and API responses the
+// happy-path tests never see.
+func TestStripeChargeAsyncAmountEdges(t *testing.T) {
+	srv, last := newFakeStripe(t, http.StatusOK,
+		`{"id":"pi_e","client_secret":"s"}`)
+	adapter := payment.Stripe{SecretKey: "sk", WebhookSecret: testWebhookSecret, APIBase: srv.URL}
+	charge := func(amount, currency string) (string, error) {
+		pending, err := adapter.ChargeAsync(context.Background(), payment.Charge{
+			ContributionID: "c-e", Amount: amount, Currency: currency,
+		})
+		return pending.ExternalRef, err
+	}
+
+	for _, tc := range []struct {
+		name, amount, currency, want string
+	}{
+		{"no fraction", "12", "USD", "1200"},
+		{"one frac digit pads", "12.5", "USD", "1250"},
+		{"negative", "-12.99", "USD", "-1299"},
+		// Zero-decimal currencies drop the fraction (scale 1, no digits).
+		{"zero decimal drops fraction", "12.99", "JPY", "12"},
+	} {
+		if _, err := charge(tc.amount, tc.currency); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := lastCall(t, last, len(*last)-1).Form.Get("amount"); got != tc.want {
+			t.Fatalf("%s: amount = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+
+	// A value that parses as int64 but overflows once scaled is
+	// rejected before reaching the channel; the detail says why.
+	before := len(*last)
+	_, err := charge("92233720368547758.08", "USD")
+	if detailMessage(t, err) == "" || !strings.Contains(detailMessage(t, err), "overflows") {
+		t.Fatalf("overflow: err = %v", err)
+	}
+	// And one too large even for int64 is a plain invalid amount.
+	_, err = charge("99999999999999999999", "USD")
+	if detailMessage(t, err) == "" || !strings.Contains(detailMessage(t, err), "invalid amount") {
+		t.Fatalf("unparsable: err = %v", err)
+	}
+	if len(*last) != before {
+		t.Fatal("rejected amounts must not reach the channel")
+	}
+}
+
+func TestStripeChargeAsyncDefaults(t *testing.T) {
+	srv, last := newFakeStripe(t, http.StatusOK, `{"id":"pi_d","client_secret":"s"}`)
+	adapter := payment.Stripe{SecretKey: "sk", WebhookSecret: testWebhookSecret, APIBase: srv.URL}
+
+	if _, err := adapter.ChargeAsync(context.Background(), payment.Charge{
+		ContributionID: "c-d", Amount: "5.00", Currency: "usd",
+	}); err != nil {
+		t.Fatalf("ChargeAsync: %v", err)
+	}
+	form := lastCall(t, last, 0).Form
+	if got := form.Get("description"); got != "Coterie contribution c-d" {
+		t.Fatalf("description = %q, want the default", got)
+	}
+	if _, ok := form["metadata[contribution_id]"]; !ok {
+		t.Fatal("contribution metadata missing")
+	}
+
+	// No ids, no metadata keys; the description still names the intent.
+	if _, err := adapter.ChargeAsync(context.Background(), payment.Charge{
+		Amount: "5.00", Currency: "usd", Description: "top-up",
+	}); err != nil {
+		t.Fatalf("ChargeAsync bare: %v", err)
+	}
+	form = lastCall(t, last, 1).Form
+	if _, ok := form["metadata[contribution_id]"]; ok {
+		t.Fatal("empty contribution id must not carry metadata")
+	}
+	if got := form.Get("description"); got != "top-up" {
+		t.Fatalf("description = %q, want the given one", got)
+	}
+}
+
+func TestStripeChargeSyncRejected(t *testing.T) {
+	// The sync method exists to catch a future caller that forgets the
+	// adapter is async-only.
+	_, err := (payment.Stripe{}).Charge(context.Background(), payment.Charge{})
+	if err == nil || !strings.Contains(detailMessage(t, err), "asynchronously") {
+		t.Fatalf("sync Charge: err = %v", err)
+	}
+}
+
+func TestStripeAPIResponses(t *testing.T) {
+	ctx := context.Background()
+
+	// A non-JSON error body surfaces as the opaque internal error —
+	// the channel message path needs a parseable envelope.
+	srv, _ := newFakeStripe(t, http.StatusInternalServerError, "oops")
+	adapter := payment.Stripe{SecretKey: "sk", WebhookSecret: testWebhookSecret, APIBase: srv.URL}
+	_, err := adapter.ChargeAsync(ctx, payment.Charge{Amount: "1.00", Currency: "usd"})
+	if err == nil || strings.Contains(err.Error(), "oops") {
+		t.Fatalf("non-JSON error body: err = %v", err)
+	}
+
+	// A 200 whose body is not an intent fails at decode.
+	srv2, _ := newFakeStripe(t, http.StatusOK, "not json")
+	adapter.APIBase = srv2.URL
+	_, err = adapter.ChargeAsync(ctx, payment.Charge{Amount: "1.00", Currency: "usd"})
+	if err == nil || !strings.Contains(err.Error(), "decode response") {
+		t.Fatalf("garbage 200: err = %v", err)
+	}
+}
+
+func TestStripeWebhookFutureTimestamp(t *testing.T) {
+	adapter := payment.Stripe{WebhookSecret: testWebhookSecret}
+	payload := []byte(`{"id":"evt_f","type":"payment_intent.succeeded","data":{"object":{"id":"pi_f"}}}`)
+	// A timestamp from the future is as suspicious as a stale one.
+	future := time.Now().Add(6 * time.Minute)
+	if _, _, err := adapter.ParseWebhook(http.Header{"Stripe-Signature": {signStripe(t, testWebhookSecret, future, payload)}}, payload); err == nil {
+		t.Fatal("future signature accepted")
+	}
+}
+
+// detailMessage returns the first validation detail's message; an empty
+// string means the error was not an *api.APIError with details.
+func detailMessage(t *testing.T, err error) string {
+	t.Helper()
+	if err == nil {
+		return ""
+	}
+	var apiErr *api.APIError
+	if !errors.As(err, &apiErr) || len(apiErr.Details) == 0 {
+		return ""
+	}
+	return apiErr.Details[0].Message
 }
