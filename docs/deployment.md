@@ -58,6 +58,7 @@ postgres 带 healthcheck，coterie 等它就绪后再启动；服务器连不上
 | `STRIPE_SECRET_KEY` | 设置后启用 stripe | 需同时加入 `PAYMENT_METHODS` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe 验签 | 公开端点 `POST /api/v1/payments/webhooks/stripe` |
 | `STRIPE_MARKETPLACE_WEBHOOK_SECRET` | 可选 | 入圈闸门 Webhook 的独立密钥，缺省回落到 `STRIPE_WEBHOOK_SECRET` |
+| `STRIPE_API_BASE` | 可选 | Stripe API 源覆盖，缺省 `https://api.stripe.com`（测试/代理用） |
 | `PROVIDER_PLUGINS` | 逗号分隔 | `claude` 是内置示例插件，加区域/套餐策略与用量上限 |
 
 ## 平台管理员
