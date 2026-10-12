@@ -192,7 +192,8 @@ Seats / Quota / Cost
   join-request inbox with the payment gate, the owner blocklist, usage
   metering, disputes, the marketplace directory with the owner's
   listing toggle and request history, invitation history, subscription
-  settings, and the admin inbox with the platform audit ledger
+  settings, the admin inbox with the platform audit ledger, and the
+  browser push toggle on the notifications page
 
 ## Tech stack
 

@@ -1,9 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { api } from '../../lib/api'
 import type { ListResponse, Notification } from '../../lib/api'
+import {
+  activePushSubscription,
+  disablePush,
+  enablePush,
+  pushSupported,
+} from '../../lib/push'
 import { Pager } from '../../components/Pager'
+import { PushSetup } from '../../components/PushSetup'
 
 const PAGE_SIZE = 20
 
@@ -29,6 +36,37 @@ function NotificationsPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
   })
 
+  // Push lives in the browser, not the query cache: the subscription
+  // is this origin's PushSubscription, so a plain refresh on toggle.
+  const [supported] = useState(pushSupported)
+  const [pushSub, setPushSub] = useState<PushSubscription | null>(null)
+  const [pushMessage, setPushMessage] = useState('')
+  const [pushBusy, setPushBusy] = useState(false)
+  useEffect(() => {
+    if (!supported) return
+    void activePushSubscription().then(setPushSub)
+  }, [supported])
+
+  const enable = async () => {
+    setPushBusy(true)
+    setPushMessage('')
+    const result = await enablePush()
+    setPushBusy(false)
+    if (result.ok) setPushSub(await activePushSubscription())
+    else setPushMessage(result.reason)
+  }
+  const disable = async () => {
+    setPushBusy(true)
+    setPushMessage('')
+    try {
+      await disablePush()
+    } catch {
+      setPushMessage('关闭推送失败')
+    }
+    setPushBusy(false)
+    setPushSub(await activePushSubscription())
+  }
+
   if (isLoading) return <p className="text-slate-500">加载中…</p>
   if (error) return <p className="text-red-600">加载失败：{error.message}</p>
 
@@ -37,6 +75,14 @@ function NotificationsPage() {
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold text-slate-900">通知</h1>
+      <PushSetup
+        supported={supported}
+        enabled={pushSub !== null}
+        busy={pushBusy}
+        message={pushMessage}
+        onEnable={() => void enable()}
+        onDisable={() => void disable()}
+      />
       {items.length === 0 ? (
         <p className="text-slate-500">暂无通知。</p>
       ) : (
