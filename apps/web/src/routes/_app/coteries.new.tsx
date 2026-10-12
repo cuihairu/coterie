@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { api, ApiError, getUser } from '../../lib/api'
+import { ComplianceNotice } from '../../components/ComplianceNotice'
 import type { Coterie, ListResponse, Product, Provider, Subscription } from '../../lib/api'
 
 export const Route = createFileRoute('/_app/coteries/new')({
@@ -98,6 +99,7 @@ function NewCoteriePage() {
         ← 返回圈列表
       </Link>
       <h1 className="mt-2 mb-6 text-xl font-semibold text-slate-900">创建共享圈</h1>
+      <ComplianceNotice />
 
       <form
         onSubmit={(e) => {
