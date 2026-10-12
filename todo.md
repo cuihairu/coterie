@@ -32,8 +32,8 @@
 internal 包中 21 个有直接测试（apps/server 装配层与 testsupport 为合理例外）。
 
 ## 维护项（常规）
-- [ ] 依赖与安全告警按需处理（dependabot；code scanning 见下条，暂不启用）
-- [ ] 每批 PR 合并后 README/文档站同步
+- [x] 依赖与安全告警按需处理（dependabot；code scanning 见下条，暂不启用）——2026-10-12 三轮执行：告警 0、audit 0/0、govulncheck 可达 0，过期项仅 vitepress 有意 pin（已登记）
+- [x] 每批 PR 合并后 README/文档站同步——2026-10-12 核对：api.md 82 路由与代码一致；修掉 README Go 版本徽章 1.25+→1.26+ 漂移（#26）
 
 最近一次分诊（2026-10-11）：dependabot 开放告警 0；npm audit 两棵树 0 漏洞；
 govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdlib 漏洞，
@@ -55,6 +55,12 @@ govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdli
 前置声明仍写 Go 1.25+ 的漂移（实际底线 1.26）；code scanning 维持未
 启用（按用户明令暂挂，登记在案）；vitepress 维持 alpha pin（latest
 1.6.4 正是已修漏洞线）。
+
+维护项勾选（2026-10-12 第三轮）：dependabot 0、code scanning 未启用（按明令暂挂）、
+npm audit 两树 0、go 直接依赖无更新、govulncheck 可达 0（openpgp 模块级噪音同前）、
+npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为文档/依赖补丁
+无 API 变化，README/文档站已同步（82 路由上轮核验后无代码变更）。两项常开周期项
+本轮执行完毕，勾选。
 
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
