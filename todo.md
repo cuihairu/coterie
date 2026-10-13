@@ -38,8 +38,8 @@ NFR 层复核（2026-10-13，requirements §5 对代码）：NFR-1 无凭据表
 「UI 必须明确提示」此前缺失——本轮落地 ComplianceNotice 组件（建圈页
 与共享广场渲染，vitest 钉住条款/地区/共享权限三关键词），是否再把
 terms/region/eligibility 升为命名字段留审核拍板；NFR-3 compose/Dockerfile/
-单二进制齐（K8s/bare metal 是支持目标非交付物）；NFR-4 77 条 /api/v1
-路由即 API 面；NFR-5 代码内零硬编码 provider 分支；NFR-6 单租户无组织层；
+单二进制齐（K8s/bare metal 是支持目标非交付物）；NFR-4 84 条路由
+（83 条 /api/v1 + 根 /healthz，含 6 条 PATCH）即 API 面；NFR-5 代码内零硬编码 provider 分支；NFR-6 单租户无组织层；
 NFR-7 的 D17/D19/D26/FR-17/FR-18 均在代码中验证（audit/ratelimit/report/
 dispute/reputation 五包及测试在位）。
 
@@ -115,14 +115,24 @@ npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为
 无 API 变化，README/文档站已同步（路由数上轮核验后无代码变更）。两项常开周期项
 本轮执行完毕，勾选。
 
-路由数勘误（2026-10-13，PD1013CTE2）：此前数轮账面记「api.md 82 路由」，
-本轮用双向 diff 复核（正则提取 mux 注册 ↔ api.md 表行，占位符统一
-归一为 {id}）：代码 77 条 /api/v1 路由 + 根 /healthz，api.md 78 行
-（77 + 根 healthz），两侧零缺零多、逐条一致。旧值 82 系当时计数方法
-偏差，一致性结论本身不受影响；账面已改用本轮核实的数字。同轮勘误：
+路由数勘误（2026-10-13，PD1013CTE2；数字后经守卫再次更正）：此前数轮
+账面记「api.md 82 路由」，本轮双向 diff 复核两侧一致——但当时提取正则
+不含 PATCH，绝对数错（77/78），经一致性守卫（见上）更正为 **84 = 83
+条 /api/v1（含 6 PATCH）+ 根 /healthz**，api.md 84 行；一致性结论本身
+始终成立。同轮勘误：
 「23 包 21 测」实为 22（唯一无测包是 testsupport 自身）；「smoke 119
 检查」不可复算（静态 104 expect + 16 case = 120，CI 日志按行计 116、
 零 FAIL），账面改记为「冒烟全绿」不带易漂移的具体数。
+
+## 登记的下一批（自定位，R13/K7QD2）
+- [x] 路由一致性守卫（2026-10-13 登记并于同日落地，Phase 2 收口·维护项）：
+  `internal/app/routes_consistency_test.go`——从 `internal/**/*.go` 提取
+  mux 注册（Handle/HandleFunc 字面量，`METHOD path` 复合键，占位符归一
+  `{id}`，含根 `/healthz`）与 `docs/api.md` 表行双向 diff 作为 CI 门禁。
+  落地即抓账面第三处漂移：提取正则此前不含 PATCH，**真实路由数为 84**
+  （83 条 /api/v1 含 6 条 PATCH + 根 /healthz，api.md 84 行），旧记 77/78
+  系同类方法盲区；双向零缺零多、变异验证可抓红（`POST /api/v1/zzz-*`
+  即 fail 并给出计数差）。今后任一侧增删路由不同步即 CI 红。
 
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
