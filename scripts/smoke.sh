@@ -50,6 +50,10 @@ PROD=$(api POST /api/v1/products "$TOK" "{\"provider_id\":\"$PID\",\"name\":\"Pr
 PRID=$(jget "['id']" "$PROD")
 [ -n "$PRID" ] || { echo "FAIL catalog" >&2; exit 1; }
 echo "ok  provider $PID / product $PRID"
+PROVGET=$(api GET "/api/v1/providers/$PID" "")
+expect "$(jget "['id']" "$PROVGET")" "$PID" "provider detail read back"
+PRODGET=$(api GET "/api/v1/products/$PRID" "")
+expect "$(jget "['id']" "$PRODGET")" "$PRID" "product detail read back"
 # Presence checks pass even when a filter is ignored, so assert the
 # narrowing: this video provider is listed unfiltered and hidden by
 # category=ai.
@@ -129,6 +133,7 @@ expect "$(jget "['status']" "$REL")" free "seat re-enabled"
 step "billing period + equal split"
 PER=$(api POST "/api/v1/subscriptions/$SID/billing-periods" "$TOK" '{"start_date":"2026-10-01","end_date":"2026-11-01"}')
 PERID=$(jget "['id']" "$PER")
+expect "$(jget "['id']" "$(api GET "/api/v1/billing-periods/$PERID" "$TOK")")" "$PERID" "billing period detail read back"
 GEN=$(api POST "/api/v1/billing-periods/$PERID/contributions/generate" "$TOK" '{}')
 expect "$(python3 -c "import sys,json;d=json.load(sys.stdin);print(sorted(c['amount'] for c in d['items']))" <<<"$GEN")" "['6.00', '6.00']" "12.00 split over 2 members"
 
@@ -236,6 +241,11 @@ RD=$(api POST "/api/v1/notifications/$NID/read" "$TOK2" "")
 expect "$(python3 -c "import sys,json;print(all(n['id']!='$NID' for n in json.load(sys.stdin)['items']))" <<<"$(api GET "/api/v1/notifications?unread=true" "$TOK2")")" True "unread filter hides the read one"
 
 step "push subscription registry"
+case "$(code_of -H "Authorization: Bearer $TOK" "$BASE/api/v1/push/vapid-public-key")" in
+  404) echo "ok  vapid key absent (push not configured)" ;;
+  200) echo "ok  vapid key served (push configured)" ;;
+  *) echo "FAIL vapid-public-key: unexpected status" >&2; exit 1 ;;
+esac
 P256DH=BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 PAUTH=AAECAwQFBgcICQoLDA0ODw
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK2" -H 'Content-Type: application/json' -d "{\"endpoint\":\"http://push.example.com/x\",\"keys\":{\"p256dh\":\"$P256DH\",\"auth\":\"$PAUTH\"}}" "$BASE/api/v1/push/subscriptions")" 422 "push endpoint must be https"
@@ -305,11 +315,26 @@ expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK" "$BASE/api/v1/join-r
 api DELETE "/api/v1/join-requests/$(jget "['id']" "$JR4")" "$TOK3" "" >/dev/null
 expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$(api GET /api/v1/me/join-requests "$TOK3")")" cancelled "requester withdrew the request"
 
+step "owner removes the member: seat freed, audit stamped"
+expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK2" "$BASE/api/v1/members/$MID")" 403 "members cannot remove each other"
+api DELETE "/api/v1/members/$MID" "$TOK" "" >/dev/null
+expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 1 "owner removed the member"
+expect "$(code_of -X DELETE -H "Authorization: Bearer $TOK" "$BASE/api/v1/members/$MID")" 409 "already-removed member cannot be removed again"
+
 step "owner audit trail"
 case "$(api GET "/api/v1/coteries/$CID/audit-logs" "$TOK")" in
   *member_left*) echo "ok  audit trail records the leave" ;;
   *) echo "FAIL member_left missing from the coterie audit trail" >&2; exit 1 ;;
 esac
+case "$(api GET "/api/v1/coteries/$CID/audit-logs" "$TOK")" in
+  *member_removed*) echo "ok  audit trail records the removal" ;;
+  *) echo "FAIL member_removed missing from the coterie audit trail" >&2; exit 1 ;;
+esac
+case "$(api GET "/api/v1/subscriptions/$SID/audit-logs" "$TOK")" in
+  *seat_assigned*) echo "ok  subscription audit trail carries the seat actions" ;;
+  *) echo "FAIL seat_assigned missing from the subscription audit trail" >&2; exit 1 ;;
+esac
+expect "$(python3 -c "import sys,json;d=json.load(sys.stdin)['items'];print(bool(d) and all(i['action']=='seat_assigned' for i in d))" <<<"$(api GET "/api/v1/subscriptions/$SID/audit-logs?action=seat_assigned" "$TOK")")" True "action filter narrows the subscription trail"
 expect "$(code_of -H "Authorization: Bearer $TOK2" "$BASE/api/v1/coteries/$CID/audit-logs")" 403 "members cannot read the audit trail"
 
 step "logout invalidates the session"
