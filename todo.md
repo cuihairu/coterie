@@ -22,3 +22,4 @@
 ## 维护项（常开）
 - [ ] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）
 - [ ] 每批 PR 合并后 README/文档站同步
+- [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖（GET providers/products/billing-periods 详情、GET push/vapid-public-key、GET subscriptions 审计、DELETE members）— b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
