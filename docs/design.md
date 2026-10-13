@@ -666,7 +666,7 @@ Push 渠道的落地（ADR D22，FR-12）：Web Push 标准（浏览器原生、
 | 项 | 决策 |
 |---|---|
 | 登记 | `POST /api/v1/push/subscriptions`（认证）：`{endpoint, keys:{p256dh, auth}}`，endpoint 必须 https 且全局唯一（重复即 upsert）；`GET` 列出自己的登记；`DELETE /api/v1/push/subscriptions/{id}` 只能删自己的 |
-| SPA | 通知页开关（PushSetup 组件 + lib/push）：特性检测（`serviceWorker`+`PushManager`，不支持即不渲染）→ `Notification.requestPermission` → 注册 `/sw.js`（`public/sw.js`，展示解密出的 title/body）→ `GET /push/vapid-public-key`（404 视为服务端未开启推送）→ `pushManager.subscribe({userVisibleOnly})` → POST 登记；关闭 = 按 endpoint 匹配出服务端行 DELETE + 本地 `unsubscribe` |
+| SPA | 通知页开关（PushSetup 组件 + lib/push）：特性检测（`serviceWorker`+`PushManager`，不支持即不渲染）→ `Notification.requestPermission` → 注册 `/sw.js`（`public/sw.js`，展示解密出的 title/body）→ `GET /push/vapid-public-key`（404 视为服务端未开启推送）→ `pushManager.subscribe({userVisibleOnly})` → POST 登记；关闭 = 按 endpoint 匹配出服务端行 DELETE + 本地 `unsubscribe`；另渲染已登记端点列表（含其他浏览器的行），逐行可注销（list + delete-by-id 的 SPA 消费面） |
 | 存储 | `push_subscriptions` 表（0001 骨架 + 0013 建表，D7 惯例）：id、user_id、endpoint（UNIQUE）、p256dh、auth、created_at。密钥存 base64url 原文（服务端要原样用于加密） |
 | 发送 | 通知入站内信后异步出站（与 Email/Webhook 同一 Channel 面）：查接收者的全部登记端点，逐个按 RFC 8291 `aes128gcm` 加密（临时 P-256 ECDH + HKDF 派生 IKM/nonce，单记录零填充）+ RFC 8292 VAPID `Authorization`（ES256 JWT，`aud`=端点 origin、`exp`=12h、`sub`=配置的联系邮箱），POST 至推送服务 |
 | 剪除 | 推送服务返回 404/410（端点失效/已退订）即删除该行；失效登记不清理会越积越多；其余错误记日志不重试（渠道 best-effort 惯例，FR-12） |

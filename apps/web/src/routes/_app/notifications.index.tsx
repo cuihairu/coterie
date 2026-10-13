@@ -7,9 +7,12 @@ import {
   activePushSubscription,
   disablePush,
   enablePush,
+  listPush,
   pushSupported,
+  revokePush,
 } from '../../lib/push'
 import { Pager } from '../../components/Pager'
+import { PushEndpoints } from '../../components/PushEndpoints'
 import { PushSetup } from '../../components/PushSetup'
 
 const PAGE_SIZE = 20
@@ -67,6 +70,18 @@ function NotificationsPage() {
     setPushSub(await activePushSubscription())
   }
 
+  // Registered endpoints cover every device the user enabled push on;
+  // revoking one server-side drops that browser's row.
+  const endpoints = useQuery({
+    queryKey: ['push', 'endpoints'],
+    queryFn: listPush,
+    enabled: supported,
+  })
+  const revoke = useMutation({
+    mutationFn: revokePush,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['push'] }),
+  })
+
   if (isLoading) return <p className="text-slate-500">加载中…</p>
   if (error) return <p className="text-red-600">加载失败：{error.message}</p>
 
@@ -82,6 +97,12 @@ function NotificationsPage() {
         message={pushMessage}
         onEnable={() => void enable()}
         onDisable={() => void disable()}
+      />
+      <PushEndpoints
+        devices={endpoints.data ?? []}
+        thisEndpoint={pushSub?.endpoint}
+        busyId={revoke.isPending ? (revoke.variables ?? null) : null}
+        onRevoke={(id) => revoke.mutate(id)}
       />
       {items.length === 0 ? (
         <p className="text-slate-500">暂无通知。</p>

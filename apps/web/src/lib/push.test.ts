@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   disablePush,
   enablePush,
+  listPush,
   pushSupported,
+  revokePush,
   urlBase64ToUint8Array,
 } from './push'
 
@@ -161,6 +163,25 @@ describe('enablePush', () => {
 
     expect(await enablePush()).toEqual({ ok: false, reason: '注册推送失败' })
     expect(sub.unsubscribe).toHaveBeenCalled()
+  })
+})
+
+describe('endpoint management', () => {
+  it('listPush returns the registered rows', async () => {
+    const rows = [
+      { id: 's1', user_id: 'u1', endpoint: ENDPOINT, created_at: '2026-10-13T00:00:00Z' },
+    ]
+    mockFetch([{ match: (u) => u.endsWith('/push/subscriptions'), status: 200, body: { items: rows } }])
+
+    expect(await listPush()).toEqual(rows)
+  })
+
+  it('revokePush deletes by id', async () => {
+    const calls = mockFetch([{ match: (u) => u.endsWith('/push/subscriptions/s7'), status: 204 }])
+
+    await revokePush('s7')
+    expect(calls[0].url).toBe('/api/v1/push/subscriptions/s7')
+    expect(calls[0].init?.method).toBe('DELETE')
   })
 })
 
