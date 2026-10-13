@@ -4,7 +4,7 @@ Coterie 是一个 Go 二进制加一份 PostgreSQL（15+）。迁移在服务启
 
 ## 从源码运行
 
-需要 Go 1.25+。
+需要 Go 1.26+。
 
 ```bash
 # 配置（全部变量见 .env.example）
@@ -32,6 +32,8 @@ postgres 带 healthcheck，coterie 等它就绪后再启动；服务器连不上
 ## 配置项
 
 全部通过环境变量读取，默认值在 `internal/config` 里，注释版清单见 `.env.example`。compose 部署时下表变量以空缺省原样透传进容器（`${VAR:-}`）：在 compose 文件同目录放 `.env` 或直接导出环境变量即可启用；空值等同未设置，各默认值保持不变。`DATABASE_URL` 与 `PORT` 由 compose 固定管理。
+
+CI 另有路由一致性守卫（`internal/app/routes_consistency_test.go`）：`docs/api.md` 的端点表与 `internal/**` 的 mux 注册做双向 diff（含根 `/healthz` 与 PATCH），任一侧增删不同步即测试红。
 
 核心项：
 
