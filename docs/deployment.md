@@ -31,7 +31,7 @@ postgres 带 healthcheck，coterie 等它就绪后再启动；服务器连不上
 
 ## 配置项
 
-全部通过环境变量读取，默认值在 `internal/config` 里，注释版清单见 `.env.example`。
+全部通过环境变量读取，默认值在 `internal/config` 里，注释版清单见 `.env.example`。compose 部署时下表变量以空缺省原样透传进容器（`${VAR:-}`）：在 compose 文件同目录放 `.env` 或直接导出环境变量即可启用；空值等同未设置，各默认值保持不变。`DATABASE_URL` 与 `PORT` 由 compose 固定管理。
 
 核心项：
 

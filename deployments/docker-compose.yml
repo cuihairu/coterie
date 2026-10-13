@@ -24,9 +24,32 @@ services:
     environment:
       DATABASE_URL: postgres://coterie:coterie@postgres:5432/coterie?sslmode=disable
       PORT: "8080"
-      # Payment channels on top of the always-on manual adapter
-      # (.env.example); empty keeps the single-channel default.
+      # Every operator-facing variable passes through with an empty
+      # default (.env.example): unset keeps the built-in behavior, a
+      # value in the host env or the compose .env enables the channel.
+      # DATABASE_URL and PORT stay compose-managed above.
       PAYMENT_METHODS: ${PAYMENT_METHODS:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      MIGRATE_ON_START: ${MIGRATE_ON_START:-}
+      AUTO_BILLING_INTERVAL: ${AUTO_BILLING_INTERVAL:-}
+      RATE_LIMIT_REGISTER_PER_MIN: ${RATE_LIMIT_REGISTER_PER_MIN:-}
+      RATE_LIMIT_LOGIN_PER_MIN: ${RATE_LIMIT_LOGIN_PER_MIN:-}
+      PROVIDER_PLUGINS: ${PROVIDER_PLUGINS:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_API_BASE: ${STRIPE_API_BASE:-}
+      STRIPE_MARKETPLACE_WEBHOOK_SECRET: ${STRIPE_MARKETPLACE_WEBHOOK_SECRET:-}
     ports:
       - "8080:8080"
     depends_on:
