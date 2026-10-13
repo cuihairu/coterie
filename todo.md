@@ -28,8 +28,9 @@
 | FR-15 Audit Log | P1 | internal/audit（订阅/圈/平台三级账本），有测试 |
 | FR-16 Marketplace | P2 | internal/marketplace（目录+JoinRequest+D25 闸门），有测试 |
 
-端到端面：scripts/smoke.sh 119 检查全绿覆盖十一步旅程；全仓 23 个
-internal 包中 21 个有直接测试（apps/server 装配层与 testsupport 为合理例外）。
+端到端面：scripts/smoke.sh 冒烟全绿覆盖十一步旅程；全仓 23 个
+internal 包中 22 个有直接测试（唯一例外 testsupport 是测试基建自身；
+apps/server 装配层在 internal 之外）。
 
 NFR 层复核（2026-10-13，requirements §5 对代码）：NFR-1 无凭据表
 （迁移中无 license_key/api_key/recovery_code 类列）；NFR-2 的信息载体
@@ -49,7 +50,7 @@ env/.env.example 内确认无 sk_/whsec_ 真实凭据，维持等凭据；下一
 
 验收线复核（2026-10-13，requirements §3 MVP 旅程对两端）：十步
 （注册→Provider→Product→Subscription→Coterie→Seats→邀请→加入→
-记录费用→周期结算）逐步双面命中——API 面由 smoke 119 检查走通，
+记录费用→周期结算）逐步双面命中——API 面由 smoke 冒烟走通，
 Web 面逐页核实（login.tsx 注册；coteries.new 向导内联建
 Provider/Product/Subscription/Coterie；圈详情页 seats/billing-periods/
 generate/usage-records/invitations；圈列表页接受邀请），§3 验收线
@@ -61,6 +62,15 @@ FR 表 + plan bullets + NFR 七条 + §3 旅程。
 等用户明令，跳过；④Stripe D24——等凭据（仓库内复核仍无 sk_/whsec_），
 跳过。四条全部停在用户门槛，无自主余量。
 
+SPA 推送订阅 UI（2026-10-13，PR #32）：FIRE5X 续做令下按最近 git log
+定位的下一批——#27 时登记的「SPA 推送订阅 UI，SPA 侧零实现」。落地
+public/sw.js（展示解密后的 title/body，解不开也出可见通知）、
+lib/push.ts（启用流：特性检测→权限→注册 SW→取公钥(404=服务端未开)→
+subscribe→POST 登记；失败回滚本地订阅；关闭流按 endpoint 匹配 DELETE）、
+通知页 PushSetup 开关（不支持的浏览器整体隐藏）。vitest 35/35
+（新增 16：lib 12 + 组件 4）、tsc+vite 构建、oxlint 全绿；design.md
+§6.5 补 SPA 行，双语 README Web-client 条目同步。
+
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
 invitation/notification）与 Phase 2 七项（marketplace/provider 目录/
@@ -70,7 +80,7 @@ payment 适配器/email/webhook/usage/quota）全部落地——12 个模块目�
 
 ## 维护项（常规）
 - [x] 依赖与安全告警按需处理（dependabot；code scanning 见下条，暂不启用）——2026-10-12 三轮执行：告警 0、audit 0/0、govulncheck 可达 0，过期项仅 vitepress 有意 pin（已登记）
-- [x] 每批 PR 合并后 README/文档站同步——2026-10-12 核对：api.md 82 路由与代码一致；修掉 README Go 版本徽章 1.25+→1.26+ 漂移（#26）
+- [x] 每批 PR 合并后 README/文档站同步——2026-10-12 核对：api.md 路由与代码一致（当时误记 82，2026-10-13 双向 diff 更正为代码 77 条 /api/v1 + 根 /healthz，见下）；修掉 README Go 版本徽章 1.25+→1.26+ 漂移（#26）
 
 最近一次分诊（2026-10-11）：dependabot 开放告警 0；npm audit 两棵树 0 漏洞；
 govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdlib 漏洞，
@@ -87,7 +97,7 @@ govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdli
 可达 0（openpgp 模块级噪音同前）；新过期项仅 @tanstack/react-query
 5.104.1→5.104.2 patch，随本轮合入。#23/#24 无 API 变化，README 无需同步。
 
-一致性复查（2026-10-12 第二轮）：docs/api.md 82 条路由与代码 mux 注册
+一致性复查（2026-10-12 第二轮）：docs/api.md 路由与代码 mux 注册
 逐条一致（healthz 根路径亦一致）；修掉 README.md/README.zh.md 徽章与
 前置声明仍写 Go 1.25+ 的漂移（实际底线 1.26）；code scanning 维持未
 启用（按用户明令暂挂，登记在案）；vitepress 维持 alpha pin（latest
@@ -96,14 +106,23 @@ govulncheck 可达漏洞清零——工具链钉到 go1.27.2 修掉 10 个 stdli
 维护项勾选（2026-10-12 第三轮）：dependabot 0、code scanning 未启用（按明令暂挂）、
 npm audit 两树 0、go 直接依赖无更新、govulncheck 可达 0（openpgp 模块级噪音同前）、
 npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为文档/依赖补丁
-无 API 变化，README/文档站已同步（82 路由上轮核验后无代码变更）。两项常开周期项
+无 API 变化，README/文档站已同步（路由数上轮核验后无代码变更）。两项常开周期项
 本轮执行完毕，勾选。
+
+路由数勘误（2026-10-13，PD1013CTE2）：此前数轮账面记「api.md 82 路由」，
+本轮用双向 diff 复核（正则提取 mux 注册 ↔ api.md 表行，占位符统一
+归一为 {id}）：代码 77 条 /api/v1 路由 + 根 /healthz，api.md 78 行
+（77 + 根 healthz），两侧零缺零多、逐条一致。旧值 82 系当时计数方法
+偏差，一致性结论本身不受影响；账面已改用本轮核实的数字。同轮勘误：
+「23 包 21 测」实为 22（唯一无测包是 testsupport 自身）；「smoke 119
+检查」不可复算（静态 104 expect + 16 case = 120，CI 日志按行计 116、
+零 FAIL），账面改记为「冒烟全绿」不带易漂移的具体数。
 
 ## 暂不开（等用户明令）
 - [ ] CodeQL / code scanning：暂不开。无用户明令，且会引入持续告警分诊面，按默认从简口径挂起。
 
 ## 等外部密钥/凭据（暂挂）
-- [x] Web Push 公钥端点：已落地 `GET /api/v1/push/vapid-public-key`（Bearer；未配置推送时 404）。VAPID 密钥本就可由 `cmd/vapidkeygen` 自签生成，无需外部密钥。
+- [x] Web Push 公钥端点：已落地 `GET /api/v1/push/vapid-public-key`（Bearer；未配置推送时 404）。VAPID 密钥本就可由 `cmd/vapidkeygen` 自签生成，无需外部密钥。SPA 侧订阅 UI（sw.js + 通知页开关）已于 2026-10-13 落地（PR #32），D22 两端齐。
 - [ ] Stripe 支付渠道（D24）：等凭据。2026-10-12 补齐适配器分支测试（金额边界/溢出、默认描述、同步拒绝、坏响应、未来时间戳），除真实凭据验证外无遗留。
 
 验收：以用户审核结论为准；新任务由用户分配后按测试绿才 push 执行。
