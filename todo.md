@@ -124,6 +124,16 @@ npm 过期仅 vitepress alpha pin（有意保留，已登记）；#25/#26 均为
 检查」不可复算（静态 104 expect + 16 case = 120，CI 日志按行计 116、
 零 FAIL），账面改记为「冒烟全绿」不带易漂移的具体数。
 
+## 登记的下一批（自定位，KICKCOT 续批）
+- [ ] compose 渠道变量透传（2026-10-13 登记，Phase 2 部署面收口·缺陷）：
+  `deployments/docker-compose.yml` 此前只透传 `PAYMENT_METHODS`，
+  VAPID/Stripe/SMTP/Webhook/ADMIN_EMAILS/AUTO_BILLING/RATE_LIMIT/
+  PROVIDER_PLUGINS/LOG_LEVEL 等 20 个运维变量进不了容器——compose
+  路径下任何渠道都无法启用，与 deployment.md「全部通过环境变量读取」
+  不符。验收口径：核心与渠道两组变量以 `${VAR:-}` 空缺省透传
+  （DATABASE_URL/PORT 仍由 compose 管理），`docker compose config`
+  解析通过，deployment.md 配置项一节注明透传方式。
+
 ## 登记的下一批（自定位，R13/K7QD2）
 - [x] 路由一致性守卫（2026-10-13 登记并于同日落地，Phase 2 收口·维护项）：
   `internal/app/routes_consistency_test.go`——从 `internal/**/*.go` 提取
