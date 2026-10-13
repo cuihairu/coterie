@@ -69,7 +69,9 @@ lib/push.ts（启用流：特性检测→权限→注册 SW→取公钥(404=服�
 subscribe→POST 登记；失败回滚本地订阅；关闭流按 endpoint 匹配 DELETE）、
 通知页 PushSetup 开关（不支持的浏览器整体隐藏）。vitest 35/35
 （新增 16：lib 12 + 组件 4）、tsc+vite 构建、oxlint 全绿；design.md
-§6.5 补 SPA 行，双语 README Web-client 条目同步。
+§6.5 补 SPA 行，双语 README Web-client 条目同步。CI 收口（同日）：run
+38322649865 test/web/smoke 三 job 全绿后合入主分支（合并提交 02f4588）；
+本 PR 同轮携带账面勘误三处（见下「路由数勘误」段）。
 
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
