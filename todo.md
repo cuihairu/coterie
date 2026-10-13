@@ -71,7 +71,11 @@ subscribe→POST 登记；失败回滚本地订阅；关闭流按 endpoint 匹�
 （新增 16：lib 12 + 组件 4）、tsc+vite 构建、oxlint 全绿；design.md
 §6.5 补 SPA 行，双语 README Web-client 条目同步。CI 收口（同日）：run
 38322649865 test/web/smoke 三 job 全绿后合入主分支（合并提交 02f4588）；
-本 PR 同轮携带账面勘误三处（见下「路由数勘误」段）。
+本 PR 同轮携带账面勘误三处（见下「路由数勘误」段）。续批（同日，PR
+#33）：已登记推送端点的多设备管理面——list+delete-by-id 此前 SPA 零
+消费（两个浏览器无法互注销）；PushEndpoints 组件（host+时间+此浏览器
+标签+逐行注销）接通知页，vitest 41/41 三 job 全绿合入（c9a7242）。
+至此 77 条 /api/v1 路由与 SPA api() 调用交叉核对零缺消费面。
 
 逐 bullet 复核（2026-10-12，project-plan §6 对代码）：Phase 1 十模块
 （user/provider/product/subscription/coterie/member/seat/contribution/
