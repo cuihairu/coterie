@@ -17,6 +17,7 @@
 - [x] NFR-2 UI 合规提示（ComplianceNotice）— c42aac0，vitest 35/35
 - [x] vitest 5.0.4 升级 — ac0045e
 - [x] deployment.md 补 STRIPE_API_BASE 配置行 — 49c9a2c
+- [x] 文档一致性审计（6 项漂移修复 + todo 整理 130→24 行）— a570606/841c5ca，PR #36 CI 全绿
 
 ## 维护项（常开）
 - [ ] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）
