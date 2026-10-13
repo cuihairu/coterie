@@ -156,6 +156,7 @@ expect "$(code_of "$BASE/healthz")" 200 "healthz is public"
 expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/payments/webhooks/nosuch")" 404 "unknown payment channel refused"
 expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/payments/webhooks/manual")" 422 "sync-only channel cannot confirm"
 expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/marketplace/webhooks/nosuch")" 404 "unknown gate channel refused"
+expect "$(code_of -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/api/v1/marketplace/webhooks/manual")" 422 "sync-only gate channel cannot confirm"
 
 step "single-port web app: one server for API and client"
 # The Docker build embeds the real Vite output; a local build serves
