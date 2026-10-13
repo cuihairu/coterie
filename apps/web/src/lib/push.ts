@@ -100,15 +100,28 @@ export async function enablePush(): Promise<EnableResult> {
   return { ok: true }
 }
 
+// listPush returns the signed-in user's registered push endpoints —
+// other browsers' rows included, so the notifications page can offer
+// revoking a device the user no longer holds.
+export async function listPush(): Promise<PushSubscriptionInfo[]> {
+  const { items } = await api<{ items: PushSubscriptionInfo[] }>('/push/subscriptions')
+  return items
+}
+
+// revokePush deletes one registered endpoint by id; the server
+// rejects ids that are not the caller's own rows.
+export async function revokePush(id: string): Promise<void> {
+  await api<void>(`/push/subscriptions/${id}`, { method: 'DELETE' })
+}
+
 // disablePush removes the server row for this browser's subscription
 // (matched by endpoint — the server id is not known locally) and then
 // unsubscribes locally. Returns false when there was nothing to undo.
 export async function disablePush(): Promise<boolean> {
   const sub = await activePushSubscription()
   if (!sub) return false
-  const { items } = await api<{ items: PushSubscriptionInfo[] }>('/push/subscriptions')
-  const row = items.find((s) => s.endpoint === sub.endpoint)
-  if (row) await api<void>(`/push/subscriptions/${row.id}`, { method: 'DELETE' })
+  const row = (await listPush()).find((s) => s.endpoint === sub.endpoint)
+  if (row) await revokePush(row.id)
   await sub.unsubscribe()
   return row !== undefined
 }

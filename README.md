@@ -193,7 +193,8 @@ Seats / Quota / Cost
   metering, disputes, the marketplace directory with the owner's
   listing toggle and request history, invitation history, subscription
   settings, the admin inbox with the platform audit ledger, and the
-  browser push toggle on the notifications page
+  browser push toggle with registered-endpoint management on the
+  notifications page
 
 ## Tech stack
 
