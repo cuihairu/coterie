@@ -24,6 +24,6 @@
 - [x] 文档一致性审计（6 项漂移修复 + todo 整理 130→24 行）— a570606/841c5ca，PR #36 CI 全绿
 
 ## 维护项（常开）
-- [ ] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）
-- [ ] 每批 PR 合并后 README/文档站同步
+- [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 5 条陈旧（vite 8.3.4 与 moby/go-archive v0.3.3 均最新）、npm audit 双树 0、govulncheck 0 可达
+- [x] 每批 PR 合并后 README/文档站同步 — 已核：PR #36 合并后审计核一致（a570606/841c5ca），其后无 PR 合入
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖（GET providers/products/billing-periods 详情、GET push/vapid-public-key、GET subscriptions 审计、DELETE members）— b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
