@@ -56,19 +56,6 @@ Requires Go 1.26+ and a PostgreSQL 15+ instance (migrations apply
 automatically on startup).
 
 ```bash
-
-## 本地测试口径
-
-CI 与本地开发按改动面三路分流——改一行文档不该全量编译。
-
-1. **文档改动**（`*.md`、`docs/**`、图片）：不编译。主 CI workflow 的
-   `paths-ignore` 已跳过这些路径。
-2. **代码改动**：只跑改动子集，不全量。
-   - `go test ./<改动包>/...`
-   - `npm test -- --testPathPatterns=<改动>`
-3. **全量**（`go test ./... + npm test`）：仅以下情形触发——go.mod / go.sum / package.json、
-   `.github/**`、Docker/Compose 配置、发布前。
-
 # 1. Configure (see .env.example for all variables)
 export DATABASE_URL=postgres://coterie:coterie@localhost:5432/coterie?sslmode=disable
 export PORT=8080
@@ -110,6 +97,23 @@ platform-admin surface (reports inbox, report decision, audit ledger); the
 account must be one the server promoted via `ADMIN_EMAILS`. Back-to-back
 runs can trip the auth rate limiter on the third registration — wait a
 minute between runs.
+
+## Testing scope
+
+Keep local checks proportional to the change:
+
+1. **Docs only** (`*.md`, `docs/**`, images) — run the docs build only:
+   `npm --prefix docs run build`.
+2. **Code changes** — run the affected subset, not the whole suite:
+   `go test ./<changed packages>/...` plus the touched vitest files.
+3. **Full suite** (`go test ./...` and `npm test`) — only for
+   `go.mod` / `go.sum` / `package.json`, `.github/**`, the Docker or
+   Compose files, or before a release.
+
+CI runs regardless of scope: `.github/workflows/ci.yml` has no path
+filter, so every push to main and every pull request runs test + web +
+smoke. Only the docs-site workflow (`.github/workflows/docs.yml`) is
+gated by a `paths` filter, publishing the site on `docs/**` changes.
 
 ## API overview (v1)
 
