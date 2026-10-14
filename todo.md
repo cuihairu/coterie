@@ -25,7 +25,7 @@
 - [x] README 测试口径补 codeql paths-ignore（d3da44b 引入后的漂移）— b628d4d，npm --prefix docs run build 通过
 
 ## 待补测
-- [ ] 调度器生产入口补测：Scheduler.Run（apps/server 以 `go sched.Run(ctx)` 启动，当前 0% 覆盖）— 短间隔 ticker 自转滚期、ctx 取消后干净退出、已取消 ctx 立即返回；另补 rollSubscription 的「上期已结清」通知文案分支与 PATCH cycle_days=0 对 custom 的 D20 配对拒绝（清空路径的守卫） — 2026-10-14 巡检代决（覆盖率证据：automation 58.8%，Run 0%，rollSubscription 62.9%）
+- [x] 调度器生产入口补测：Scheduler.Run（apps/server 以 `go sched.Run(ctx)` 启动，当前 0% 覆盖）— 短间隔 ticker 自转滚期、ctx 取消后干净退出、已取消 ctx 立即返回；另补 rollSubscription 的「上期已结清」通知文案分支与 PATCH cycle_days=0 对 custom 的 D20 配对拒绝（清空路径的守卫） — f143527，go test ./internal/automation/ 全绿 3 用例 0 skip（2026-10-14 巡检代决）
 - [x] apps/server 组合根补测：spaHandler 嵌入客户端回落、apiOnly 分流、channels/paymentAdapters/marketplaceAdapters/providerPlugins 配置装配（含 stripe 缺 key 跳过、marketplace webhook secret 回落）— e175ad0，go test ./apps/server/ 全绿 9 用例 27 子用例 0 skip
 - [x] internal/database 纯函数层补测：Date（Parse/Value/Scan/Marshal/Unmarshal 的 null、零值、非法输入分支）、JSONB（Value/Scan/Marshal/Unmarshal 与缓冲拷贝）、IsUniqueViolation/IsFKViolation/IsCheckViolation 的 SQLSTATE 与约束名判定 — e1dff49，go test ./internal/database/ 全绿 12 用例 20 子用例 0 skip
 - [x] internal/reputation fold 派生层补测：状态分桶、多币种合计与排序、支付率分母（只算 paid+pending）、无计费历史时 payment_ratio 为 null、fmtRatio 取整 — eb4e528，go test ./internal/reputation/ 全绿 9 用例 3 子用例 0 skip
