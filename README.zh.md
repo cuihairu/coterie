@@ -48,6 +48,8 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 
 ```bash
 # 1. 配置(全部变量见 .env.example)
+
+> [English](README.md) | **中文**
 export DATABASE_URL=postgres://coterie:***@localhost:5432/coterie?sslmode=disable
 export PORT=8080
 
