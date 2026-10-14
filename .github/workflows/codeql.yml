@@ -4,6 +4,13 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - "*.svg"
+      - ".editorconfig"
     branches: [ "main" ]
   schedule:
     - cron: '0 6 * * 1'
