@@ -51,8 +51,9 @@ func (c *EmailChannel) Deliver(ctx context.Context, n *Notification) error {
 	if c.Username != "" {
 		auth = smtp.PlainAuth("", c.Username, c.Password, c.Host)
 	}
-	return smtp.SendMail(addr, auth, c.From, []string{u.Email},
-		renderMessage(c.From, u.Email, headerSafe(n.Title), headerSafe(n.Body)))
+	to := headerSafe(u.Email)
+	return smtp.SendMail(addr, auth, c.From, []string{to},
+		renderMessage(c.From, to, headerSafe(n.Title), headerSafe(n.Body)))
 }
 
 // renderMessage builds a minimal RFC 5322 plain-text message.
