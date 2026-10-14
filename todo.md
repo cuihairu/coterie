@@ -9,6 +9,7 @@
   - 卡点 R1013：依赖上条；所需输入：用户给出下一批任务清单
 - [x] CodeQL / code scanning — 2eea3e1，codeql run success
 - [x] CodeQL 告警修复（seat 分配上限 + email CRLF 注入）— f7b0b14，go test 全绿
+- [x] CodeQL email-injection 收口（to/from/title/body 全经 headerSafe 净化 + 首条误报 dismiss）— 342138c/2b220cd/31ea1a2，0 open alerts，CI 全绿
 - [ ] Stripe 支付渠道（D24）：等 sk_/whsec_ 真实凭据（适配器与分支测试已齐）
   - 卡点 R1013：无真实密钥（仓内仅测试夹具与 .env.example 占位）；所需输入：sk_test_*/whsec_* 或生产密钥
 
