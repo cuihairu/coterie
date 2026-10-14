@@ -148,6 +148,7 @@ func TestSubscriptionValidation(t *testing.T) {
 		{"usage limit per_period not a number", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"abc"}}}`, productID, userID)},
 		{"usage limit per_period negative", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"-1"}}}`, productID, userID)},
 		{"usage limit per_period too fine", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"1.12345"}}}`, productID, userID)},
+		{"seats over the cap", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":1001}`, productID, userID)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -56,7 +56,10 @@ func (c *EmailChannel) Deliver(ctx context.Context, n *Notification) error {
 }
 
 // renderMessage builds a minimal RFC 5322 plain-text message.
+// The subject is sanitized to strip CR/LF so a crafted title cannot
+// inject additional headers (CodeQL go/email-injection).
 func renderMessage(from, to, subject, body string) []byte {
+	subject = strings.NewReplacer("\r", "", "\n", "").Replace(subject)
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", to)

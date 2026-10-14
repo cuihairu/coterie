@@ -33,6 +33,12 @@ var perPeriodPattern = regexp.MustCompile(`^\d{1,12}(\.\d{1,4})?$`)
 // check exists as a database constraint.
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
+// MaxSeatsLimit bounds seat provisioning: max_seats feeds
+// make([]Seat, count) in the seat service, so an unbounded ceiling would
+// let one request allocate an enormous slice (CodeQL
+// go/uncontrolled-allocation-size).
+const MaxSeatsLimit = 1000
+
 // Service carries the subscription business rules on top of the store.
 type Service struct {
 	store   *Store
@@ -224,7 +230,7 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 	if req.Status != nil && !statusAllowed(*req.Status) {
 		details = append(details, detailStatus())
 	}
-	if req.MaxSeats != nil && *req.MaxSeats <= 0 {
+	if req.MaxSeats != nil && (*req.MaxSeats <= 0 || *req.MaxSeats > MaxSeatsLimit) {
 		details = append(details, detailSeats())
 	}
 	if req.CycleDays != nil && *req.CycleDays < 0 {
@@ -425,7 +431,7 @@ func validateFields(cycle, price, currency string, maxSeats int, maxMembers *int
 			Message: "must be a 3-letter ISO 4217 code (uppercase)",
 		})
 	}
-	if maxSeats <= 0 {
+	if maxSeats <= 0 || maxSeats > MaxSeatsLimit {
 		details = append(details, detailSeats())
 	}
 	if maxMembers != nil && *maxMembers <= 0 {
@@ -494,7 +500,7 @@ func (s *Service) validatePolicyWithPlugin(ctx context.Context, productID string
 }
 
 func detailSeats() api.Detail {
-	return api.Detail{Field: "max_seats", Message: "must be greater than 0"}
+	return api.Detail{Field: "max_seats", Message: "must be between 1 and 1000"}
 }
 
 func detailMembers() api.Detail {

@@ -56,9 +56,9 @@ func (s *Service) ProvisionOn(ctx context.Context, db *gorm.DB, actor *user.User
 	if err := requireOwner(sub, actor); err != nil {
 		return nil, err
 	}
-	if req.Count <= 0 {
+	if req.Count <= 0 || req.Count > subscription.MaxSeatsLimit {
 		return nil, api.Validation("invalid seat provision",
-			api.Detail{Field: "count", Message: "must be greater than 0"})
+			api.Detail{Field: "count", Message: "must be between 1 and 1000"})
 	}
 
 	existing, err := store.CountBySubscription(ctx, sub.ID)

@@ -13,3 +13,13 @@ func TestRenderMessage(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderMessageStripsCRLF(t *testing.T) {
+	msg := string(renderMessage("a@x", "b@y", "Hello\r\nBcc: evil@x", "World"))
+	if strings.Contains(msg, "\r\nBcc:") {
+		t.Fatalf("CRLF injection in subject: %q", msg)
+	}
+	if !strings.Contains(msg, "Subject: HelloBcc: evil@x\r\n") {
+		t.Fatalf("subject not stripped: %q", msg)
+	}
+}
