@@ -163,6 +163,16 @@ func (s *Store) SumBySeat(ctx context.Context, seatID string) (string, error) {
 	return sum, err
 }
 
+// SumBySeatUnit returns the ledger sum of the seat's records for one
+// unit — the sum a unit-scoped seat quota (D4) is judged against.
+func (s *Store) SumBySeatUnit(ctx context.Context, seatID, unit string) (string, error) {
+	var sum string
+	err := s.db.WithContext(ctx).
+		Raw(`SELECT COALESCE(SUM(amount), 0)::text FROM usage_records WHERE seat_id = ? AND unit = ?`, seatID, unit).
+		Scan(&sum).Error
+	return sum, err
+}
+
 // SetSeatMetadata persists the seat's metadata. Callers must hold the
 // row lock (SeatForUpdate) in the same transaction.
 func (s *Store) SetSeatMetadata(ctx context.Context, seatID string, metadata database.JSONB) error {

@@ -383,6 +383,83 @@ func openPeriodForUsage(t *testing.T, client *http.Client, base, tok, subID, sta
 	return id
 }
 
+// TestSeatQuotaCap covers D4 close-out: a metered seat whose metadata
+// carries a numeric quota rejects records that would push the seat's
+// post-write ledger sum past it. Corrections shrink the judged sum, a
+// metadata unit narrows the cap to that unit, a malformed quota stays
+// informational, and seats without a quota key are unconstrained.
+func TestSeatQuotaCap(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, base, "use-seatcap", "10.00", 2, 1, 1)
+	m := joined[0]
+	seatID := quotaSeat(t, client, base, tok, subID, m.MemberID, "100")
+
+	setMeta := func(raw string) {
+		t.Helper()
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+			base+"/api/v1/seats/"+seatID, raw, tok)
+		if code != http.StatusOK {
+			t.Fatalf("patch seat: status = %d: %v", code, body)
+		}
+	}
+	rec := func(payload string) (int, map[string]any) {
+		return record(t, client, base, tok, subID, payload)
+	}
+
+	// Within the cap, exactly at the cap, then over.
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"60","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("under cap: status = %d: %v", code, body)
+	}
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"40","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("at cap: status = %d: %v", code, body)
+	}
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"0.01","unit":"credits"}`, m.MemberID)); code != http.StatusConflict {
+		t.Fatalf("over cap: status = %d, want 409: %v", code, body)
+	}
+	// The rejected write left the ledger and the projection untouched.
+	if md := seatMetadata(t, client, base, tok, seatID); md["used"] != 100.0 {
+		t.Fatalf("used after 409 = %v, want 100", md)
+	}
+
+	// A correction reopens the budget.
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"-10","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("correction: status = %d: %v", code, body)
+	}
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"10","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("record after correction: status = %d: %v", code, body)
+	}
+
+	// A metadata unit narrows the cap to that unit: GB is free.
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"5000","unit":"GB"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("other unit: status = %d: %v", code, body)
+	}
+
+	// Explicit attribution is capped the same way.
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"seat_id":%q,"amount":"0.01","unit":"credits"}`, m.MemberID, seatID)); code != http.StatusConflict {
+		t.Fatalf("explicit over cap: status = %d, want 409: %v", code, body)
+	}
+
+	// Without a unit key the cap sees every record attributed to the seat.
+	setMeta(`{"metadata":{"quota":50,"used":0}}`)
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"1","unit":"GB"}`, m.MemberID)); code != http.StatusConflict {
+		t.Fatalf("unitless cap on any unit: status = %d, want 409: %v", code, body)
+	}
+
+	// A malformed quota stays informational — writes pass.
+	setMeta(`{"metadata":{"quota":"abc","used":0}}`)
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"999","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("malformed quota: status = %d: %v", code, body)
+	}
+
+	// A seat without a quota key is unconstrained.
+	setMeta(`{"metadata":{"note":"no allowance"}}`)
+	if code, body := rec(fmt.Sprintf(`{"member_id":%q,"amount":"999","unit":"credits"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("no quota key: status = %d: %v", code, body)
+	}
+}
+
 // TestRecordUsageProjectsResourceUsed covers D23: a resource seat
 // behaves like a quota seat — implicit attribution, used projection
 // from the ledger sum, correction included — but with its own unit.

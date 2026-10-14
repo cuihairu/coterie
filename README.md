@@ -30,7 +30,8 @@ services and more.
 > disputes with owner decisions, derived settlement reputation (own
 > endpoint plus an owner badge in the marketplace directory),
 > append-only audit log, rate limiting on the public auth endpoints,
-> per-member per-period usage limits from the sharing policy, Web Push
+> per-member per-period usage limits from the sharing policy, seat
+> quota enforcement on metered seats, Web Push
 > notifications, resource-pool sharing, the Stripe payment channel
 > (async adapter with a signed public webhook), the marketplace payment
 > gate (admission charged before joining), and abuse controls (platform

@@ -147,6 +147,11 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 	if err := s.enforceUsageLimit(ctx, tstore, sub, req.MemberID, req.Unit, req.Amount, recordedAt); err != nil {
 		return nil, err
 	}
+	if attributed != nil {
+		if err := s.enforceSeatQuota(ctx, tstore, attributed.ID, req.Unit, req.Amount); err != nil {
+			return nil, err
+		}
+	}
 	record := &UsageRecord{
 		ID:             uuid.NewString(),
 		SubscriptionID: sub.ID,
@@ -213,6 +218,57 @@ func (s *Service) enforceUsageLimit(ctx context.Context, store *Store, sub *subs
 		return api.Conflict(
 			"usage limit exceeded: %s total for %s would pass %s %s in the covered billing period",
 			decimal4(sum+amount4), memberID, lim.PerPeriod, unit)
+	}
+	return nil
+}
+
+// enforceSeatQuota applies the seat's own allowance (D4): when the
+// attributed seat's metadata carries a numeric quota, the post-write
+// ledger sum attributed to the seat must stay within it. A unit string
+// in the metadata narrows both the cap and the sum to that unit's
+// records; without it every record attributed to the seat counts.
+// Judging the post-write sum lets corrections through naturally, and a
+// malformed quota never blocks a write (same principle as D21). The
+// seat row is locked first so concurrent writers for the same seat are
+// serialized on the sum.
+func (s *Service) enforceSeatQuota(ctx context.Context, store *Store, seatID, unit, amount string) error {
+	st, err := store.SeatForUpdate(ctx, seatID)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return nil
+	}
+	var md struct {
+		Quota *json.RawMessage `json:"quota"`
+		Unit  string           `json:"unit"`
+	}
+	if err := json.Unmarshal(st.Metadata, &md); err != nil || md.Quota == nil {
+		return nil
+	}
+	quota := strings.Trim(string(*md.Quota), `"`)
+	limit, ok := scaled(quota)
+	if !ok {
+		return nil // a malformed allowance stays informational
+	}
+	var sumStr string
+	if md.Unit != "" {
+		if md.Unit != unit {
+			return nil // the cap names another unit
+		}
+		sumStr, err = store.SumBySeatUnit(ctx, seatID, unit)
+	} else {
+		sumStr, err = store.SumBySeat(ctx, seatID)
+	}
+	if err != nil {
+		return err
+	}
+	sum, _ := scaled(sumStr)
+	amount4, _ := scaled(amount)
+	if sum+amount4 > limit {
+		return api.Conflict(
+			"seat quota exceeded: %s total for seat %s would pass %s",
+			decimal4(sum+amount4), seatID, quota)
 	}
 	return nil
 }

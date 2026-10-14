@@ -20,4 +20,10 @@
 // per billing period, per unit, writes are rejected with 409 once the
 // post-write ledger sum would pass the cap. Corrections reduce the
 // sum, so they always pass when the resulting total fits.
+//
+// The seat's own allowance is enforced too (design D4): when the
+// attributed seat's metadata carries a numeric quota, the seat's
+// post-write ledger sum must stay within it (409), with a metadata
+// unit narrowing both the cap and the sum to that unit. A malformed
+// quota value stays informational — it never blocks a write.
 package usage

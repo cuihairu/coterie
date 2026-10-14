@@ -4,8 +4,8 @@
 
 ## 待用户操作
 - [x] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项 — 92007f0，docs build 通过；结论：15 条 Phase 1 FR + 5 项 Phase 2 子需求 + 十步旅程 + NFR 七条 Phase 1/2 部分全部落地，无未跟踪项
-- [ ] 审核通过后分配下一批任务
-  - 卡点 R1013：依赖上条；所需输入：用户给出下一批任务清单
+- [ ] 席位配额强制（D4 收口）：记账归集到 metadata 带数字 quota 的席位时，写后 used 超 quota → 409（判据同 D21：写后总和、负修正放行、畸形 quota 不拦截；metadata.unit 命中时按单位计）— 验收：internal/usage 集成测试覆盖全分支，design §1.6/§3 同步（2026-10-14 巡检代决）
+- [ ] QuotaLimit 订阅总量上限（FR-10）：sharing_policy.quota_limit {unit, per_period} — 全成员每账期合计用量上限，写后超限 409（与 D21 usage_limit 同构）— 验收：创建/PATCH 校验 + 记账强制集成测试全绿，design §3 进度行同步（2026-10-14 巡检代决）
 - [x] CodeQL / code scanning — 2eea3e1，codeql run success
 - [x] CodeQL 告警修复（seat 分配上限 + email CRLF 注入）— f7b0b14，go test 全绿
 - [x] CodeQL email-injection 收口（to/from/title/body 全经 headerSafe 净化 + 首条误报 dismiss）— 342138c/2b220cd/31ea1a2，0 open alerts，CI 全绿

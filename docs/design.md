@@ -177,7 +177,8 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 - 状态机：`free / occupied / disabled`；
 - 分配：Seat ↔ Member（0..1 占用者），支持空闲、转移、回收（FR-8）；
 - Quota 调整 = 更新 metadata，不新增实体；
-- 使用量（`used`）的写入由 **Usage Record** 驱动（Phase 2 Usage Tracking）：账本记录落到席位归集后，`used` 重算为该席位归集记录的 SUM（投影，见 D9）；配额本身不被账本行修改。
+- 使用量（`used`）的写入由 **Usage Record** 驱动（Phase 2 Usage Tracking）：账本记录落到席位归集后，`used` 重算为该席位归集记录的 SUM（投影，见 D9）；配额本身不被账本行修改；
+- **Quota 强制（D4 收口）**：记账归集到 metadata 带数字 `quota` 的席位时，写后归集合计超 `quota` → 409（与 D21 同判据：写后总和、负修正放行、畸形值不拦截）；metadata 带 `unit` 时上限与合计只按该单位的记录计，缺省则全部归集记录计入。
 
 ### 1.7 各实体设计要点
 
@@ -351,7 +352,7 @@ TimeLimit
 - Sharing Policy 挂在 Subscription 上，Coterie 继承并可在更严格范围内收敛；
 - Policy 是合规信息的载体之一，配合 UI 提示（见 [需求文档 NFR-2](./requirements.md#nfr-2-合规与风险)）；
 - Provider-specific 字段不要建强结构列，用 JSONB 承载 metadata；
-- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21：每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；DeviceLimit / RegionLimit / ConcurrentLimit / QuotaLimit / TimeLimit 留插件策略面或后续扩展。
+- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21：每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；**QuotaLimit 已落地**（席位 metadata `quota` 写后强制，D4 收口，见 [§1.6](#16-seat通用分配单元)）；DeviceLimit / RegionLimit / ConcurrentLimit / TimeLimit 留插件策略面或后续扩展。
 
 ---
 
