@@ -110,10 +110,12 @@ Keep local checks proportional to the change:
    `go.mod` / `go.sum` / `package.json`, `.github/**`, the Docker or
    Compose files, or before a release.
 
-CI runs regardless of scope: `.github/workflows/ci.yml` has no path
-filter, so every push to main and every pull request runs test + web +
-smoke. Only the docs-site workflow (`.github/workflows/docs.yml`) is
-gated by a `paths` filter, publishing the site on `docs/**` changes.
+CI mirrors this scope: `.github/workflows/ci.yml` skips docs-only
+pushes and pull requests via `paths-ignore` (`*.md`, `docs/**`,
+`LICENSE`, `*.svg`, and editor/config files), so test + web + smoke run
+whenever code, dependencies, or workflows change. The docs-site
+workflow (`.github/workflows/docs.yml`) keeps its own inclusion
+`paths` filter, publishing the site on `docs/**` changes.
 
 ## API overview (v1)
 
