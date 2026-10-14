@@ -403,6 +403,23 @@ func TestCustomCycleDays(t *testing.T) {
 		t.Fatalf("switch without clear: status = %d, want 422: %v", code, body)
 	}
 
+	// Clearing days while staying custom is rejected as well: the
+	// pairing has to hold after every patch, not only after a cycle
+	// switch, so the value survives the rejected write.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+subscriptionsPath+"/"+subID, `{"cycle_days":0}`, tok)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("clear while custom: status = %d, want 422: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+subscriptionsPath+"/"+subID, "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("read back: status = %d: %v", code, body)
+	}
+	if body["cycle_days"] != float64(30) {
+		t.Fatalf("cycle_days = %v after the rejected clear, want 30", body["cycle_days"])
+	}
+
 	// Clearing (0) alongside the switch goes through; cycle_days
 	// disappears from the payload.
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
