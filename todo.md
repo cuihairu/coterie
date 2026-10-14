@@ -25,6 +25,9 @@
 - [x] 文档一致性审计（6 项漂移修复 + todo 整理 130→24 行）— a570606/841c5ca，PR #36 CI 全绿
 - [x] README 测试口径补 codeql paths-ignore（d3da44b 引入后的漂移）— b628d4d，npm --prefix docs run build 通过
 
+## 待补测
+- [ ] apps/server 组合根补测：spaHandler 嵌入客户端回落、apiOnly 分流、channels/paymentAdapters/marketplaceAdapters/providerPlugins 配置装配（含 stripe 缺 key 跳过、marketplace webhook secret 回落）— 验收：apps/server 零测试→有单测，全绿且 0 skip
+
 ## 维护项（常开）
 - [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 5 条陈旧（vite 8.3.4 与 moby/go-archive v0.3.3 均最新）、npm audit 双树 0、govulncheck 0 可达
 - [x] 每批合并后 README/文档站同步 — 已核：PR #36 后审计一致（a570606/841c5ca）；d3da44b 改 codeql paths-ignore 引入漂移，已修 b628d4d
