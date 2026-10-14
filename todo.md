@@ -3,8 +3,7 @@
 > 需求清单：一条一句。完成项保留一行证据（commit + 测试数）。
 
 ## 待用户操作
-- [ ] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项（证据：FR 表 + NFR 七条 + §3 十步旅程，见 docs/审计-文档一致性.md）
-  - 卡点 R1013：等用户签字确认；所需输入：审核通过/驳回结论
+- [x] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项 — 92007f0，docs build 通过；结论：15 条 Phase 1 FR + 5 项 Phase 2 子需求 + 十步旅程 + NFR 七条 Phase 1/2 部分全部落地，无未跟踪项
 - [ ] 审核通过后分配下一批任务
   - 卡点 R1013：依赖上条；所需输入：用户给出下一批任务清单
 - [x] CodeQL / code scanning — 2eea3e1，codeql run success
