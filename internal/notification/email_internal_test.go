@@ -14,12 +14,12 @@ func TestRenderMessage(t *testing.T) {
 	}
 }
 
-func TestRenderMessageStripsCRLF(t *testing.T) {
-	msg := string(renderMessage("a@x", "b@y", "Hello\r\nBcc: evil@x", "World"))
-	if strings.Contains(msg, "\r\nBcc:") {
-		t.Fatalf("CRLF injection in subject: %q", msg)
+func TestHeaderSafeStripsCRLF(t *testing.T) {
+	got := headerSafe("Hello\r\nBcc: evil@x")
+	if strings.Contains(got, "\r") || strings.Contains(got, "\n") {
+		t.Fatalf("CRLF not stripped: %q", got)
 	}
-	if !strings.Contains(msg, "Subject: HelloBcc: evil@x\r\n") {
-		t.Fatalf("subject not stripped: %q", msg)
+	if got != "HelloBcc: evil@x" {
+		t.Fatalf("unexpected result: %q", got)
 	}
 }

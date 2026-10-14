@@ -52,14 +52,11 @@ func (c *EmailChannel) Deliver(ctx context.Context, n *Notification) error {
 		auth = smtp.PlainAuth("", c.Username, c.Password, c.Host)
 	}
 	return smtp.SendMail(addr, auth, c.From, []string{u.Email},
-		renderMessage(c.From, u.Email, n.Title, n.Body))
+		renderMessage(c.From, u.Email, headerSafe(n.Title), n.Body))
 }
 
 // renderMessage builds a minimal RFC 5322 plain-text message.
-// The subject is sanitized to strip CR/LF so a crafted title cannot
-// inject additional headers (CodeQL go/email-injection).
 func renderMessage(from, to, subject, body string) []byte {
-	subject = strings.NewReplacer("\r", "", "\n", "").Replace(subject)
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", to)
@@ -69,4 +66,10 @@ func renderMessage(from, to, subject, body string) []byte {
 	b.WriteString(body)
 	b.WriteString("\r\n")
 	return []byte(b.String())
+}
+
+// headerSafe strips CR/LF so a crafted title cannot inject additional
+// SMTP headers (CodeQL go/email-injection).
+func headerSafe(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
 }
