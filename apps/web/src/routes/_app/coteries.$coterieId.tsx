@@ -4,6 +4,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { api, getUser } from '../../lib/api'
 import { chargeMethodFor, PaymentMethodSelect } from '../../components/PaymentMethodSelect'
+import { UsageCapsEditor } from '../../components/UsageCapsEditor'
 import type {
   AuditLog,
   BillingPeriod,
@@ -538,8 +539,9 @@ function RequestsTab({
 
 // UsageTab shows the metered consumption ledger (D9) for the coterie's
 // subscription — records are append-only, negative amounts are
-// corrections. The owner records usage and manages the D21 per-member
-// per-period cap stored in the subscription's sharing policy.
+// corrections. The owner records usage and manages the per-period caps
+// stored in the subscription's sharing policy: the D21 per-member cap
+// (usage_limit) and the FR-10 subscription-wide cap (quota_limit).
 function UsageTab({
   subID,
   subscriptionQuery,
@@ -558,9 +560,6 @@ function UsageTab({
   const [memberID, setMemberID] = useState('')
   const [unit, setUnit] = useState('')
   const [amount, setAmount] = useState('')
-  const [editingLimit, setEditingLimit] = useState(false)
-  const [limitUnit, setLimitUnit] = useState('')
-  const [limitPer, setLimitPer] = useState('')
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['usage', subID] })
@@ -581,13 +580,14 @@ function UsageTab({
   })
 
   const saveLimit = useMutation({
-    mutationFn: (limit: UsageLimit | null) => {
+    mutationFn: async ({ kind, limit }: { kind: 'usage' | 'quota'; limit: UsageLimit | null }) => {
       const sub = subscriptionQuery.data
       const policy: SharingPolicy = { ...(sub?.sharing_policy ?? {}) }
+      const key = kind === 'usage' ? 'usage_limit' : 'quota_limit'
       if (limit) {
-        policy.usage_limit = limit
+        policy[key] = limit
       } else {
-        delete policy.usage_limit
+        delete policy[key]
       }
       return api<Subscription>(`/subscriptions/${subID}`, {
         method: 'PATCH',
@@ -595,11 +595,8 @@ function UsageTab({
       })
     },
     onSuccess: () => {
-      setError('')
-      setEditingLimit(false)
       void qc.invalidateQueries({ queryKey: ['subscription', subID] })
     },
-    onError: (err) => setError(err.message),
   })
 
   if (subscriptionQuery.isLoading) return <p className="text-slate-500">加载中…</p>
@@ -607,6 +604,7 @@ function UsageTab({
     return <p className="text-red-600">加载失败：{subscriptionQuery.error.message}</p>
 
   const limit = subscriptionQuery.data?.sharing_policy?.usage_limit
+  const quotaLimit = subscriptionQuery.data?.sharing_policy?.quota_limit
   const members = membersQuery.data?.items ?? []
   // member_id on a record is the member row id; map it to the user id
   // the member table displays.
@@ -616,73 +614,21 @@ function UsageTab({
   return (
     <div>
       <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-700">
-            {limit ? (
-              <>
-                每成员每期用量上限 <span className="font-medium">{limit.per_period}</span>{' '}
-                {limit.unit}
-                <span className="ml-1 text-xs text-slate-400">（超出记录返回 409）</span>
-              </>
-            ) : (
-              <span className="text-slate-500">未设用量上限。</span>
-            )}
-          </p>
-          {isOwner && !editingLimit && (
-            <button
-              onClick={() => {
-                setLimitUnit(limit?.unit ?? '')
-                setLimitPer(limit?.per_period ?? '')
-                setEditingLimit(true)
-              }}
-              className="text-sm text-emerald-700 hover:underline"
-            >
-              {limit ? '修改' : '设置上限'}
-            </button>
-          )}
-        </div>
-        {isOwner && editingLimit && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              className="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
-              placeholder="单位，如 credits"
-              value={limitUnit}
-              onChange={(e) => setLimitUnit(e.target.value)}
-            />
-            <input
-              className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
-              placeholder="每期上限"
-              value={limitPer}
-              onChange={(e) => setLimitPer(e.target.value)}
-            />
-            <button
-              onClick={() => {
-                if (!limitUnit.trim() || !limitPer.trim()) {
-                  setError('单位与上限均必填')
-                  return
-                }
-                saveLimit.mutate({ unit: limitUnit.trim(), per_period: limitPer.trim() })
-              }}
-              disabled={saveLimit.isPending}
-              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
-            >
-              保存
-            </button>
-            <button
-              onClick={() => saveLimit.mutate(null)}
-              disabled={saveLimit.isPending}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            >
-              清除上限
-            </button>
-            <button
-              onClick={() => setEditingLimit(false)}
-              className="text-sm text-slate-500 hover:underline"
-            >
-              取消
-            </button>
-          </div>
-        )}
+        <UsageCapsEditor
+          caps={[
+            { kind: 'usage', label: '每成员每期用量上限', hint: '超出记录返回 409', cap: limit },
+            {
+              kind: 'quota',
+              label: '全订阅每期用量上限',
+              hint: '全体成员合计超出返回 409',
+              cap: quotaLimit,
+            },
+          ]}
+          isOwner={isOwner}
+          onSave={async (kind, cap) => {
+            await saveLimit.mutateAsync({ kind, limit: cap })
+          }}
+        />
       </div>
 
       {isOwner && (

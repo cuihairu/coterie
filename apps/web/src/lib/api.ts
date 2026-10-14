@@ -193,9 +193,11 @@ export interface Subscription {
 }
 
 // SharingPolicy is the subscription's JSONB policy bag; usage_limit is
-// the D21 per-member per-period cap enforced on the ledger write.
+// the D21 per-member per-period cap and quota_limit the FR-10
+// subscription-wide cap, both enforced on the ledger write.
 export interface SharingPolicy {
   usage_limit?: UsageLimit
+  quota_limit?: UsageLimit
   [key: string]: unknown
 }
 
