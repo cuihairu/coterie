@@ -28,7 +28,7 @@
 ## 待补测
 - [x] apps/server 组合根补测：spaHandler 嵌入客户端回落、apiOnly 分流、channels/paymentAdapters/marketplaceAdapters/providerPlugins 配置装配（含 stripe 缺 key 跳过、marketplace webhook secret 回落）— e175ad0，go test ./apps/server/ 全绿 9 用例 27 子用例 0 skip
 - [x] internal/database 纯函数层补测：Date（Parse/Value/Scan/Marshal/Unmarshal 的 null、零值、非法输入分支）、JSONB（Value/Scan/Marshal/Unmarshal 与缓冲拷贝）、IsUniqueViolation/IsFKViolation/IsCheckViolation 的 SQLSTATE 与约束名判定 — e1dff49，go test ./internal/database/ 全绿 12 用例 20 子用例 0 skip
-- [ ] internal/reputation fold 派生层补测：状态分桶、多币种合计与排序、支付率分母（只算 paid+pending）、无计费历史时 payment_ratio 为 null、fmtRatio 取整 — 验收：不依赖 Docker，全绿 0 skip
+- [x] internal/reputation fold 派生层补测：状态分桶、多币种合计与排序、支付率分母（只算 paid+pending）、无计费历史时 payment_ratio 为 null、fmtRatio 取整 — eb4e528，go test ./internal/reputation/ 全绿 9 用例 3 子用例 0 skip
 
 ## 维护项（常开）
 - [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 5 条陈旧（vite 8.3.4 与 moby/go-archive v0.3.3 均最新）、npm audit 双树 0、govulncheck 0 可达
