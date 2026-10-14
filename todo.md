@@ -5,7 +5,7 @@
 ## 待用户操作
 - [x] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项 — 92007f0，docs build 通过；结论：15 条 Phase 1 FR + 5 项 Phase 2 子需求 + 十步旅程 + NFR 七条 Phase 1/2 部分全部落地，无未跟踪项
 - [x] 席位配额强制（D4 收口）：记账归集到 metadata 带数字 quota 的席位时，写后 used 超 quota → 409（判据同 D21：写后总和、负修正放行、畸形 quota 不拦截；metadata.unit 命中时按单位计）— 36e9457，go test 25 包全绿 0 skip，design §1.6/§3/D30 同步（2026-10-14 巡检代决）
-- [x] QuotaLimit 订阅总量上限（FR-10）：sharing_policy.quota_limit {unit, per_period} — 全成员每账期合计用量上限，写后超限 409（与 D21 usage_limit 同构）— 15776d9，go test 25 包全绿 0 skip，design §3/D30 同步（2026-10-14 巡检代决）；Web 客户端编辑面组件化（UsageCapsEditor：usage_limit/quota_limit 双上限设置/修改/清除）见后续 commit，vitest 48/48
+- [x] QuotaLimit 订阅总量上限（FR-10）：sharing_policy.quota_limit {unit, per_period} — 全成员每账期合计用量上限，写后超限 409（与 D21 usage_limit 同构）— 15776d9，go test 25 包全绿 0 skip，design §3/D30 同步（2026-10-14 巡检代决）；Web 客户端编辑面组件化（UsageCapsEditor：usage_limit/quota_limit 双上限设置/修改/清除）— 9e9e82e，vitest 48/48
 - [x] CodeQL / code scanning — 2eea3e1，codeql run success
 - [x] CodeQL 告警修复（seat 分配上限 + email CRLF 注入）— f7b0b14，go test 全绿
 - [x] CodeQL email-injection 收口（to/from/title/body 全经 headerSafe 净化 + 首条误报 dismiss）— 342138c/2b220cd/31ea1a2，0 open alerts，CI 全绿
