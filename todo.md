@@ -23,8 +23,9 @@
 - [x] vitest 5.0.4 升级 — ac0045e
 - [x] deployment.md 补 STRIPE_API_BASE 配置行 — 49c9a2c
 - [x] 文档一致性审计（6 项漂移修复 + todo 整理 130→24 行）— a570606/841c5ca，PR #36 CI 全绿
+- [x] README 测试口径补 codeql paths-ignore（d3da44b 引入后的漂移）— b628d4d，npm --prefix docs run build 通过
 
 ## 维护项（常开）
 - [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 5 条陈旧（vite 8.3.4 与 moby/go-archive v0.3.3 均最新）、npm audit 双树 0、govulncheck 0 可达
-- [x] 每批 PR 合并后 README/文档站同步 — 已核：PR #36 合并后审计核一致（a570606/841c5ca），其后无 PR 合入
+- [x] 每批合并后 README/文档站同步 — 已核：PR #36 后审计一致（a570606/841c5ca）；d3da44b 改 codeql paths-ignore 引入漂移，已修 b628d4d
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖（GET providers/products/billing-periods 详情、GET push/vapid-public-key、GET subscriptions 审计、DELETE members）— b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
