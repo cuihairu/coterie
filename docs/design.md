@@ -197,7 +197,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D1** | Subscription ↔ Coterie 基数 | **严格 1:1**（UNIQUE 外键） | 席位、费用、结算在单圈内闭环，模型最简；未来需要 1:N 时经迁移扩展 |
 | **D2** | Seat 归属 | **Subscription** | 订阅是容量唯一源头：「订阅定坑位，圈内定人选」；Coterie 不存容量字段 |
 | **D3** | Full 状态 | **派生标志** | 消除原文状态机中 Full 先于 Active 的歧义；持久化状态收敛为 5 个 |
-| **D4** | Quota 建模 | **复用 Seat + metadata** | Seat 成为通用分配单元，概念数量最少；配额调整即 metadata 更新 |
+| **D4** | Quota 建模 | **复用 Seat + metadata** | Seat 成为通用分配单元，概念数量最少；配额调整即 metadata 更新；写后强制见 D30（[§1.6](#16-seat通用分配单元)） |
 | **D5** | Owner 同一性 | 圈 Owner ≡ 订阅 Owner（MVP） | 1:1 下费用责任人与圈管理人天然一致；转让是 Phase 2 特性 |
 | **D6** | 币种 | MVP 单币种、无换汇 | Contribution 币种恒等于订阅币种；FX 留待真实支付阶段（Phase 2+） |
 | **D7** | 数据访问层 | **GORM 做 CRUD；AutoMigrate 禁用** | schema 唯一来源仍是手写迁移（`migrations/`），DB 级不变量靠迁移约束保证（[§1.4](#14-关键不变量)）；GORM 只做查询/写入映射，schema 演进由 golang-migrate 在启动时执行 |
@@ -223,6 +223,7 @@ Seat 统一承载两类分配，`sharing.mode` 决定其语义：
 | **D27** | 管理员审计查询面 | **平台级审计只读端点** | NFR-7 审计面的最后一块（D17 读取面预留的「Admin 查询面」）：`GET /api/v1/admin/audit-logs`（仅平台管理员，走 D26 的 `requireAdmin`）跨订阅/圈查询全量账本，`?action=`（对已知动作清单校验）/ `?actor_id=` / `?coterie_id=` / `?subscription_id=` 过滤，`created_at DESC` 排序 + 统一分页信封。与 Owner 读取面共用同一张只增表，同样无编辑/删除面，不新增迁移 |
 | **D28** | M2a 批次收尾 | **PR #3 合并，m2a-auth-implementation 分支归档** | 平台认证（D8）+ 单端口全栈（go:embed 嵌入 Vite 产物、多阶段 Dockerfile、SPA 回退）+ 仪表盘写操作面（账期写操作、邀请加入、通知收件箱、市场目录、Owner 申请收件箱含 D25 支付闸门、用量记账含 D21 上限、争议发起与裁决）整批经 PR #3 于 **2026-10-10** 合并入 main（merge commit `74548e8`，CI test/web/smoke 全绿），`m2a-auth-implementation` 分支至此收尾；后续批次从 main 新开分支 |
 | **D29** | 用户目录投影 | **目录读取只回展示身份** | `GET /api/v1/users` 与 `GET /api/v1/users/{id}` 对任意已认证会话只回 `UserSummary`（`id` / `username` / `avatar_url`）：contact（email）、authorization（role/status）、偏好（locale/timezone）与时间戳一律不外露——目录是找人/展示面而非用户管理面（FR-14：Admin 也不做用户管理，平台级目录开放全字段属过度暴露）；本人完整视图仍走 `GET /auth/me`。`POST /users` 维持创建回显（调用方刚提交的载荷，非他人数据）。schema 不动：`username` 即展示名（marketplace 徽标、拉黑名单、申请列表同源），不另立 display_name 列 |
+| **D30** | Sharing Policy QuotaLimit | **全订阅口径每账期用量上限 + 席位配额写后强制** | FR-10 限额清单在 D21 之后的收口：`sharing_policy.quota_limit = {"unit","per_period"}`（与 D21 usage_limit 同构，创建/PATCH 同管线校验）；`POST /usage-records` 事务内对 `unit` 匹配的账本行按 `recorded_at` 所在账期对**全订阅成员求和**，写入后新总和 > `per_period` → 409（判据同 D21：总和而非增量、负修正自然放行、无覆盖账期或 unit 不匹配不设限、1e4 定标比较）。席位面同步收口（D4）：记账归集到 metadata 带数字 `quota` 的席位时，写后归集合计超 `quota` → 409，metadata 带 `unit` 时上限与合计只按该单位的记录计、缺省计入全部（席位行锁串行化同席位并发写），畸形 quota 保持仅展示不拦截（与 policy 值同一原则）；`resource` 席位（D23）暂不设硬上限——池容量语义下超占是竞争信号而非拒绝理由，留后续取舍 |
 
 
 ---
@@ -352,7 +353,7 @@ TimeLimit
 - Sharing Policy 挂在 Subscription 上，Coterie 继承并可在更严格范围内收敛；
 - Policy 是合规信息的载体之一，配合 UI 提示（见 [需求文档 NFR-2](./requirements.md#nfr-2-合规与风险)）；
 - Provider-specific 字段不要建强结构列，用 JSONB 承载 metadata；
-- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21：每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；**QuotaLimit 已落地**（席位 metadata `quota` 写后强制，D4 收口，见 [§1.6](#16-seat通用分配单元)）；DeviceLimit / RegionLimit / ConcurrentLimit / TimeLimit 留插件策略面或后续扩展。
+- Limit 类型的核心落地进度：**UsageLimit 已落地**（`usage_limit`，D21：每成员每账期用量上限，事务内强制）；MemberLimit 即 `max_members`（D12 准入强制）；**QuotaLimit 已落地**（D30：`quota_limit` 全订阅成员每账期合计上限 + 席位 metadata `quota` 写后强制，见 [§1.6](#16-seat通用分配单元)）；DeviceLimit / RegionLimit / ConcurrentLimit / TimeLimit 留插件策略面或后续扩展。
 
 ---
 
@@ -1019,7 +1020,7 @@ NFR-7 的防滥用清单四项至此收口：Rate Limit（D19）、Audit Log（D
 
 ## 13. 决策记录与遗留问题
 
-核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）、D26 防滥用收口（平台管理员 + Report + 圈级 Block）、D27 管理员审计查询面（平台级只读端点）、D28 M2a 批次收尾、D29 用户目录投影（目录读取只回展示身份）。
+核心设计决策已全部收敛到 [§1.8 设计决策记录（ADR）](#18-设计决策记录adr)：D1 严格 1:1、D2 Seat 归 Subscription、D3 Full 为派生标志、D4 Quota 复用 Seat、D5 Owner 同一性、D6 MVP 单币种、D7 GORM CRUD + 手写迁移、D8 平台认证机制、D9 Usage 账本、D10 Marketplace、D11 Payment Adapter、D12 Provider 插件面、D13 账务自动化、D14 争议处理、D15 账号信誉、D16 真实插件样例（claude）、D17 审计日志、D18 信誉展示位、D19 限速、D20 自定义周期天数偏移、D21 UsageLimit 核心强制、D22 Web Push 渠道、D23 Resource 共享复用 Seat+metadata、D24 Stripe 异步适配器 + 公开 Webhook、D25 Marketplace 支付闸门（admission_charges + awaiting_payment + Webhook 驱动入圈）、D26 防滥用收口（平台管理员 + Report + 圈级 Block）、D27 管理员审计查询面（平台级只读端点）、D28 M2a 批次收尾、D29 用户目录投影（目录读取只回展示身份）、D30 QuotaLimit（全订阅口径上限 + 席位配额写后强制）。
 
 实现阶段仍需确认的细节：
 

@@ -148,6 +148,10 @@ func TestSubscriptionValidation(t *testing.T) {
 		{"usage limit per_period not a number", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"abc"}}}`, productID, userID)},
 		{"usage limit per_period negative", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"-1"}}}`, productID, userID)},
 		{"usage limit per_period too fine", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"usage_limit":{"unit":"credits","per_period":"1.12345"}}}`, productID, userID)},
+		{"quota limit without unit", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"quota_limit":{"per_period":"100"}}}`, productID, userID)},
+		{"quota limit per_period not a number", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"quota_limit":{"unit":"credits","per_period":"abc"}}}`, productID, userID)},
+		{"quota limit per_period negative", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"quota_limit":{"unit":"credits","per_period":"-1"}}}`, productID, userID)},
+		{"quota limit per_period too fine", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"quota_limit":{"unit":"credits","per_period":"1.12345"}}}`, productID, userID)},
 		{"seats over the cap", fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":1001}`, productID, userID)},
 	}
 	for _, tc := range cases {
@@ -178,6 +182,41 @@ func TestSubscriptionUsageLimitPolicy(t *testing.T) {
 	lim, _ := policy["usage_limit"].(map[string]any)
 	if lim == nil || lim["unit"] != "credits" || lim["per_period"] != "100.5" {
 		t.Fatalf("usage_limit not echoed: %v", policy)
+	}
+}
+
+// TestSubscriptionQuotaLimitPolicy covers FR-10 QuotaLimit policy-side
+// validation: a well-formed quota_limit is accepted and echoed next to
+// a usage_limit — the two caps pin their own units.
+func TestSubscriptionQuotaLimitPolicy(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, userID := testsupport.RegisterAndLogin(t, client, srv.URL, "sub-qlimit")
+	productID, _ := seedChain(t, client, srv.URL, "qlimit", tok)
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, srv.URL+subscriptionsPath,
+		fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"1.00","currency":"USD","start_date":"2026-10-01","max_seats":2,"sharing_policy":{"mode":"quota","usage_limit":{"unit":"credits","per_period":"60"},"quota_limit":{"unit":"credits","per_period":"100"}}}`, productID, userID), tok)
+	if code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %v", code, body)
+	}
+	policy, _ := body["sharing_policy"].(map[string]any)
+	ql, _ := policy["quota_limit"].(map[string]any)
+	if ql == nil || ql["unit"] != "credits" || ql["per_period"] != "100" {
+		t.Fatalf("quota_limit not echoed: %v", policy)
+	}
+	ul, _ := policy["usage_limit"].(map[string]any)
+	if ul == nil || ul["per_period"] != "60" {
+		t.Fatalf("usage_limit not echoed: %v", policy)
+	}
+
+	// PATCH accepts a well-formed quota_limit update too.
+	subID, _ := body["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		srv.URL+subscriptionsPath+"/"+subID,
+		`{"sharing_policy":{"mode":"quota","quota_limit":{"unit":"GB","per_period":"50"}}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("patch policy: status = %d: %v", code, body)
 	}
 }
 

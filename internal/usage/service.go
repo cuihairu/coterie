@@ -147,6 +147,9 @@ func (s *Service) Create(ctx context.Context, actor *user.User, subscriptionID s
 	if err := s.enforceUsageLimit(ctx, tstore, sub, req.MemberID, req.Unit, req.Amount, recordedAt); err != nil {
 		return nil, err
 	}
+	if err := s.enforceQuotaLimit(ctx, tstore, sub, req.Unit, req.Amount, recordedAt); err != nil {
+		return nil, err
+	}
 	if attributed != nil {
 		if err := s.enforceSeatQuota(ctx, tstore, attributed.ID, req.Unit, req.Amount); err != nil {
 			return nil, err
@@ -218,6 +221,50 @@ func (s *Service) enforceUsageLimit(ctx context.Context, store *Store, sub *subs
 		return api.Conflict(
 			"usage limit exceeded: %s total for %s would pass %s %s in the covered billing period",
 			decimal4(sum+amount4), memberID, lim.PerPeriod, unit)
+	}
+	return nil
+}
+
+// enforceQuotaLimit applies the sharing policy's quota_limit (FR-10):
+// per billing period, per unit, the subscription-wide post-write ledger
+// sum — every member combined — must stay within per_period. Same
+// judgment basis as D21: the new sum, so corrections pass naturally;
+// uncovered windows and other units are unconstrained.
+func (s *Service) enforceQuotaLimit(ctx context.Context, store *Store, sub *subscription.Subscription, unit, amount string, recordedAt time.Time) error {
+	var policy struct {
+		QuotaLimit *struct {
+			Unit      string `json:"unit"`
+			PerPeriod string `json:"per_period"`
+		} `json:"quota_limit"`
+	}
+	if err := json.Unmarshal(sub.SharingPolicy, &policy); err != nil || policy.QuotaLimit == nil {
+		return nil
+	}
+	lim := policy.QuotaLimit
+	if lim.Unit != unit {
+		return nil
+	}
+	limit, ok := scaled(lim.PerPeriod)
+	if !ok {
+		return nil // policy structure is validated at write time; never block on a malformed value
+	}
+	window, err := store.PeriodCovering(ctx, sub.ID, recordedAt)
+	if err != nil {
+		return err
+	}
+	if window == nil {
+		return nil
+	}
+	sumStr, err := store.SumSubscriptionUsage(ctx, sub.ID, unit, window)
+	if err != nil {
+		return err
+	}
+	sum, _ := scaled(sumStr)
+	amount4, _ := scaled(amount)
+	if sum+amount4 > limit {
+		return api.Conflict(
+			"quota limit exceeded: %s total for subscription %s would pass %s %s in the covered billing period",
+			decimal4(sum+amount4), sub.ID, lim.PerPeriod, unit)
 	}
 	return nil
 }

@@ -240,3 +240,23 @@ func (s *Store) SumMemberUsage(ctx context.Context, subscriptionID, memberID, un
 	}
 	return *total, nil
 }
+
+// SumSubscriptionUsage totals every member's ledger rows for a unit
+// across the period window — the sum the subscription-wide quota cap
+// (FR-10 QuotaLimit) is judged against.
+func (s *Store) SumSubscriptionUsage(ctx context.Context, subscriptionID, unit string, w *billingPeriodWindow) (string, error) {
+	var total *string
+	err := s.db.WithContext(ctx).
+		Table("usage_records").
+		Select("SUM(amount)").
+		Where("subscription_id = ? AND unit = ? AND recorded_at >= ? AND recorded_at < ?",
+			subscriptionID, unit, w.Start.Time, w.End.Time.AddDate(0, 0, 1)).
+		Scan(&total).Error
+	if err != nil {
+		return "", err
+	}
+	if total == nil {
+		return "0", nil
+	}
+	return *total, nil
+}

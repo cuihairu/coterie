@@ -383,6 +383,76 @@ func openPeriodForUsage(t *testing.T, client *http.Client, base, tok, subID, sta
 	return id
 }
 
+// TestQuotaLimitTotal covers FR-10 QuotaLimit: quota_limit caps the
+// subscription-wide per-period ledger sum for its unit — every
+// member's rows pool into one budget; corrections shrink the judged
+// total; uncovered windows and other units are free.
+func TestQuotaLimitTotal(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, coterieID, joined := testsupport.SeedCircle(t, client, base, "use-qlimit", "10.00", 2, 1, 1)
+	m := joined[0]
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+recordsPath+"/"+subID,
+		`{"sharing_policy":{"mode":"quota","quota_limit":{"unit":"credits","per_period":"100"}}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("set policy: status = %d: %v", code, body)
+	}
+	openPeriodForUsage(t, client, base, tok, subID, "2026-10-01", "2026-10-31")
+
+	post := func(member, amount, unit string) (int, map[string]any) {
+		return record(t, client, base, tok, subID,
+			fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":%q}`, member, amount, unit))
+	}
+
+	// The owner's member row shares the budget with the member's rows.
+	code, mems := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID+"/members", "", tok)
+	if code != http.StatusOK {
+		t.Fatalf("list members: status = %d: %v", code, mems)
+	}
+	var ownerMember string
+	for _, it := range mems["items"].([]any) {
+		mm := it.(map[string]any)
+		if role, _ := mm["role"].(string); role == "owner" {
+			ownerMember, _ = mm["id"].(string)
+		}
+	}
+	if ownerMember == "" || ownerMember == m.MemberID {
+		t.Fatalf("owner member row = %q", ownerMember)
+	}
+
+	if code, body := post(m.MemberID, "60", "credits"); code != http.StatusCreated {
+		t.Fatalf("member record: status = %d: %v", code, body)
+	}
+	if code, body := post(ownerMember, "40", "credits"); code != http.StatusCreated {
+		t.Fatalf("owner record to the cap: status = %d: %v", code, body)
+	}
+	if code, body := post(m.MemberID, "0.01", "credits"); code != http.StatusConflict {
+		t.Fatalf("over-cap record: status = %d, want 409: %v", code, body)
+	}
+
+	// A correction from either member reopens the shared budget.
+	if code, body := post(ownerMember, "-10", "credits"); code != http.StatusCreated {
+		t.Fatalf("correction: status = %d: %v", code, body)
+	}
+	if code, body := post(m.MemberID, "10", "credits"); code != http.StatusCreated {
+		t.Fatalf("record after correction: status = %d: %v", code, body)
+	}
+
+	// Another unit is not capped.
+	if code, body := post(m.MemberID, "5000", "GB"); code != http.StatusCreated {
+		t.Fatalf("other unit: status = %d: %v", code, body)
+	}
+	// Neither is a record outside every period.
+	if code, body := record(t, client, base, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"5000","unit":"credits","recorded_at":"2026-11-15T10:00:00Z"}`, m.MemberID)); code != http.StatusCreated {
+		t.Fatalf("uncovered window: status = %d: %v", code, body)
+	}
+}
+
 // TestSeatQuotaCap covers D4 close-out: a metered seat whose metadata
 // carries a numeric quota rejects records that would push the seat's
 // post-write ledger sum past it. Corrections shrink the judged sum, a

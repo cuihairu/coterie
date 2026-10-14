@@ -507,6 +507,14 @@ func detailMembers() api.Detail {
 	return api.Detail{Field: "max_members", Message: "must be greater than 0"}
 }
 
+// periodLimit is one per-period usage cap object in the sharing
+// policy: usage_limit (D21, per member) and quota_limit (FR-10,
+// subscription-wide) share the shape.
+type periodLimit struct {
+	Unit      string `json:"unit"`
+	PerPeriod string `json:"per_period"`
+}
+
 // detailSharingPolicy checks that the policy is a JSON object and that
 // mode, when present, is a known sharing mode.
 func detailSharingPolicy(raw json.RawMessage) *api.Detail {
@@ -517,11 +525,9 @@ func detailSharingPolicy(raw json.RawMessage) *api.Detail {
 		return &api.Detail{Field: "sharing_policy", Message: "must be valid JSON"}
 	}
 	var sp struct {
-		Mode       string `json:"mode"`
-		UsageLimit *struct {
-			Unit      string `json:"unit"`
-			PerPeriod string `json:"per_period"`
-		} `json:"usage_limit"`
+		Mode       string       `json:"mode"`
+		UsageLimit *periodLimit `json:"usage_limit"`
+		QuotaLimit *periodLimit `json:"quota_limit"`
 	}
 	if err := json.Unmarshal(raw, &sp); err != nil {
 		return &api.Detail{Field: "sharing_policy", Message: "must be a JSON object"}
@@ -532,15 +538,25 @@ func detailSharingPolicy(raw json.RawMessage) *api.Detail {
 			Message: "unknown mode; want account, seat, family, quota, or resource",
 		}
 	}
-	// usage_limit carries the core-side per-member per-period cap (D21).
-	if ul := sp.UsageLimit; ul != nil {
-		unit := strings.TrimSpace(ul.Unit)
-		if unit == "" || len(unit) > 32 {
-			return &api.Detail{Field: "sharing_policy", Message: "usage_limit.unit must be 1-32 characters"}
-		}
-		if !perPeriodPattern.MatchString(ul.PerPeriod) {
-			return &api.Detail{Field: "sharing_policy", Message: `usage_limit.per_period must be a positive decimal string with at most 4 fraction digits (e.g. "100")`}
-		}
+	if d := detailPeriodLimit("usage_limit", sp.UsageLimit); d != nil {
+		return d
+	}
+	return detailPeriodLimit("quota_limit", sp.QuotaLimit)
+}
+
+// detailPeriodLimit validates one per-period cap object: the unit names
+// what the ledger records in, and per_period is a positive decimal with
+// the ledger's scale.
+func detailPeriodLimit(name string, l *periodLimit) *api.Detail {
+	if l == nil {
+		return nil
+	}
+	unit := strings.TrimSpace(l.Unit)
+	if unit == "" || len(unit) > 32 {
+		return &api.Detail{Field: "sharing_policy", Message: name + ".unit must be 1-32 characters"}
+	}
+	if !perPeriodPattern.MatchString(l.PerPeriod) {
+		return &api.Detail{Field: "sharing_policy", Message: name + `.per_period must be a positive decimal string with at most 4 fraction digits (e.g. "100")`}
 	}
 	return nil
 }

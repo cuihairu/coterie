@@ -18,8 +18,10 @@
 //
 // The sharing policy may carry a usage_limit (design D21): per member,
 // per billing period, per unit, writes are rejected with 409 once the
-// post-write ledger sum would pass the cap. Corrections reduce the
-// sum, so they always pass when the resulting total fits.
+// post-write ledger sum would pass the cap. quota_limit (design D30,
+// FR-10) applies the same judgment subscription-wide — every member's
+// rows pool into one per-period budget. Corrections reduce the sums,
+// so they always pass when the resulting totals fit.
 //
 // The seat's own allowance is enforced too (design D4): when the
 // attributed seat's metadata carries a numeric quota, the seat's
