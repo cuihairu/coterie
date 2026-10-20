@@ -1,3 +1,4 @@
+import { withMermaid } from "vitepress-plugin-mermaid";
 import { defineConfig } from 'vitepress'
 
 // githubSlug mirrors GitHub's heading anchors, so intra-doc links
@@ -9,7 +10,7 @@ const githubSlug = (s: string): string =>
     .replace(/[^\p{L}\p{N}\s-]/gu, '')
     .replace(/\s+/g, '-')
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   lang: 'zh-CN',
   title: 'Coterie',
   description: '开源数字服务共享与订阅拼车平台——需求规格、技术设计与项目计划。',
@@ -63,4 +64,4 @@ export default defineConfig({
     sidebarMenuLabel: '菜单',
     returnToTopLabel: '回到顶部',
   },
-})
+}));
