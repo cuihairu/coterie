@@ -49,7 +49,9 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 ```bash
 # 1. 配置(全部变量见 .env.example)
 
-<p align="center">[![Status](https://img.shields.io/badge/status-in%20development-orange)](https://github.com/cuihairu/coterie/releases)</p>
+<p align="center">
+<a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a>
+</p>
 
 > [English](README.md) | **中文**
 export DATABASE_URL=postgres://coterie:***@localhost:5432/coterie?sslmode=disable
