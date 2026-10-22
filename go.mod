@@ -1,7 +1,7 @@
 module github.com/cuihairu/coterie
 
 go 1.26.0
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
