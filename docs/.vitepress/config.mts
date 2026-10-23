@@ -17,6 +17,12 @@ export default withMermaid(defineConfig({
   // GitHub Pages serves the site from the project subpath; every asset
   // URL is prefixed with this or the page 404s.
   base: '/coterie/',
+  // Pages live under zh/ (bilingual layout) while nav and in-page links
+  // use root-level paths; rewrite so /design, /requirements, ... resolve.
+  rewrites: {
+    'zh/api.md': 'zh/api.md',
+    'zh/:page*': ':page*',
+  },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/coterie/logo.svg' }],
   ],
