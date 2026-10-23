@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -55,7 +55,7 @@ jobs:
     # The client gate: typecheck + build + lint + unit tests.
     # routeTree.gen.ts is committed, so tsc runs before the router
     # plugin regenerates it.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: apps/web
@@ -85,7 +85,7 @@ jobs:
     # stack, and walk the whole MVP journey against it (scripts/smoke.sh).
     # Building the compose image tag locally keeps compose from pulling
     # GHCR — the code under test is what gets smoked.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     needs: test
     timeout-minutes: 15
     steps:
