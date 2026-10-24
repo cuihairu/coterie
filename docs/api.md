@@ -1,180 +1,180 @@
-# API 参考（v1）
+# API reference (v1)
 
-所有接口挂在 `/api/v1` 下，JSON 收发。这是当前实现的平铺清单，语义与字段细节见[技术设计 §9](/design)。清单随实现更新；本地起服务后可用 `scripts/smoke.sh http://localhost:8080` 对全旅程做一次冒烟。
+All endpoints are mounted under `/api/v1` and speak JSON. This is a flat list of the current implementation; semantics and field details are in [design §9](/design). The list tracks the implementation; once a server runs locally, `scripts/smoke.sh http://localhost:8080` smoke-tests the whole journey.
 
-通用约定：
+General conventions:
 
-- **鉴权**：除标注「公开」的接口外都要 `Authorization: Bearer <token>`。令牌在注册/登录时签发，有效期 30 天，注销即失效。
-- **列表分页**：`?limit=`（默认 20，上限 100）与 `?offset=`，响应为 `{"items": [...], "meta": {"total", "limit", "offset"}}`。
-- **列表筛选**：筛选端点支持以下查询参数，可与 `limit`/`offset` 组合：
+- **Auth**: every endpoint except those marked "public" requires `Authorization: Bearer <token>`. Tokens are issued on register/login, valid for 30 days, and invalidated on logout.
+- **List pagination**: `?limit=` (default 20, max 100) and `?offset=`; responses are `{"items": [...], "meta": {"total", "limit", "offset"}}`.
+- **List filtering**: filterable endpoints accept the following query parameters, combinable with `limit`/`offset`:
   - `GET /providers?category=` · `GET /products?provider_id=` · `GET /marketplace/coteries?product_id=`
-  - `GET /subscriptions?owner_user_id=&product_id=`——结果始终限本人拥有的订阅；`owner_user_id` 只接受本人，传他人 403
-  - `GET /coteries?subscription_id=`——只返回自己是成员的圈
+  - `GET /subscriptions?owner_user_id=&product_id=` — results are always limited to subscriptions you own; `owner_user_id` only accepts yourself, passing someone else yields 403
+  - `GET /coteries?subscription_id=` — only returns coteries you are a member of
   - `GET /notifications?unread=true`
   - `GET /subscriptions/{id}/disputes?status=` · `GET /coteries/{id}/join-requests?status=` · `GET /admin/reports?status=`
-  - `GET /subscriptions/{id}/usage-records?member_id=&unit=&from=&to=`（`from`/`to` 为 `YYYY-MM-DD`）
+  - `GET /subscriptions/{id}/usage-records?member_id=&unit=&from=&to=` (`from`/`to` are `YYYY-MM-DD`)
   - `GET /subscriptions/{id}/audit-logs?action=` · `GET /coteries/{id}/audit-logs?action=` · `GET /admin/audit-logs?action=&actor_id=&coterie_id=&subscription_id=`
-- **错误信封**：非 2xx 返回 `{"error": {"code", "message", "details"}}`；鉴权缺失/失效 401，无权 403，语义错误 422，状态冲突 409。
+- **Error envelope**: non-2xx returns `{"error": {"code", "message", "details"}}`; missing/invalid auth 401, no permission 403, semantic error 422, state conflict 409.
 
-权限标注：**公开** = 匿名可读；**Bearer** = 任意认证用户；**Owner** = 资源所属订阅的 Owner；**管理员** = 平台管理员（`ADMIN_EMAILS` 引导）。细粒度规则（如成员能否读）见设计文档。
+Auth labels: **public** = readable anonymously; **Bearer** = any authenticated user; **Owner** = the Owner of the subscription the resource belongs to; **admin** = platform administrator (bootstrapped via `ADMIN_EMAILS`). Fine-grained rules (e.g. whether a member can read) are in the design doc.
 
-## 健康
+## Health
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/healthz` | 公开 | 就绪探针 |
+| GET | `/healthz` | public | Readiness probe |
 
-## 认证
+## Auth
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/auth/register` | 公开 | 注册并签发令牌 |
-| POST | `/auth/login` | 公开 | 登录，邮箱 + 密码 |
-| GET | `/auth/me` | Bearer | 当前用户 |
-| POST | `/auth/logout` | Bearer | 注销当前会话 |
+| POST | `/auth/register` | public | Register and issue a token |
+| POST | `/auth/login` | public | Log in with email + password |
+| GET | `/auth/me` | Bearer | Current user |
+| POST | `/auth/logout` | Bearer | Log out the current session |
 
-## 用户与信誉
+## Users and reputation
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/users` | Bearer | 用户列表（展示投影：id / username / avatar，email/role 等不外露，见 D29） |
-| POST | `/users` | Bearer | 创建用户（回显创建载荷） |
-| GET | `/users/{id}` | Bearer | 用户详情（同上投影；本人完整字段走 `/auth/me`） |
-| GET | `/users/{id}/reputation` | Bearer | 结算信誉（只读投影） |
+| GET | `/users` | Bearer | User list (display projection: id / username / avatar; email/role etc. are not exposed — see D29) |
+| POST | `/users` | Bearer | Create a user (echoes the create payload) |
+| GET | `/users/{id}` | Bearer | User detail (same projection; your own full fields are on `/auth/me`) |
+| GET | `/users/{id}/reputation` | Bearer | Settlement reputation (read-only projection) |
 
-## 目录：Provider 与 Product
+## Catalog: Provider and Product
 
-读取公开；写操作限目录维护者（Owner 或创建者）。
+Reads are public; writes are limited to catalog maintainers (Owner or creator).
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/providers` | 公开 | 目录列表，支持过滤 |
-| POST | `/providers` | Bearer | 创建 |
-| GET | `/providers/{id}` | 公开 | 详情 |
-| PATCH | `/providers/{id}` | Bearer | 更新 |
-| DELETE | `/providers/{id}` | Bearer | 删除 |
-| GET | `/products` | 公开 | 目录列表 |
-| POST | `/products` | Bearer | 创建 |
-| GET | `/products/{id}` | 公开 | 详情 |
-| PATCH | `/products/{id}` | Bearer | 更新 |
-| DELETE | `/products/{id}` | Bearer | 删除 |
+| GET | `/providers` | public | Catalog list, supports filtering |
+| POST | `/providers` | Bearer | Create |
+| GET | `/providers/{id}` | public | Detail |
+| PATCH | `/providers/{id}` | Bearer | Update |
+| DELETE | `/providers/{id}` | Bearer | Delete |
+| GET | `/products` | public | Catalog list |
+| POST | `/products` | Bearer | Create |
+| GET | `/products/{id}` | public | Detail |
+| PATCH | `/products/{id}` | Bearer | Update |
+| DELETE | `/products/{id}` | Bearer | Delete |
 
-## 订阅
+## Subscriptions
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/subscriptions` | Bearer | 自己的订阅 |
-| POST | `/subscriptions` | Bearer | 创建（`owner_user_id` 必须是本人） |
-| GET | `/subscriptions/{id}` | Bearer | 详情 |
-| PATCH | `/subscriptions/{id}` | Owner | 价格/策略/状态变更，审计留痕 |
-| DELETE | `/subscriptions/{id}` | Owner | 删除 |
+| GET | `/subscriptions` | Bearer | Your own subscriptions |
+| POST | `/subscriptions` | Bearer | Create (`owner_user_id` must be yourself) |
+| GET | `/subscriptions/{id}` | Bearer | Detail |
+| PATCH | `/subscriptions/{id}` | Owner | Price/policy/status changes, audit-logged |
+| DELETE | `/subscriptions/{id}` | Owner | Delete |
 
-## 席位
+## Seats
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/subscriptions/{subID}/seats` | Bearer | 席位列表 |
-| POST | `/subscriptions/{subID}/seats` | Owner | 追加席位 |
-| GET | `/seats/{id}` | Bearer | 席位详情 |
-| PATCH | `/seats/{id}` | Owner | 改名/元数据/停用启用（occupied 需先 release） |
-| POST | `/seats/{id}/assign` | Owner | 指派给成员 |
-| POST | `/seats/{id}/release` | Owner | 释放 |
+| GET | `/subscriptions/{subID}/seats` | Bearer | Seat list |
+| POST | `/subscriptions/{subID}/seats` | Owner | Add seats |
+| GET | `/seats/{id}` | Bearer | Seat detail |
+| PATCH | `/seats/{id}` | Owner | Rename/metadata/disable-enable (occupied must be released first) |
+| POST | `/seats/{id}/assign` | Owner | Assign to a member |
+| POST | `/seats/{id}/release` | Owner | Release |
 
-## 账期与分摊
+## Billing periods and contributions
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/subscriptions/{subID}/billing-periods` | Bearer | 账期列表 |
-| POST | `/subscriptions/{subID}/billing-periods` | Owner | 建账期 |
-| GET | `/billing-periods/{id}` | Bearer | 账期详情 |
-| POST | `/billing-periods/{id}/close` | Owner | 关闭账期，审计留痕 |
-| GET | `/billing-periods/{id}/contributions` | Bearer | 分摊列表 |
-| POST | `/billing-periods/{id}/contributions/generate` | Owner | 生成等额或按用量分摊 |
-| PATCH | `/contributions/{id}` | Owner | 调整分摊金额，审计留痕 |
+| GET | `/subscriptions/{subID}/billing-periods` | Bearer | Billing period list |
+| POST | `/subscriptions/{subID}/billing-periods` | Owner | Create a billing period |
+| GET | `/billing-periods/{id}` | Bearer | Billing period detail |
+| POST | `/billing-periods/{id}/close` | Owner | Close a billing period, audit-logged |
+| GET | `/billing-periods/{id}/contributions` | Bearer | Contribution list |
+| POST | `/billing-periods/{id}/contributions/generate` | Owner | Generate equal or per-usage contributions |
+| PATCH | `/contributions/{id}` | Owner | Adjust a contribution amount, audit-logged |
 
-## 支付
+## Payments
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/payments/methods` | Bearer | 已注册渠道 |
-| POST | `/contributions/{id}/payments` | Bearer | 记一笔支付（manual 直接到账；异步渠道进 pending） |
-| GET | `/contributions/{id}/payments` | Bearer | 支付流水 |
-| GET | `/payments/{id}` | Bearer | 支付详情 |
-| POST | `/payments/webhooks/{method}` | 公开 + 签名 | 渠道确认回调（Stripe 等），按 external_ref 幂等 |
+| GET | `/payments/methods` | Bearer | Registered channels |
+| POST | `/contributions/{id}/payments` | Bearer | Record a payment (manual lands immediately; async channels go to pending) |
+| GET | `/contributions/{id}/payments` | Bearer | Payment history |
+| GET | `/payments/{id}` | Bearer | Payment detail |
+| POST | `/payments/webhooks/{method}` | public + signature | Channel confirmation callback (Stripe etc.), idempotent by external_ref |
 
-## 争议
+## Disputes
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/contributions/{id}/disputes` | Bearer | 对分摊提出争议 |
-| GET | `/subscriptions/{id}/disputes` | Bearer | 争议列表 |
-| GET | `/disputes/{id}` | Bearer | 争议详情 |
-| POST | `/disputes/{id}/decide` | Owner | 裁决（单向） |
+| POST | `/contributions/{id}/disputes` | Bearer | Dispute a contribution |
+| GET | `/subscriptions/{id}/disputes` | Bearer | Dispute list |
+| GET | `/disputes/{id}` | Bearer | Dispute detail |
+| POST | `/disputes/{id}/decide` | Owner | Decide (one-way) |
 
-## 共享圈与成员
+## Coteries and members
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/coteries` | Bearer | 围绕订阅建圈，席位按 capacity 落位 |
-| GET | `/coteries` | Bearer | 自己参与的圈 |
-| GET | `/coteries/{id}` | Bearer | 圈详情（非成员只回受限于视图） |
-| PATCH | `/coteries/{id}` | Owner | 名称/状态流转/listing，审计留痕 |
-| GET | `/coteries/{id}/members` | Bearer | 成员列表 |
-| DELETE | `/members/{id}` | Owner | 移除成员并释放席位 |
-| POST | `/coteries/{id}/leave` | Bearer | 成员自行退出（Owner 不可） |
-| POST | `/coteries/{id}/invitations` | Owner | 发邀请（一次性 token） |
-| GET | `/coteries/{id}/invitations` | Owner | 邀请列表 |
-| POST | `/invitations/accept` | Bearer | 凭 token 接受邀请 |
+| POST | `/coteries` | Bearer | Create a coterie around a subscription; seats are placed per capacity |
+| GET | `/coteries` | Bearer | Coteries you take part in |
+| GET | `/coteries/{id}` | Bearer | Coterie detail (non-members only get a restricted view) |
+| PATCH | `/coteries/{id}` | Owner | Name/status transitions/listing, audit-logged |
+| GET | `/coteries/{id}/members` | Bearer | Member list |
+| DELETE | `/members/{id}` | Owner | Remove a member and release the seat |
+| POST | `/coteries/{id}/leave` | Bearer | A member leaves on their own (the Owner cannot) |
+| POST | `/coteries/{id}/invitations` | Owner | Send an invitation (one-time token) |
+| GET | `/coteries/{id}/invitations` | Owner | Invitation list |
+| POST | `/invitations/accept` | Bearer | Accept an invitation with a token |
 
-## 市场与加入请求
+## Marketplace and join requests
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/marketplace/coteries` | 公开 | 公开目录（附 Owner 信誉徽标） |
-| POST | `/coteries/{coterieID}/join-requests` | Bearer | 申请加入（被拉黑 403） |
-| GET | `/coteries/{coterieID}/join-requests` | Owner | 收件箱 |
-| POST | `/join-requests/{id}/accept` | Owner | 接受并分配席位 |
-| POST | `/join-requests/{id}/decline` | Owner | 拒绝 |
-| DELETE | `/join-requests/{id}` | Bearer | 申请人撤回 |
-| GET | `/me/join-requests` | Bearer | 自己的申请列表 |
-| POST | `/join-requests/{id}/payments` | Bearer | 付入圈费（支付闸门开启时） |
-| POST | `/marketplace/webhooks/{method}` | 公开 + 签名 | 闸门确认回调，确认即入圈 |
+| GET | `/marketplace/coteries` | public | Public directory (with an Owner reputation badge) |
+| POST | `/coteries/{coterieID}/join-requests` | Bearer | Request to join (403 if blocked) |
+| GET | `/coteries/{coterieID}/join-requests` | Owner | Inbox |
+| POST | `/join-requests/{id}/accept` | Owner | Accept and assign a seat |
+| POST | `/join-requests/{id}/decline` | Owner | Decline |
+| DELETE | `/join-requests/{id}` | Bearer | The requester withdraws |
+| GET | `/me/join-requests` | Bearer | Your own request list |
+| POST | `/join-requests/{id}/payments` | Bearer | Pay the admission fee (when the payment gate is on) |
+| POST | `/marketplace/webhooks/{method}` | public + signature | Gate confirmation callback; once confirmed, the member joins |
 
-## 防滥用
+## Abuse control
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| PUT | `/coteries/{id}/blocks/{userID}` | Owner | 拉黑用户 |
-| DELETE | `/coteries/{id}/blocks/{userID}` | Owner | 解除拉黑 |
-| GET | `/coteries/{id}/blocks` | Owner | 拉黑名单 |
-| POST | `/coteries/{id}/report` | Bearer | 举报公开列出的圈 |
-| GET | `/admin/reports` | 管理员 | 举报收件箱，`?status=` 过滤 |
-| POST | `/admin/reports/{id}/resolve` | 管理员 | 裁定属实（note 可选） |
-| POST | `/admin/reports/{id}/dismiss` | 管理员 | 驳回（note 可选） |
+| PUT | `/coteries/{id}/blocks/{userID}` | Owner | Block a user |
+| DELETE | `/coteries/{id}/blocks/{userID}` | Owner | Unblock a user |
+| GET | `/coteries/{id}/blocks` | Owner | Blocklist |
+| POST | `/coteries/{id}/report` | Bearer | Report a publicly listed coterie |
+| GET | `/admin/reports` | admin | Report inbox, filter with `?status=` |
+| POST | `/admin/reports/{id}/resolve` | admin | Uphold as valid (note optional) |
+| POST | `/admin/reports/{id}/dismiss` | admin | Dismiss (note optional) |
 
-## 审计
+## Audit
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/subscriptions/{id}/audit-logs` | Owner | 订阅账本，`?action=` 过滤 |
-| GET | `/coteries/{id}/audit-logs` | Owner | 圈账本，`?action=` 过滤 |
-| GET | `/admin/audit-logs` | 管理员 | 全量账本，`?action=` `?actor_id=` `?coterie_id=` `?subscription_id=` 过滤 |
+| GET | `/subscriptions/{id}/audit-logs` | Owner | Subscription ledger, filter with `?action=` |
+| GET | `/coteries/{id}/audit-logs` | Owner | Coterie ledger, filter with `?action=` |
+| GET | `/admin/audit-logs` | admin | Full ledger, filters `?action=` `?actor_id=` `?coterie_id=` `?subscription_id=` |
 
-## 用量
+## Usage
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/subscriptions/{subID}/usage-records` | Bearer | 用量列表 |
-| POST | `/subscriptions/{subID}/usage-records` | Bearer | 记一笔用量（插件可复验） |
-| GET | `/usage-records/{id}` | Bearer | 用量详情 |
+| GET | `/subscriptions/{subID}/usage-records` | Bearer | Usage list |
+| POST | `/subscriptions/{subID}/usage-records` | Bearer | Record one usage entry (a plugin may re-verify) |
+| GET | `/usage-records/{id}` | Bearer | Usage detail |
 
-## 通知
+## Notifications
 
-| 方法 | 路径 | 鉴权 | 说明 |
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/notifications` | Bearer | 自己的信箱 |
-| POST | `/notifications/{id}/read` | Bearer | 标记已读 |
-| GET | `/push/subscriptions` | Bearer | 已注册的推送端点 |
-| POST | `/push/subscriptions` | Bearer | 注册 Web Push 端点 |
-| DELETE | `/push/subscriptions/{id}` | Bearer | 注销推送端点 |
-| GET | `/push/vapid-public-key` | Bearer | 服务端 VAPID 公钥（浏览器订阅推送用；未配置推送时 404） |
+| GET | `/notifications` | Bearer | Your own inbox |
+| POST | `/notifications/{id}/read` | Bearer | Mark as read |
+| GET | `/push/subscriptions` | Bearer | Registered push endpoints |
+| POST | `/push/subscriptions` | Bearer | Register a Web Push endpoint |
+| DELETE | `/push/subscriptions/{id}` | Bearer | Unregister a push endpoint |
+| GET | `/push/vapid-public-key` | Bearer | Server VAPID public key (for browser push subscription; 404 when push is not configured) |

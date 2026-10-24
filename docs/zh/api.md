@@ -1,6 +1,6 @@
 # API 参考（v1）
 
-所有接口挂在 `/api/v1` 下，JSON 收发。这是当前实现的平铺清单，语义与字段细节见[技术设计 §9](/design)。清单随实现更新；本地起服务后可用 `scripts/smoke.sh http://localhost:8080` 对全旅程做一次冒烟。
+所有接口挂在 `/api/v1` 下，JSON 收发。这是当前实现的平铺清单，语义与字段细节见[技术设计 §9](/zh/design)。清单随实现更新；本地起服务后可用 `scripts/smoke.sh http://localhost:8080` 对全旅程做一次冒烟。
 
 通用约定：
 

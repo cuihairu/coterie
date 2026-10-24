@@ -35,7 +35,7 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 > 建圈向导、席位、账期与结算、含支付闸门的加入申请收件箱、带每账期
 > 上限的用量记账、争议、市场与通知——与 API 打进同一二进制
 > (服务器在同一端口提供 SPA 回退)
-> ([设计文档 §9](docs/design.md#9-api-design))。
+> ([设计文档 §9](docs/zh/design.md#9-api-设计))。
 
 ## 快速开始
 
@@ -111,7 +111,7 @@ scripts/smoke.sh http://localhost:8080
 
 错误统一使用 `{"error": {"code", "message", "details?}}` 信封;
 列表使用 `{"items": [...], "meta": {total, limit, offset}}`。详见
-[设计文档](docs/design.md)。
+[设计文档](docs/zh/design.md)。
 
 ## 工作原理
 
@@ -150,9 +150,9 @@ Seats / Quota / Cost
 
 | 文档 | 说明 |
 |----------|-------------|
-| [项目计划](docs/project-plan.md) | 定位、愿景、原则、路线图 |
-| [需求](docs/requirements.md) | 功能/非功能需求、MVP 范围与非目标 |
-| [设计](docs/design.md) | 领域模型、共享模型、出账、架构、API、部署 |
+| [项目计划](docs/zh/project-plan.md) | 定位、愿景、原则、路线图 |
+| [需求](docs/zh/requirements.md) | 功能/非功能需求、MVP 范围与非目标 |
+| [设计](docs/zh/design.md) | 领域模型、共享模型、出账、架构、API、部署 |
 
 > 文档目前以中文撰写。
 
@@ -182,7 +182,7 @@ Seats / Quota / Cost
 Go(标准库 `net/http`、GORM)· PostgreSQL(手写 SQL 迁移,
 启动时由 golang-migrate 执行)· React + TypeScript(Vite、Tailwind
 CSS、TanStack Query / Router),详见[设计
-文档](docs/design.md)。
+文档](docs/zh/design.md)。
 
 ## 参与贡献
 

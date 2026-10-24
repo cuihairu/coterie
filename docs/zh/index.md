@@ -11,10 +11,10 @@ hero:
       link: "#快速开始"
     - theme: alt
       text: 需求规格
-      link: /requirements
+      link: /zh/requirements
     - theme: alt
       text: 技术设计
-      link: /design
+      link: /zh/design
     - theme: alt
       text: GitHub
       link: https://github.com/cuihairu/coterie
@@ -38,7 +38,7 @@ features:
 
 Coterie 是一个开源的数字服务共享与订阅拼车平台：让用户持有一份数字服务订阅，确认其允许多人共享后，围绕它组织共享圈（Coterie），统一管理席位、费用、账期、成员与访问方式。平台要做的是把共享的组织、分摊、准入和裁决管清楚。服务本身只做基础设施，不代持任何第三方的账号密码。
 
-当前处于早期开发阶段，[项目计划](/project-plan) 的 Phase 1-4 已交付（核心旅程：注册 → 目录 → 订阅 → 共享圈 → 席位 → 邀请加入 → 分摊账单 → 结算 → 通知 全程可用；Stripe 支付渠道待真实凭据接入生产）。
+当前处于早期开发阶段，[项目计划](/zh/project-plan) 的 Phase 1-4 已交付（核心旅程：注册 → 目录 → 订阅 → 共享圈 → 席位 → 邀请加入 → 分摊账单 → 结算 → 通知 全程可用；Stripe 支付渠道待真实凭据接入生产）。
 
 ## 快速开始
 
@@ -61,12 +61,12 @@ go run ./apps/server
 scripts/smoke.sh http://localhost:8080
 ```
 
-部署（Docker Compose、配置项、平台管理员引导）见 [部署](/deployment)。
+部署（Docker Compose、配置项、平台管理员引导）见 [部署](/zh/deployment)。
 
 ## 文档导航
 
 | 文档 | 内容 |
 | --- | --- |
-| [需求规格](/requirements) | 目标用户、用户故事、功能需求（FR）、非功能需求（NFR）、MVP 边界与不做清单 |
-| [技术设计](/design) | 领域模型、共享与计费模型、支付适配器、技术架构、模块划分、API 清单与设计决策记录（ADR） |
-| [项目计划](/project-plan) | 定位、愿景、原则、阶段路线图与文档索引 |
+| [需求规格](/zh/requirements) | 目标用户、用户故事、功能需求（FR）、非功能需求（NFR）、MVP 边界与不做清单 |
+| [技术设计](/zh/design) | 领域模型、共享与计费模型、支付适配器、技术架构、模块划分、API 清单与设计决策记录（ADR） |
+| [项目计划](/zh/project-plan) | 定位、愿景、原则、阶段路线图与文档索引 |
