@@ -3,11 +3,7 @@
   <h1>Coterie</h1>
   <p><strong>Open-source platform for shared digital services.</strong></p>
   <p>
-    <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-    <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>
-    <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange">
-    <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white">
-    <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
+<a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a> <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white">
   </p>
 </div>
 
