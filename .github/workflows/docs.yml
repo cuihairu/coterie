@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "scripts/check-doc-links.mjs"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -34,6 +35,10 @@ jobs:
 
       - name: Install
         run: npm ci
+        working-directory: docs
+
+      - name: Check internal links
+        run: npm run check:links
         working-directory: docs
 
       - name: Build
