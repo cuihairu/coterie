@@ -31,6 +31,6 @@
 - [x] internal/reputation fold 派生层补测：状态分桶、多币种合计与排序、支付率分母（只算 paid+pending）、无计费历史时 payment_ratio 为 null、fmtRatio 取整 — eb4e528，go test ./internal/reputation/ 全绿 9 用例 3 子用例 0 skip
 
 ## 维护项（常开）
-- [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 5 条陈旧（vite 8.3.4 与 moby/go-archive v0.3.3 均最新）、npm audit 双树 0、govulncheck 0 可达
+- [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 0 条待处理（PR #37/#38 已合，undici 5710034）、npm audit 双树 0、govulncheck 0 可达；陈旧 docs/pnpm-lock.yaml 已删（d352bb2）
 - [x] 每批合并后 README/文档站同步 — 已核：PR #36 后审计一致（a570606/841c5ca）；d3da44b 改 codeql paths-ignore 引入漂移，已修 b628d4d
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖（GET providers/products/billing-periods 详情、GET push/vapid-public-key、GET subscriptions 审计、DELETE members）— b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
