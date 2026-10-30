@@ -11,6 +11,7 @@
 - [x] CodeQL email-injection 收口（to/from/title/body 全经 headerSafe 净化 + 首条误报 dismiss）— 342138c/2b220cd/31ea1a2，0 open alerts，CI 全绿
 - [ ] Stripe 支付渠道（D24）：等 sk_/whsec_ 真实凭据（适配器与分支测试已齐）
   - 卡点 R1013：无真实密钥（仓内仅测试夹具与 .env.example 占位）；所需输入：sk_test_*/whsec_* 或生产密钥
+  - 已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)——暂缓待凭据,适配器/测试已齐无待补实现,不 mock 验收
 
 ## 已交付
 - [x] Web Push 公钥端点与 SPA 订阅 UI（D22 两端）— 02f4588，vitest 41/41
