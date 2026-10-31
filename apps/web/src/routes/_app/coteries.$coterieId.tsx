@@ -1261,7 +1261,7 @@ function MembersTab({
           ) : (
             <button
               onClick={() => setLeaving(true)}
-              className="rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
+              className="rounded-lg border border-rose-300 px-3 py-1.5 text-sm text-rose-800 hover:bg-rose-50"
             >
               退出共享圈
             </button>

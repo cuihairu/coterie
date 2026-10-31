@@ -84,7 +84,7 @@ function ReportsInbox() {
       {reportsQuery.isLoading ? (
         <p className="text-slate-500">加载中…</p>
       ) : reportsQuery.error ? (
-        <p className="text-red-600">加载失败：{(reportsQuery.error as Error).message}</p>
+        <p className="text-red-800">加载失败：{(reportsQuery.error as Error).message}</p>
       ) : items.length === 0 ? (
         <p className="text-slate-500">暂无举报。</p>
       ) : (
@@ -225,7 +225,7 @@ function AuditLedger() {
       {query.isLoading ? (
         <p className="text-slate-500">加载中…</p>
       ) : query.error ? (
-        <p className="text-red-600">加载失败：{(query.error as Error).message}</p>
+        <p className="text-red-800">加载失败：{(query.error as Error).message}</p>
       ) : items.length === 0 ? (
         <p className="text-slate-500">暂无审计记录。</p>
       ) : (
