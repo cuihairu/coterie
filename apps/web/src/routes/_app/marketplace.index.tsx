@@ -132,20 +132,20 @@ function EntryCard({ entry, myRequest }: { entry: DirectoryEntry; myRequest?: My
       </p>
       <p className="mt-1 text-sm text-slate-700">
         估价 <span className="font-medium">{entry.share_estimate}</span> {entry.currency}
-        <span className="text-xs text-slate-400"> /期（{entry.price} 均摊）</span>
+        <span className="text-xs text-slate-600"> /期（{entry.price} 均摊）</span>
       </p>
-      <p className="mt-1 text-xs text-slate-400">
+      <p className="mt-1 text-xs text-slate-600">
         成员 {entry.member_count} · 席位 {entry.seats_free}/{entry.seats_total} 空闲
       </p>
       {entry.owner && (
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-slate-600">
           Owner {entry.owner.username} · 结算信誉 {entry.owner.payment_ratio ?? '—'}
           （已缴 {entry.owner.contributions.paid ?? 0} / 待缴 {entry.owner.contributions.pending ?? 0}）
         </p>
       )}
       <div className="mt-3">
         {entry.full ? (
-          <span className="text-xs text-slate-400">圈已满员。</span>
+          <span className="text-xs text-slate-600">圈已满员。</span>
         ) : !myRequest ? (
           createButton
         ) : myRequest.status === 'pending' || myRequest.status === 'awaiting_payment' ? (
@@ -190,7 +190,7 @@ function EntryCard({ entry, myRequest }: { entry: DirectoryEntry; myRequest?: My
           </>
         ) : (
           <>
-            <span className="text-xs text-slate-400">你已撤回该申请。</span>
+            <span className="text-xs text-slate-600">你已撤回该申请。</span>
             <span className="ml-2">{createButton}</span>
           </>
         )}

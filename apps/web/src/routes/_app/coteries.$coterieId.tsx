@@ -413,7 +413,7 @@ function RequestsTab({
                 )}
               </p>
               {r.message && <p className="mt-1 text-sm text-slate-500">{r.message}</p>}
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-600">
                 {new Date(r.created_at).toLocaleString()}
               </p>
             </div>
@@ -512,7 +512,7 @@ function RequestsTab({
 
       <h3 className="pt-2 text-sm font-medium text-slate-900">封禁名单</h3>
       {blocks.length === 0 ? (
-        <p className="text-sm text-slate-400">暂无封禁用户。</p>
+        <p className="text-sm text-slate-600">暂无封禁用户。</p>
       ) : (
         blocks.map((b) => (
           <div
@@ -521,7 +521,7 @@ function RequestsTab({
           >
             <p className="text-sm text-slate-700">
               {b.username}
-              <span className="ml-2 text-xs text-slate-400">{b.email}</span>
+              <span className="ml-2 text-xs text-slate-600">{b.email}</span>
             </p>
             <button
               onClick={() => unblock.mutate(b.user_id)}
@@ -826,7 +826,7 @@ function SubscriptionTab({
           </label>
         </div>
       </div>
-      <p className="mb-3 text-xs text-slate-400">
+      <p className="mb-3 text-xs text-slate-600">
         开始日期 {sub.start_date} · 席位上限 {sub.max_seats}
         {sub.max_members ? ` · 成员上限 ${sub.max_members}` : ''}（不可在此修改）
       </p>
@@ -922,7 +922,7 @@ function DisputesTab({
                   </p>
                   <p className="mt-1 text-sm text-slate-700">{d.reason}</p>
                   {d.evidence && <p className="mt-1 text-xs text-slate-500">凭证：{d.evidence}</p>}
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-slate-600">
                     分摊 {d.contribution_id.slice(0, 8)}… · {new Date(d.created_at).toLocaleString()}
                   </p>
                   {d.status !== 'open' && d.resolution_note && (
@@ -1031,7 +1031,7 @@ function AuditTab({ coterieId }: { coterieId: string }) {
           ))}
         </select>
         {meta && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-600">
             共 {meta.total} 条 · 第 {Math.floor(offset / AUDIT_PAGE) + 1} 页
           </span>
         )}
@@ -1049,12 +1049,12 @@ function AuditTab({ coterieId }: { coterieId: string }) {
                   </span>
                   <span className="ml-2 text-xs text-slate-500">
                     操作人 {(l.actor_id ?? 'system').slice(0, 8)}…
-                    <span className="ml-1 text-slate-400">
+                    <span className="ml-1 text-slate-600">
                       {l.entity_type} {l.entity_id.slice(0, 8)}…
                     </span>
                   </span>
                 </p>
-                <span className="shrink-0 text-xs text-slate-400">
+                <span className="shrink-0 text-xs text-slate-600">
                   {new Date(l.created_at).toLocaleString()}
                 </span>
               </div>
@@ -1194,7 +1194,7 @@ function MembersTab({
               </button>
             </div>
           )}
-          <p className="mt-1 text-xs text-slate-400">邀请令牌只显示一次，请立即复制发给对方。</p>
+          <p className="mt-1 text-xs text-slate-600">邀请令牌只显示一次，请立即复制发给对方。</p>
           {invitationsQuery.data && invitationsQuery.data.items.length > 0 && (
             <div className="mt-3">
               <p className="mb-1 text-xs font-medium text-slate-500">邀请记录</p>
@@ -1215,7 +1215,7 @@ function MembersTab({
                       <span>
                         {new Date(inv.created_at).toLocaleString()} · {inv.role}
                         {state === 'pending' && (
-                          <span className="ml-1 text-slate-400">
+                          <span className="ml-1 text-slate-600">
                             （{new Date(inv.expire_at).toLocaleString()} 前有效）
                           </span>
                         )}
@@ -1225,7 +1225,7 @@ function MembersTab({
                           state === 'accepted'
                             ? 'text-emerald-700'
                             : state === 'expired'
-                              ? 'text-slate-400'
+                              ? 'text-slate-600'
                               : 'text-amber-700'
                         }
                       >
@@ -1287,7 +1287,7 @@ function MembersTab({
                 <td className="py-2 font-mono text-xs text-slate-700">
                   {m.user_id.slice(0, 8)}
                   {me && m.user_id === me.id && (
-                    <span className="ml-1 text-slate-400">（我）</span>
+                    <span className="ml-1 text-slate-600">（我）</span>
                   )}
                 </td>
                 <td className="py-2">{m.role}</td>
@@ -1327,7 +1327,7 @@ function MembersTab({
           </tbody>
         </table>
       )}
-      {myMember && <p className="mt-2 text-xs text-slate-400">成员 {items.length} 人。</p>}
+      {myMember && <p className="mt-2 text-xs text-slate-600">成员 {items.length} 人。</p>}
     </div>
   )
 }
@@ -1851,7 +1851,7 @@ function PeriodsTab({
             onChange={(e) => setNewStart(e.target.value)}
             className="rounded border border-slate-300 px-2 py-1 text-xs"
           />
-          <span className="text-xs text-slate-400">至</span>
+          <span className="text-xs text-slate-600">至</span>
           <input
             type="date"
             value={newEnd}
@@ -1939,7 +1939,7 @@ function PeriodsTab({
                   </div>
                 )}
                 {rows.length === 0 ? (
-                  <p className="text-sm text-slate-400">本期无分摊。</p>
+                  <p className="text-sm text-slate-600">本期无分摊。</p>
                 ) : (
                   <table className="w-full text-sm">
                     <tbody>
@@ -2107,9 +2107,9 @@ function PeriodsTab({
                           <tr>
                             <td colSpan={5} className="py-1.5">
                               {paymentsQuery.isLoading ? (
-                                <p className="text-xs text-slate-400">加载中…</p>
+                                <p className="text-xs text-slate-600">加载中…</p>
                               ) : (paymentsQuery.data?.items ?? []).length === 0 ? (
-                                <p className="text-xs text-slate-400">暂无收款记录。</p>
+                                <p className="text-xs text-slate-600">暂无收款记录。</p>
                               ) : (
                                 <table className="w-full text-xs">
                                   <tbody>

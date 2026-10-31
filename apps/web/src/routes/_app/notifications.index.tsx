@@ -128,7 +128,7 @@ function NotificationsPage() {
                       </h2>
                     </div>
                     {n.body && <p className="mt-1 text-sm text-slate-500">{n.body}</p>}
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-slate-600">
                       {new Date(n.created_at).toLocaleString()}
                     </p>
                   </div>

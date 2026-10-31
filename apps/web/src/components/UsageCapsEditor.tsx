@@ -49,7 +49,7 @@ export function UsageCapsEditor({ caps, isOwner, onSave }: UsageCapsEditorProps)
             {cap ? (
               <>
                 {label} <span className="font-medium">{cap.per_period}</span> {cap.unit}
-                <span className="ml-1 text-xs text-slate-400">（{hint}）</span>
+                <span className="ml-1 text-xs text-slate-600">（{hint}）</span>
               </>
             ) : (
               <span className="text-slate-500">未设{label}。</span>

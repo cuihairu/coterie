@@ -43,7 +43,7 @@ export function PushEndpoints({
                   </span>
                 )}
               </p>
-              <p className="text-xs text-slate-400">{new Date(d.created_at).toLocaleString()}</p>
+              <p className="text-xs text-slate-600">{new Date(d.created_at).toLocaleString()}</p>
             </div>
             <button
               onClick={() => onRevoke(d.id)}

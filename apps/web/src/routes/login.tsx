@@ -52,7 +52,7 @@ function LoginPage() {
                 setError('')
               }}
               className={`flex-1 rounded-md py-1.5 ${
-                mode === m ? 'bg-white font-medium shadow-sm' : 'text-slate-500'
+                mode === m ? 'bg-white font-medium shadow-sm' : 'text-slate-600'
               }`}
             >
               {m === 'login' ? '登录' : '注册'}

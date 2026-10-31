@@ -57,7 +57,7 @@ function CoteriesPage() {
                 成员 {c.member_count} · 席位 {c.seats_free}/{c.seats_total} 空闲
                 {c.full ? ' · 已满' : ''}
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-600">
                 {c.listing === 'public' ? '公开目录' : '私有'} · 创建于{' '}
                 {new Date(c.created_at).toLocaleDateString()}
               </p>

@@ -106,7 +106,7 @@ function ReportsInbox() {
                 </span>
               </div>
               <p className="text-sm text-slate-700">{r.reason}</p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-600">
                 举报人 {r.reporter_username ?? r.reporter_id}
                 {r.reporter_email ? `（${r.reporter_email}）` : ''} · {new Date(r.created_at).toLocaleString()}
               </p>
@@ -239,12 +239,12 @@ function AuditLedger() {
                   </span>
                   <span className="ml-2 text-xs text-slate-500">
                     操作人 {(l.actor_id ?? 'system').slice(0, 8)}…
-                    <span className="ml-1 text-slate-400">
+                    <span className="ml-1 text-slate-600">
                       {l.entity_type} {l.entity_id.slice(0, 8)}…
                     </span>
                   </span>
                 </p>
-                <span className="shrink-0 text-xs text-slate-400">
+                <span className="shrink-0 text-xs text-slate-600">
                   {new Date(l.created_at).toLocaleString()}
                 </span>
               </div>
