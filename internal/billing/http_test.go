@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
@@ -342,7 +343,11 @@ func TestUsageSplit(t *testing.T) {
 		}
 	}
 
-	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+	// The window must contain the seeded usage, which is recorded now.
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	period := openPeriod(t, client, srv.URL, tok, subID,
+		now.AddDate(0, -1, 0).Format("2006-01-02"),
+		now.AddDate(0, 1, 0).Format("2006-01-02"))
 	periodID, _ := period["id"].(string)
 	resp := generate(t, client, srv.URL, tok, periodID, "usage")
 	amounts := amountsOf(t, resp)
@@ -391,7 +396,11 @@ func TestUsageSplitLargestRemainder(t *testing.T) {
 		}
 	}
 
-	period := openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+	// The window must contain the seeded usage, which is recorded now.
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	period := openPeriod(t, client, srv.URL, tok, subID,
+		now.AddDate(0, -1, 0).Format("2006-01-02"),
+		now.AddDate(0, 1, 0).Format("2006-01-02"))
 	periodID, _ := period["id"].(string)
 	resp := generate(t, client, srv.URL, tok, periodID, "usage")
 	amounts := amountsOf(t, resp)

@@ -24,6 +24,15 @@ func enableAutoBilling(t *testing.T, client *http.Client, base, tok, subID strin
 	if code != http.StatusOK {
 		t.Fatalf("enable auto_billing: status = %d: %v", code, body)
 	}
+	// The database is shared across the suite: leave the subscription
+	// with auto-billing off so a later scheduler test's RunOnce counts
+	// only its own subscription.
+	t.Cleanup(func() {
+		if code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+			base+"/api/v1/subscriptions/"+subID, `{"auto_billing":false}`, tok); code != http.StatusOK {
+			t.Logf("cleanup disable auto_billing: status = %d: %v", code, body)
+		}
+	})
 }
 
 // openPeriod opens a billing period with explicit dates.

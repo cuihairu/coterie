@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
@@ -304,8 +305,13 @@ func TestUsageLimit(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("set policy: status = %d: %v", code, body)
 	}
-	// The October window covers the default recorded_at of new records.
-	openPeriodForUsage(t, client, base, tok, subID, "2026-10-01", "2026-10-31")
+	// The window covers default recorded_at (now) but stops before the
+	// fixed future probe timestamp used below, which must stay outside
+	// every period.
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	openPeriodForUsage(t, client, base, tok, subID,
+		now.AddDate(0, -1, 0).Format("2006-01-02"),
+		now.AddDate(0, 0, 7).Format("2006-01-02"))
 
 	post := func(amount, unit, at string) (int, map[string]any) {
 		payload := fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":%q`, m.MemberID, amount, unit)
@@ -400,7 +406,10 @@ func TestQuotaLimitTotal(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("set policy: status = %d: %v", code, body)
 	}
-	openPeriodForUsage(t, client, base, tok, subID, "2026-10-01", "2026-10-31")
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	openPeriodForUsage(t, client, base, tok, subID,
+		now.AddDate(0, -1, 0).Format("2006-01-02"),
+		now.AddDate(0, 0, 7).Format("2006-01-02"))
 
 	post := func(member, amount, unit string) (int, map[string]any) {
 		return record(t, client, base, tok, subID,
