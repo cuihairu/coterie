@@ -42,15 +42,15 @@ function AppLayout() {
             Coterie
           </Link>
           <div className="flex items-center gap-4 text-sm">
-            <Link to="/marketplace" className="text-slate-600 hover:text-slate-900">
+            <Link to="/marketplace" className="py-1 text-slate-600 hover:text-slate-900">
               广场
             </Link>
             {user?.role === 'admin' && (
-              <Link to="/admin" className="text-slate-600 hover:text-slate-900">
+              <Link to="/admin" className="py-1 text-slate-600 hover:text-slate-900">
                 举报处置
               </Link>
             )}
-            <Link to="/notifications" className="relative text-slate-600 hover:text-slate-900" title="通知">
+            <Link to="/notifications" className="relative py-1 text-slate-600 hover:text-slate-900" title="通知">
               通知
               {unread > 0 && (
                 <span className="absolute -right-3 -top-2 rounded-full bg-rose-600 px-1.5 text-xs font-medium text-white">
@@ -67,7 +67,7 @@ function AppLayout() {
                 clearSession()
                 router.navigate({ to: '/login' })
               }}
-              className="text-slate-600 hover:text-slate-900"
+              className="py-1 text-slate-600 hover:text-slate-900"
             >
               退出
             </button>
