@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { api } from '../../lib/api'
+import { api, getUser } from '../../lib/api'
 import { AUDIT_ACTIONS, AUDIT_LABEL } from '../../lib/api'
 import type { AuditLog, ListResponse, Report } from '../../lib/api'
 import { Pager } from '../../components/Pager'
@@ -15,6 +15,17 @@ type Status = 'open' | 'resolved' | 'dismissed'
 const REPORTS_PAGE_SIZE = 20
 
 function AdminPage() {
+  // 客户端角色守卫：非管理员直接给无权限提示，不挂载两个查询组件，
+  // 避免对普通用户真实发出 /admin/* 请求并制造 403 控制台噪声。
+  const isAdmin = getUser()?.role === 'admin'
+  if (!isAdmin) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <h1 className="mb-1 text-xl font-semibold text-slate-900">平台管理</h1>
+        <p className="text-sm text-slate-600">仅平台管理员可访问。如需此功能，请联系平台管理员。</p>
+      </div>
+    )
+  }
   return (
     <div className="space-y-10">
       <ReportsInbox />
