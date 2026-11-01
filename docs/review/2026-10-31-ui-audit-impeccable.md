@@ -5,7 +5,7 @@
 - 仓库：coterie
 - 界面：`apps/web/`（React 19 + Vite + Tailwind 4 + TanStack Query/Router + npm）
 - 审核方式：本地 `coterie server`（:18081，`//go:embed` 内嵌 dist，Postgres `coterie_audit`）真实渲染，Playwright 截图 + 程序化扫描（对比度 / 触控目标 / 横向溢出 / 无名称控件 / 控制台错误），桌面 1440×900 **与** 窄屏 390×844 双视口
-- 结论：**界面整体干净、可交付。修复后全站 8 条路由「横向溢出 0、对比度失败 0」（桌面 + 窄屏均为 0）**。但修复前存在两处「次要文字 / 危险色文字对 slate-50 页面底对比度不足」的硬伤（均因页面底色是 slate-50 而非白底而失分），已当场修复；另有 2 项待办（`/coteries/new` 表单 4 个输入无关联 label、`/admin` 无客户端角色守卫）。
+- 结论：**界面整体干净、可交付。修复后全站 8 条路由「横向溢出 0、对比度失败 0」（桌面 + 窄屏均为 0）**。修复前存在两处「次要文字 / 危险色文字对 slate-50 页面底对比度不足」的硬伤（均因页面底色是 slate-50 而非白底而失分），已当场修复；另有 3 项可访问性待办（`/coteries/new` 表单控件无关联 label、`/admin` 无客户端角色守卫、顶部导航触控目标 <24px），已于 2026-11-01 全部修复（见 F3–F5），仅余 1 项信息性记录（T4）与 1 项记录缺失（T5，已补 `docs/DESIGN.md`）。
 
 ---
 
@@ -29,8 +29,11 @@
 |---|--------|------|------|------|--------|
 | F1 | P1 | 次要/元数据文字对 `bg-slate-50` 对比度不足：29 处 `text-slate-400`（**2.63:1**）+ 登录未激活段 `text-slate-500`（**4.35:1** on `bg-slate-100`），12-14px 需 4.5:1 | `apps/web/src/routes/_app/{coteries.index.tsx:61, marketplace.index.tsx:135-141, coteries.$coterieId.tsx:416-2112(17处), notifications.index.tsx:131, admin.index.tsx:109-247}`, `components/{PushEndpoints.tsx:46, UsageCapsEditor.tsx:52}`, `login.tsx:55` | `slate-400`→`slate-600`、登录 `slate-500`→`slate-600`（均 **7.1:1**） | `349b206` |
 | F2 | P1 | 危险/错误色文字对 `bg-slate-50` 对比度不足：`加载失败` `text-red-600`（**2.99:1**）、退出共享圈 `text-rose-700`（**3.89:1**） | `apps/web/src/routes/_app/admin.index.tsx:87,228`、`coteries.$coterieId.tsx:1264` | `red-600`→`red-800`、`rose-700`→`rose-800`（均 **7.8:1**） | `fef91cd` |
+| F3 | P2 | `/coteries/new` 建圈表单控件无关联 label：label 为 `<span>` 兄弟节点，无 `for`/`aria-labelledby`，读屏读不到字段名 | `apps/web/src/routes/_app/coteries.new.tsx`（服务商/产品下拉、slug/名称/分类、计费周期/周期天数/价格/币种/开始日期/席位数、圈名称/成员上限，默认渲染 9 控件） | `<label htmlFor>` + 控件 `id` 关联全部控件（未关联 = 0）；顺手将表单错误文字 `red-600`→`red-800`（7.8:1） | `05c89b1` |
+| F4 | P2 | `/admin` 无客户端角色守卫，非管理员进入仍发 2 次请求（`ReportsInbox`+`AuditLedger`）并被 403 | `apps/web/src/routes/_app/admin.index.tsx`（`AdminPage`） | 挂载前读 `getUser().role`，非 `admin` 渲染「仅平台管理员可访问」提示，不挂载两个查询组件；复测：非管理员访问 `/admin` 发出 `/admin/*` 请求 **0 次**、控制台错误 **0** | `641780a` |
+| F5 | P3 | 顶部导航触控目标 <24px：`广场/通知/退出` 28×20（WCAG 2.5.8） | `apps/web/src/routes/_app.tsx` | 导航链接与退出按钮加 `py-1`（行高 20→28px ≥ 24px） | `b1b55af` |
 
-**修复后复测（1440×900 + 390×844，8 路由）：** 横向溢出 **0 路由**（双视口）；对比度失败从 **9 处 → 0 处**；剩余可访问性问题仅 `/coteries/new` 4 个未关联 label（待办 T1）。**测试门禁：** `apps/web` 测试 8 文件 48 项全绿；`npm run build` 成功；`apps/server/web/` 内嵌 dist 为 Docker 构建产物，不入库（见「审核范围」）。
+**修复后复测（1440×900 + 390×844，8 路由）：** 横向溢出 **0 路由**（双视口）；对比度失败从 **9 处 → 0 处**。**F3–F5 修复后复测（1440×900 @2x，`docs/review/shots-after/` 成对截图）：** `/coteries/new` 默认渲染控件未关联 label **0**（全部 `<label htmlFor>` 关联）；非管理员访问 `/admin` 发出 `/admin/*` 请求 **0**、控制台错误 **0**；顶部导航触控高度 **28px ≥ 24px**。**测试门禁：** `apps/web` 测试 8 文件 48 项全绿；`npm run lint` + `npm run build` 成功；`apps/server/web/` 内嵌 dist 为 Docker 构建产物，不入库（见「审核范围」）。
 
 ### 修复前后截图（`docs/review/2026-10-31-ui-audit-shots/`）
 
@@ -41,36 +44,24 @@
 - 登录页：`login-before.png`（“注册”未激活段浅灰）→ `login-after.png`（`slate-600`）
 - 通知页：`notifications-before.png`（时间戳/“wants to join” 行 `slate-400` 低对比，元数据欠账的典型样本）
 
+### F3–F5 修复前后截图（`docs/review/shots-after/`，1440×900 @2x，成对）
+
+- 建圈表单（F3）：`T1-form-before.png`（「服务商/产品」下拉无可见 label，字段名仅 placeholder）→ `T1-form-after.png`（每个控件上方有可见 `<label>`）
+- 管理端非管理员（F4）：`T2-admin-before.png`（管理端标题 + 筛选 + 两处红色「加载失败: platform admin role required」）→ `T2-admin-after.png`（干净「平台管理 / 仅平台管理员可访问」提示卡，无请求）
+- 顶部导航（F5）：`T3-nav-before.png`（`广场/通知/退出` 20px 高）→ `T3-nav-after.png`（`py-1` 后 28px 触控高度）
+
 ---
 
-## 三、待办问题（未修，按严重度排序）
+## 三、待办问题（剩余，按严重度排序）
 
-### P2
-
-**T1. `/coteries/new` 建圈表单 4 个输入无关联 label**
-- 位置：`apps/web/src/routes/_app/coteries.new.tsx`（圈名/容量/描述/成员上限），label 为 `<span>` 兄弟节点，无 `for`/`aria-labelledby`。
-- 说明：字段名仅靠 placeholder 传达，读屏/表单校验工具读不到；placeholder 兼作示例提示时字段名更易失。
-- 建议：用 `<label htmlFor>` 关联（或给输入 `aria-label`），保留可见文本；顺手把必填项标注出来。
-- 状态：**待办**（涉表单语义，单独提 a11y 变更）。
-
-**T2. `/admin` 无客户端角色守卫，非管理员进入仍发 2 次请求**
-- 位置：`apps/web/src/routes/_app/admin.index.tsx`（`ReportsInbox` + `AuditLedger` 两个 useQuery）。
-- 说明：普通用户访问 `/admin` 时两个查询真实发出并被后端 403，界面降级为「加载失败」红字（无数据泄露）；管理端标题与筛选仍被渲染。
-- 建议：挂载前读 `localStorage['coterie.user'].role`，非 `admin` 直接渲染「无权限」提示，不发请求。
-- 状态：**待办**（无数据风险，纯体验/噪声项）。
+> T1（建圈表单未关联 label）、T2（`/admin` 客户端角色守卫）、T3（顶部导航触控目标）已于 2026-11-01 修复并复测，升级为上表 **F3/F4/F5**（成对截图见 `docs/review/shots-after/`）。剩余仅 T4/T5。
 
 ### P3
-
-**T3. 触控目标 <24px（WCAG 2.5.8）**
-- 位置：顶部导航「广场/通知/退出」28×20；行内链接「← 返回圈列表」88×16、「举报此圈」48×16；圈内小文本按钮。
-- 说明：均为常规导航/行内文本动作，非主操作；按信息性记录。
-- 建议：若面向触屏，给顶部导航补足 24px 高（`py` 或 `min-h`）。
-- 状态：**待办**（信息性）。
 
 **T4. 页面无运动设计**
 - 说明：`anim=0`（全站无 CSS 动画/过渡）。Operate 模式静态可接受，但也说明没有为「状态切换」提供任何动效缓冲。
 - 建议：若后续加过渡（Tab 切换、模态出现），同时实现 `prefers-reduced-motion` 降级。
-- 状态：**记录**（信息性）。
+- 状态：**记录**（信息性，无待修代码）。
 
 ### 记录缺失
 
@@ -86,11 +77,11 @@
 - 路由（8）：`/`（重定向 `/coteries`）、`/login`、`/coteries`、`/coteries/new`、`/coteries/{id}`（`33ed6a45-424b-41cc-9901-53e555a8fecd`）、`/marketplace`、`/notifications`、`/admin`。
 - 登录：本地服务真实注册（`/api/v1/auth/register`）取 token，未依赖 demo 站；登录页另以匿名态截图。
 - 空/加载/错误态：各路由空态（暂无…）、加载中、`/admin` 非管理员 403 均有兜底；`/services`-式控制台噪声见 T2。
-- 双视口复测（修复后）：桌面 1440×900 与窄屏 390×844——横向溢出均 0；对比度失败 9→0；未关联控件仅 `/coteries/new` 4 个（T1）；无未命名交互按钮。
+- 双视口复测（修复后）：桌面 1440×900 与窄屏 390×844——横向溢出均 0；对比度失败 9→0；无未命名交互按钮。F3–F5 复测（2026-11-01）：`/coteries/new` 未关联控件 0；非管理员 `/admin` 请求 0；顶部导航触控高度 28px。
 
 ## 五、总结
 
 - 问题数：**7**（P1 2 + P2 2 + P3 2 + 记录缺失 1）
-- 已修复：**2**（F1–F2，各一 commit，见上表）
-- 待办：**5**（T1–T5）
-- 测试门禁：受影响测试全绿（48/48）；构建通过；内嵌 dist 未入库。
+- 已修复：**5**（F1–F5，各一 commit，见上表；F3–F5 为 2026-11-01 复核并复测）
+- 待办：**2**（T4 信息性记录；T5 记录缺失→已补 `docs/DESIGN.md`，见下）
+- 测试门禁：受影响测试全绿（48/48）；lint/build 通过；内嵌 dist 未入库。
