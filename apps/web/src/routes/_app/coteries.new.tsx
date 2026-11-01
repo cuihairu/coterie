@@ -126,27 +126,40 @@ function NewCoteriePage() {
             ))}
           </div>
           {providerMode === 'existing' ? (
-            <select
-              className={input}
-              value={providerID}
-              onChange={(e) => {
-                setProviderID(e.target.value)
-                setProductID('')
-              }}
-              required
-            >
-              <option value="">选择服务商…</option>
-              {(providersQuery.data?.items ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}（{p.category}）
-                </option>
-              ))}
-            </select>
+            <>
+              <label htmlFor="providerID" className={label}>服务商</label>
+              <select
+                id="providerID"
+                className={input}
+                value={providerID}
+                onChange={(e) => {
+                  setProviderID(e.target.value)
+                  setProductID('')
+                }}
+                required
+              >
+                <option value="">选择服务商…</option>
+                {(providersQuery.data?.items ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}（{p.category}）
+                  </option>
+                ))}
+              </select>
+            </>
           ) : (
             <div className="space-y-2">
-              <input className={input} placeholder="标识 slug（如 netflix）" value={slug} onChange={(e) => setSlug(e.target.value)} required />
-              <input className={input} placeholder="名称" value={providerName} onChange={(e) => setProviderName(e.target.value)} required />
-              <input className={input} placeholder="分类（如 video）" value={category} onChange={(e) => setCategory(e.target.value)} required />
+              <div>
+                <label htmlFor="slug" className={label}>标识 slug</label>
+                <input id="slug" className={input} placeholder="如 netflix" value={slug} onChange={(e) => setSlug(e.target.value)} required />
+              </div>
+              <div>
+                <label htmlFor="providerName" className={label}>名称</label>
+                <input id="providerName" className={input} placeholder="名称" value={providerName} onChange={(e) => setProviderName(e.target.value)} required />
+              </div>
+              <div>
+                <label htmlFor="category" className={label}>分类</label>
+                <input id="category" className={input} placeholder="如 video" value={category} onChange={(e) => setCategory(e.target.value)} required />
+              </div>
             </div>
           )}
         </fieldset>
@@ -168,16 +181,22 @@ function NewCoteriePage() {
             ))}
           </div>
           {productMode === 'existing' ? (
-            <select className={input} value={productID} onChange={(e) => setProductID(e.target.value)} required>
-              <option value="">选择产品…</option>
-              {(productsQuery.data?.items ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <label htmlFor="productID" className={label}>产品</label>
+              <select id="productID" className={input} value={productID} onChange={(e) => setProductID(e.target.value)} required>
+                <option value="">选择产品…</option>
+                {(productsQuery.data?.items ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </>
           ) : (
-            <input className={input} placeholder="产品名称" value={productName} onChange={(e) => setProductName(e.target.value)} required />
+            <>
+              <label htmlFor="productName" className={label}>产品名称</label>
+              <input id="productName" className={input} placeholder="产品名称" value={productName} onChange={(e) => setProductName(e.target.value)} required />
+            </>
           )}
         </fieldset>
 
@@ -185,8 +204,8 @@ function NewCoteriePage() {
           <legend className="px-1 text-sm font-medium text-slate-700">订阅</legend>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <span className={label}>计费周期</span>
-              <select className={input} value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)}>
+              <label htmlFor="billingCycle" className={label}>计费周期</label>
+              <select id="billingCycle" className={input} value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)}>
                 <option value="monthly">按月</option>
                 <option value="yearly">按年</option>
                 <option value="custom">自定义天数</option>
@@ -194,25 +213,25 @@ function NewCoteriePage() {
             </div>
             {billingCycle === 'custom' && (
               <div>
-                <span className={label}>周期天数</span>
-                <input className={input} type="number" min={1} value={cycleDays} onChange={(e) => setCycleDays(e.target.value)} required />
+                <label htmlFor="cycleDays" className={label}>周期天数</label>
+                <input id="cycleDays" className={input} type="number" min={1} value={cycleDays} onChange={(e) => setCycleDays(e.target.value)} required />
               </div>
             )}
             <div>
-              <span className={label}>价格</span>
-              <input className={input} placeholder="如 15.00" value={price} onChange={(e) => setPrice(e.target.value)} required />
+              <label htmlFor="price" className={label}>价格</label>
+              <input id="price" className={input} placeholder="如 15.00" value={price} onChange={(e) => setPrice(e.target.value)} required />
             </div>
             <div>
-              <span className={label}>币种</span>
-              <input className={input} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} required />
+              <label htmlFor="currency" className={label}>币种</label>
+              <input id="currency" className={input} value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} required />
             </div>
             <div>
-              <span className={label}>开始日期</span>
-              <input className={input} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+              <label htmlFor="startDate" className={label}>开始日期</label>
+              <input id="startDate" className={input} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
             </div>
             <div>
-              <span className={label}>席位数</span>
-              <input className={input} type="number" min={1} value={maxSeats} onChange={(e) => setMaxSeats(e.target.value)} required />
+              <label htmlFor="maxSeats" className={label}>席位数</label>
+              <input id="maxSeats" className={input} type="number" min={1} value={maxSeats} onChange={(e) => setMaxSeats(e.target.value)} required />
             </div>
           </div>
         </fieldset>
@@ -221,17 +240,17 @@ function NewCoteriePage() {
           <legend className="px-1 text-sm font-medium text-slate-700">圈</legend>
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <span className={label}>圈名称</span>
-              <input className={input} placeholder="如 家庭共享圈" value={coterieName} onChange={(e) => setCoterieName(e.target.value)} required />
+              <label htmlFor="coterieName" className={label}>圈名称</label>
+              <input id="coterieName" className={input} placeholder="如 家庭共享圈" value={coterieName} onChange={(e) => setCoterieName(e.target.value)} required />
             </div>
             <div>
-              <span className={label}>成员上限</span>
-              <input className={input} type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} required />
+              <label htmlFor="capacity" className={label}>成员上限</label>
+              <input id="capacity" className={input} type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} required />
             </div>
           </div>
         </fieldset>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-800">{error}</p>}
         <button
           type="submit"
           disabled={create.isPending}
