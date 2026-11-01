@@ -4,6 +4,9 @@
 
 ## 待用户操作
 - [ ] Stripe 支付渠道（D24）：等真实凭据（sk_test_*/whsec_*），适配器与分支测试已齐 — 按 docs/review/2026-10-30-decisions.md 暂缓待凭据（2026-10-30）
+- [ ] 重叠计费周期防护（代码深审 C1，P2）：CreatePeriod 拒绝与既有周期重叠；建议库层 EXCLUDE gist 约束（migrations/0001_init.up.sql:108-116、internal/billing/service.go:46-90）— 依 docs/review/2026-11-01-code-review.md
+- [ ] Web Push 端点 SSRF 面评估（代码深审 C2，P3）：https 约束已缓解，评估是否需域名/端口白名单（internal/push/service.go:38-42）— 依 docs/review/2026-11-01-code-review.md
+- [ ] 本地静态分析工具链刷新（代码深审 C3，P3）：重装 go1.27 版 golangci-lint/staticcheck，恢复本地 lint 门（go.mod:3 toolchain go1.27.3）— 依 docs/review/2026-11-01-code-review.md
 
 ## 已交付
 - [x] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项 — 92007f0，docs build 通过
