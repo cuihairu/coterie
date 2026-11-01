@@ -63,10 +63,16 @@ func TestSchedulerRollsForward(t *testing.T) {
 	notifier := notification.NewServiceWithChannels(db, slog.Default())
 	sched := automation.NewScheduler(db, billing.NewService(db, notifier), notifier, slog.Default(), time.Hour)
 
-	// One member circle with a period that has already ended.
+	// One member circle with a period that has already ended. The ended
+	// window closed yesterday, so the rolled window starts today and the
+	// frontier is current afterwards regardless of when the test runs.
 	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, base, "auto-roll", "10.00", 4, 0, 1)
 	enableAutoBilling(t, client, base, tok, subID)
-	openPeriod(t, client, base, tok, subID, "2026-09-01", "2026-09-30")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	wantStart := today.Format("2006-01-02")
+	openPeriod(t, client, base, tok, subID,
+		today.AddDate(0, -1, 0).Format("2006-01-02"),
+		today.AddDate(0, 0, -1).Format("2006-01-02"))
 
 	n, err := sched.RunOnce(context.Background())
 	if err != nil {
@@ -76,11 +82,11 @@ func TestSchedulerRollsForward(t *testing.T) {
 		t.Fatalf("rolled = %d, want 1", n)
 	}
 
-	// The October period was opened and split equally between owner and
+	// The new period was opened and split equally between owner and
 	// member — total exactly 10.00.
 	starts := periodStarts(t, client, base, tok, subID)
-	if !slices.Contains(starts, "2026-10-01") {
-		t.Fatalf("no October period after rollover: %v", starts)
+	if !slices.Contains(starts, wantStart) {
+		t.Fatalf("no current period after rollover: %v", starts)
 	}
 
 	// Idempotent: a second pass rolls nothing (the frontier period is
@@ -118,15 +124,15 @@ func TestSchedulerRollsForward(t *testing.T) {
 		t.Fatalf("periods: status = %d", code)
 	}
 	items, _ = body["items"].([]any)
-	var octID string
+	var curID string
 	for _, it := range items {
 		row := it.(map[string]any)
-		if row["start_date"] == "2026-10-01" {
-			octID, _ = row["id"].(string)
+		if row["start_date"] == wantStart {
+			curID, _ = row["id"].(string)
 		}
 	}
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
-		base+"/api/v1/billing-periods/"+octID+"/contributions", "", tok)
+		base+"/api/v1/billing-periods/"+curID+"/contributions", "", tok)
 	if code != http.StatusOK {
 		t.Fatalf("contributions: status = %d: %v", code, body)
 	}
@@ -181,9 +187,13 @@ func TestSchedulerRollsCustomCycle(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("set custom: status = %d: %v", code, body)
 	}
-	// The ended September window is 30 days long; the rolled window
-	// must end in the future so the frontier is current afterwards.
-	openPeriod(t, client, base, tok, subID, "2026-09-01", "2026-09-30")
+	// The ended window is cycle_days long and ended yesterday, so the
+	// rolled window starts today and the frontier is current afterwards
+	// regardless of when the test runs.
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	openPeriod(t, client, base, tok, subID,
+		today.AddDate(0, 0, -30).Format("2006-01-02"),
+		today.AddDate(0, 0, -1).Format("2006-01-02"))
 
 	n, err := sched.RunOnce(context.Background())
 	if err != nil {
@@ -200,18 +210,20 @@ func TestSchedulerRollsCustomCycle(t *testing.T) {
 		t.Fatalf("list periods: status = %d: %v", code, body)
 	}
 	items, _ := body["items"].([]any)
+	wantStart := today.Format("2006-01-02")
+	wantEnd := today.AddDate(0, 0, 29).Format("2006-01-02")
 	var next map[string]any
 	for _, it := range items {
 		p := it.(map[string]any)
-		if p["start_date"] == "2026-10-01" {
+		if p["start_date"] == wantStart {
 			next = p
 		}
 	}
 	if next == nil {
 		t.Fatalf("no rolled period in %v", body["items"])
 	}
-	if next["end_date"] != "2026-10-30" {
-		t.Fatalf("custom period end = %v, want 2026-10-30", next["end_date"])
+	if next["end_date"] != wantEnd {
+		t.Fatalf("custom period end = %v, want %s", next["end_date"], wantEnd)
 	}
 
 	// Idempotent: the frontier is current now, nothing further rolls.
