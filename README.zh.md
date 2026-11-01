@@ -2,15 +2,12 @@
     <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
   <h1>Coterie</h1>
   <p><strong>开源的数字服务共享平台。</strong></p>
-  <p>
-<a href="LICENSE"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>   
-  </p> <a href="https://cuihairu.github.io/coterie/zh//"></a>
-  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"> <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"> <img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-blue" alt="docs">
+  <p><a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a> <a href="https://cuihairu.github.io/coterie/zh/"><img alt="Docs" src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-blue"></a> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"></p>
 </div>
 
-[English](README.md) | [中文](README.zh.md)
+> [English](README.md) | **中文**
 
-文档站：https://cuihairu.github.io/coterie/zh//
+文档站：https://cuihairu.github.io/coterie/zh/
 
 ---
 
@@ -45,13 +42,7 @@ Coterie 面向可在多人之间合法共享的数字服务，例如流媒体、
 
 ```bash
 # 1. 配置(全部变量见 .env.example)
-
-<p align="center">
-<a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a>
-</p>
-
-> [English](README.md) | **中文**
-export DATABASE_URL=postgres://coterie:***@localhost:5432/coterie?sslmode=disable
+export DATABASE_URL=postgres://coterie:coterie@localhost:5432/coterie?sslmode=disable
 export PORT=8080
 
 # 2. 运行
@@ -67,7 +58,7 @@ docker compose -f deployments/docker-compose.yml up -d --build
 服务器在同一端口同时提供 Web 客户端与 API——浏览器打开
 `http://localhost:8080` 即进入界面,端点走 `/api/v1/...`。
 
-部署细节(配置项、平台管理员、升级)见[文档站](https://cuihairu.github.io/coterie/deployment)。
+部署细节(配置项、平台管理员、升级)见[文档站](https://cuihairu.github.io/coterie/zh/deployment)。
 
 除 `GET /healthz`、`POST /api/v1/auth/register`、
 `POST /api/v1/auth/login` 以及目录类的公开读接口(`GET /api/v1/providers`、
@@ -90,7 +81,7 @@ scripts/smoke.sh http://localhost:8080
 
 ## API 概览(v1)
 
-完整端点参考见[文档站](https://cuihairu.github.io/coterie/api)。
+完整端点参考见[文档站](https://cuihairu.github.io/coterie/zh/api)。
 
 | 领域 | 端点 |
 |------|-----------|
@@ -155,7 +146,7 @@ Seats / Quota / Cost
 | [需求](docs/requirements.md) | 功能/非功能需求、MVP 范围与非目标 |
 | [设计](docs/design.md) | 领域模型、共享模型、出账、架构、API、部署 |
 
-> 文档目前以中文撰写。
+> 文档为中英双语：仓库根目录为英文页，`docs/zh/` 为中文镜像（文档站发布为 `/coterie/zh/`）。
 
 ## 路线图
 

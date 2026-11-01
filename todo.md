@@ -35,3 +35,14 @@
 - [x] 依赖与安全告警按需处理（dependabot / npm audit / govulncheck）— 已核：dependabot 0 条待处理（PR #37/#38 已合，undici 5710034）、npm audit 双树 0、govulncheck 0 可达；陈旧 docs/pnpm-lock.yaml 已删（d352bb2）
 - [x] 每批合并后 README/文档站同步 — 已核：PR #36 后审计一致（a570606/841c5ca）；d3da44b 改 codeql paths-ignore 引入漂移，已修 b628d4d
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖（GET providers/products/billing-periods 详情、GET push/vapid-public-key、GET subscriptions 审计、DELETE members）— b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
+
+## 审核发现
+- [x] 审核发现：README.md 第 5 行 Docs 链接为双斜杠 `https://cuihairu.github.io/coterie//`，应为单斜杠 `coterie/`，与中文版 `coterie/zh/` 及站内其他链接（如第 74/119 行单斜杠）不一致（README.md:5）— 本批修复（含 zh 同源双斜杠、3 处 zh 深链、围栏游离块、zh 密码脱敏、双语声明，见 docs/审计-文档一致性.md A1-A5），docs build 通过、go test 26 包绿、链接检查 0 死链
+- [ ] 审核发现：README.md:8 的 Docs 链接改为空锚点且 URL 为双斜杠 `https://cuihairu.github.io/coterie//`，docs 徽章不再包裹在链接内（README.md:8）
+- [ ] 审核发现：README.md:6 `href="LICENSE"` 锚点内容为空，License 徽章（第 9 行）不再链接到 LICENSE，失去可点击性（README.md:6）
+- [ ] 审核发现：README.md:9 新增头部 Status 徽章 "early development"，与正文第 61 行既有 "in development" 徽章并存且状态互相矛盾（README.md:9）
+- [ ] 审核发现：README.zh.md:7 的 Docs 链接为空锚点且 URL 为双斜杠 `https://cuihairu.github.io/coterie/zh//`，docs 徽章不再可点击（README.zh.md:7）
+- [ ] 审核发现：README.zh.md:6 `href="LICENSE"` 锚点内容为空且行尾有多余空格，License 徽章（第 8 行）不再链接到 LICENSE（README.zh.md:6）
+- [ ] 审核发现：README.zh.md:8 新增头部 Status 徽章 "early development"，与正文第 50 行 "in development" 徽章冲突（README.zh.md:8）
+- [ ] 审核发现：README.zh.md:13 文档站链接改为双斜杠 `https://cuihairu.github.io/coterie/zh//`，基线为单斜杠 `zh/`（README.zh.md:13）
+- [ ] 审核发现：README.zh.md:39、115、154-156、186 的文档链接由中文文档 `docs/zh/*.md` 改为英文 `docs/*.md`，与第 158 行"文档目前以中文撰写"及双语文档布局（中文在 docs/zh/）不符（README.zh.md:154）

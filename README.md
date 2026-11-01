@@ -2,16 +2,12 @@
     <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
   <h1>Coterie</h1>
   <p><strong>Open-source platform for shared digital services.</strong></p>
-  <p>
-    <a href="LICENSE"></a>
-    <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a>
-  </p> <a href="https://cuihairu.github.io/coterie//"></a>
-  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"> <img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"> <img src="https://img.shields.io/badge/docs-blue" alt="docs">
+  <p><a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a> <a href="https://cuihairu.github.io/coterie/"><img alt="Docs" src="https://img.shields.io/badge/docs-blue"></a> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"></p>
 </div>
 
-[English](README.md) | [中文](README.zh.md)
+> **English** | [中文](README.zh.md)
 
-Docs: https://cuihairu.github.io/coterie//
+Docs: https://cuihairu.github.io/coterie/
 
 ---
 
@@ -56,12 +52,6 @@ automatically on startup).
 
 ```bash
 # 1. Configure (see .env.example for all variables)
-
-<p align="center">
-<a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-in%20development-orange"></a>
-</p>
-
-> **English** | [中文](README.zh.md)
 export DATABASE_URL=postgres://coterie:coterie@localhost:5432/coterie?sslmode=disable
 export PORT=8080
 
@@ -193,7 +183,7 @@ Seats / Quota / Cost
 | [Requirements](docs/requirements.md) | Functional / non-functional requirements, MVP scope and non-goals |
 | [Design](docs/design.md) | Domain model, sharing models, billing, architecture, API, deployment |
 
-> Documentation is currently written in Chinese.
+> Documentation is bilingual: English pages at the repo root, a Chinese mirror under `docs/zh/` (published as `/coterie/zh/`).
 
 ## Roadmap
 
