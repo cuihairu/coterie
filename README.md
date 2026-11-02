@@ -1,9 +1,10 @@
 <div align="center">
-    <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
+  <img src="assets/logo.svg" width="64" height="64" alt="Coterie logo" />
   <h1>Coterie</h1>
   <p><strong>Open-source platform for shared digital services.</strong></p>
-  <p><a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a> <a href="https://cuihairu.github.io/coterie/"><img alt="Docs" src="https://img.shields.io/badge/docs-blue"></a> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"></p>
 </div>
+
+<p align="center"><a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a> <a href="https://github.com/cuihairu/coterie/releases"><img alt="Status" src="https://img.shields.io/badge/status-early%20development-orange"></a> <a href="https://github.com/cuihairu/coterie/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cuihairu/coterie/actions/workflows/ci.yml/badge.svg"></a> <a href="https://cuihairu.github.io/coterie/"><img alt="Docs" src="https://img.shields.io/badge/docs-blue"></a> <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white"> <img alt="Docker" src="https://img.shields.io/badge/docker-compose%20ready-2496ED?logo=docker&logoColor=white"></p>
 
 > **English** | [中文](README.zh.md)
 
