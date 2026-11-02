@@ -40,6 +40,25 @@ func (s *Store) CreatePeriod(ctx context.Context, p *BillingPeriod) error {
 	return s.db.WithContext(ctx).Create(p).Error
 }
 
+// PeriodOverlaps reports whether any existing period of the subscription
+// shares an interior day with [start, end]. Periods use half-open usage
+// windows [start_date, end_date): the window query is recorded_at >= start
+// AND recorded_at < end, so two periods are disjoint exactly when each
+// starts on or after the other's end — a boundary day belongs to the later
+// period only. That is also the rollover convention (next start = end + 1
+// day). The service turns a true overlap into a 422; the schema's EXCLUDE
+// constraint backs the same invariant at the DB level against concurrent
+// creates.
+func (s *Store) PeriodOverlaps(ctx context.Context, subscriptionID, start, end string) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("billing_periods").
+		Where("subscription_id = ? AND start_date < ? AND end_date > ? AND start_date <> ?",
+			subscriptionID, end, start, start).
+		Count(&count).Error
+	return count > 0, err
+}
+
 // PeriodByID returns the billing period, or nil when absent.
 func (s *Store) PeriodByID(ctx context.Context, id string) (*BillingPeriod, error) {
 	var p BillingPeriod

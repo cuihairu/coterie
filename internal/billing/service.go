@@ -60,6 +60,15 @@ func (s *Service) CreatePeriod(ctx context.Context, actor *user.User, subscripti
 	if startErr == nil && endErr == nil && !end.After(start.Time) {
 		details = append(details, api.Detail{Field: "end_date", Message: "must be after start_date"})
 	}
+	if startErr == nil && endErr == nil {
+		overlaps, err := s.store.PeriodOverlaps(ctx, sub.ID, req.StartDate, req.EndDate)
+		if err != nil {
+			return nil, err
+		}
+		if overlaps {
+			details = append(details, api.Detail{Field: "end_date", Message: "must not overlap an existing billing period of this subscription"})
+		}
+	}
 	if len(details) > 0 {
 		return nil, api.Validation("invalid billing period", details...)
 	}
@@ -74,6 +83,9 @@ func (s *Service) CreatePeriod(ctx context.Context, actor *user.User, subscripti
 	if err := s.store.CreatePeriod(ctx, p); err != nil {
 		if database.IsUniqueViolation(err) {
 			return nil, api.Conflict("a billing period starting %s already exists for this subscription", req.StartDate)
+		}
+		if database.IsExclusionViolation(err) {
+			return nil, api.Conflict("a billing period overlapping this one already exists for this subscription")
 		}
 		return nil, err
 	}

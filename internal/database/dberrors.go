@@ -20,6 +20,14 @@ func IsFKViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
+// IsExclusionViolation reports whether err is a PostgreSQL exclusion
+// constraint violation (SQLSTATE 23P01), e.g. an insert a range EXCLUDE
+// constraint rejected.
+func IsExclusionViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23P01"
+}
+
 // IsCheckViolation reports whether err is a PostgreSQL check constraint
 // violation (SQLSTATE 23514) on any of the named constraints; an empty
 // list matches any check violation.

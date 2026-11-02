@@ -30,6 +30,16 @@ func TestSQLStatePredicates(t *testing.T) {
 		}
 	})
 
+	t.Run("exclusion violation", func(t *testing.T) {
+		err := &pgconn.PgError{Code: "23P01", ConstraintName: "billing_periods_no_overlap"}
+		if !database.IsExclusionViolation(err) {
+			t.Fatal("23P01 should read as an exclusion violation")
+		}
+		if database.IsExclusionViolation(&pgconn.PgError{Code: "23505"}) {
+			t.Fatal("23505 is not an exclusion violation")
+		}
+	})
+
 	t.Run("wrapped errors are unwrapped", func(t *testing.T) {
 		inner := &pgconn.PgError{Code: "23505"}
 		if !database.IsUniqueViolation(fmt.Errorf("create: %w", inner)) {

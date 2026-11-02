@@ -3,6 +3,7 @@ package billing_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +126,60 @@ func TestBillingPeriodLifecycle(t *testing.T) {
 		srv.URL+"/api/v1/billing-periods/"+id+"/contributions/generate", `{}`, tok)
 	if code != http.StatusConflict {
 		t.Fatalf("generate on closed status = %d, want 409: %v", code, body)
+	}
+}
+
+// TestPeriodOverlapRejected covers C1: a period must not share an interior
+// day with an existing period of the same subscription. Overlaps would make
+// usage windows and splits attribute the same records to two periods.
+// Periods use half-open usage windows [start, end): a boundary day belongs
+// to the later period only, so back-to-back periods stay legal.
+func TestPeriodOverlapRejected(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client := srv.Client()
+	tok, _, subID := testsupport.SeedChain(t, client, srv.URL, "bill-overlap", "30.00", 4)
+
+	openPeriod(t, client, srv.URL, tok, subID, "2026-10-01", "2026-11-01")
+
+	overlaps := []struct {
+		name       string
+		start, end string
+	}{
+		{"straddles end", "2026-10-15", "2026-11-15"},
+		{"fully inside", "2026-10-10", "2026-10-20"},
+		{"same end, later start", "2026-10-15", "2026-11-01"},
+		{"encloses existing", "2026-09-01", "2026-12-01"},
+	}
+	for _, c := range overlaps {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+			srv.URL+periodsPath+"/"+subID+"/billing-periods",
+			fmt.Sprintf(`{"start_date":%q,"end_date":%q}`, c.start, c.end), tok)
+		if code != http.StatusUnprocessableEntity {
+			t.Fatalf("%s: status = %d, want 422: %v", c.name, code, body)
+		}
+		if !strings.Contains(fmt.Sprint(body), "must not overlap") {
+			t.Fatalf("%s: missing overlap detail: %v", c.name, body)
+		}
+	}
+
+	// Same start date stays the unique-key conflict, not a validation error.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		srv.URL+periodsPath+"/"+subID+"/billing-periods",
+		`{"start_date":"2026-10-01","end_date":"2026-12-01"}`, tok)
+	if code != http.StatusConflict {
+		t.Fatalf("duplicate start status = %d, want 409: %v", code, body)
+	}
+
+	// Back-to-back periods share only a boundary day and stay legal.
+	for _, c := range []struct{ start, end string }{
+		{"2026-11-01", "2026-12-01"},
+		{"2026-09-01", "2026-10-01"},
+	} {
+		p := openPeriod(t, client, srv.URL, tok, subID, c.start, c.end)
+		if p["status"] != "open" {
+			t.Fatalf("back-to-back period [%s,%s] not open: %v", c.start, c.end, p)
+		}
 	}
 }
 
