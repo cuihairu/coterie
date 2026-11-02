@@ -6,7 +6,7 @@
 ## 结论
 
 - **发现 3 条**：P2 × 1，P3 × 2。P0 × 0，P1 × 0。
-- **当场修复 0 条**（无 P0/P1）；**P2/P3 记入 todo.md**（3 条）。
+- **已修复 1 条**（C1，P2，见下）；**待办 2 条**（C2、C3，均 P3，记入 todo.md）。
 - 质量门全绿：`go test -race ./...` 26 包 0 失败 0 skip 0 数据竞争；`go vet` 通过；`staticcheck` 0 问题；`golangci-lint` 0 问题；`tsc -b` 通过；`oxlint` 0 问题；`vitest` 48/48。
 - 未发现 P0/P1（无安全漏洞、无易触发数据损坏/崩溃）。代码库整体工程质量高：金额拆分为整数/大数精确计算、并发写用条件更新与 `FOR UPDATE`、令牌哈希存储、HMAC 常量时间比较、HTTP body 全部关闭。
 
@@ -25,6 +25,12 @@
 - **影响**：Owner 经 `POST /api/v1/subscriptions/{id}/billing-periods` 手工创建重叠周期（例如 `[1-01,1-31]` 与 `[1-15,2-15]`）后，(a) `PeriodCovering` 将重叠日期的用量归入最早周期，用量上限（D21）/配额上限（FR-10）按错误窗口判定；(b) 用量拆分（D9 usage mode）会把重叠窗口的用量记录计入两份周期账单，造成金额重复分摊。
 - **触发条件**：Owner 主动创建重叠周期（边缘操作，非默认路径；自动滚期调度器 `internal/automation/scheduler.go:109-129` 按 `EndDate+1` 起算，不产生重叠）。
 - **建议修复**：在 `CreatePeriod` 增加重叠校验（查询该订阅既有周期，拒绝 `new.start <= existing.end AND new.end >= existing.start`）；更稳做法是新增迁移，用 `EXCLUDE USING gist (subscription_id WITH =, daterange(start_date, end_date) WITH &&)` 在库层禁止重叠。**（P2，记 todo）**
+- **已修复（2026-11-02，`3b3c806`）**：
+  - `internal/billing/store.go:48-65` — 新增 `PeriodOverlaps`，半开窗口谓词 `start_date < ? AND end_date > ? AND start_date <> ?`（`<>` 让同 start 仍走唯一键 409）。
+  - `internal/billing/service.go:63-71` — `CreatePeriod` 校验重叠 → 422 `must not overlap an existing billing period`；`service.go:87-89` 新增 23P01（EXCLUDE）→ 409 竞态回退。
+  - `migrations/0019_billing_periods_no_overlap.up.sql` — `EXCLUDE USING gist (subscription_id WITH =, daterange(start_date, end_date, '[)') WITH &&)`（`[)` 与用量窗口 `recorded_at >= start AND recorded_at < end` 一致；边界日属较晚周期，背靠背周期合法，滚期调度器 `EndDate+1` 不受影响）。
+  - `internal/database/dberrors.go:23-30` — 新增 `IsExclusionViolation`（23P01）。
+  - 测试：`internal/billing/http_test.go` `TestPeriodOverlapRejected`（straddle/内嵌/同尾/包围 → 422；同 start → 409；背靠背 → 201）；`internal/database/dberrors_test.go` 23P01 谓词。`go test -race -count=1 ./...` 26 包 0 失败 0 skip 0 数据竞争；`go vet`、`golangci-lint`、`staticcheck` 均 0 问题。
 
 ### P3
 
