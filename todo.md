@@ -33,3 +33,7 @@
 - [x] 每批合并后 README/文档站同步：PR #36 后审计一致；d3da44b 引入漂移已修 b628d4d
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖 — b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
 - [x] README 徽章/链接审计修复（A1-A6：双斜杠、空锚点、状态徽章冲突、围栏游离块、zh 深链、zh 文档链接语言）— aa58dd3 + 本批，docs build 通过、go test 26 包绿、链接检查 0 死链
+
+## 漏洞扫描遗留（2026-11-03 全舰队扫描，源 scratch/vuln-scan-*.md）
+
+- [ ] VULN-COTERIE-001 [高危·GHSA-mrhx-c7xc-m3w5] zod →≥4.6.6（coterie/apps/web，package-lock.json 仓，终扫 1）【BLOCKED·规范禁 npm 改 lock】npm-lock 仓只审计未改动；验收：迁 pnpm（pnpm import）后 pnpm audit --audit-level=high 该包不再命中（或编排者批准 npm 侧修复后 npm audit 清零）；该仓无 test 脚本，audit-only
