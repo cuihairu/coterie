@@ -381,7 +381,7 @@ Settlement
 
 Phase 1 落地状态（Manual Settlement，已实现）：
 
-- `POST /api/v1/subscriptions/{id}/billing-periods` 以显式起止日期开账期，月付、年付、自定义周期都是显式区间；自定义周期由 `cycle_days`（1–365）给出周期长度，行级 CHECK 保证「custom ⇔ cycle_days 非空」（D20）；同订阅同 `start_date` 唯一（409）；
+- `POST /api/v1/subscriptions/{id}/billing-periods` 以显式起止日期开账期，月付、年付、自定义周期都是显式区间；自定义周期由 `cycle_days`（1–365）给出周期长度，行级 CHECK 保证「custom ⇔ cycle_days 非空」（D20）；同订阅同 `start_date` 唯一（409）；与同订阅既有账期共享内部任一天的，422 拒绝——用量窗口是半开区间 `[start, end)`，首尾相接的账期合法（服务层校验 `internal/billing/service.go:64-69`，另有 `EXCLUDE` 约束兜底 `migrations/0019_billing_periods_no_overlap.up.sql:19`）；
 - `POST /api/v1/billing-periods/{id}/contributions/generate` 一次性生成分摊，`mode` 取：
   - `equal`（默认）均摊订阅价格，整除余数按「先加入多一分」分币，总额精确守恒；
   - `per_seat` 按占用席位分摊，无席位成员不产生分摊记录；

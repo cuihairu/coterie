@@ -85,7 +85,7 @@ Reads are public; writes are limited to catalog maintainers (Owner or creator).
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/subscriptions/{subID}/billing-periods` | Bearer | Billing period list |
-| POST | `/subscriptions/{subID}/billing-periods` | Owner | Create a billing period |
+| POST | `/subscriptions/{subID}/billing-periods` | Owner | Create a billing period (422 on overlap with an existing period) |
 | GET | `/billing-periods/{id}` | Bearer | Billing period detail |
 | POST | `/billing-periods/{id}/close` | Owner | Close a billing period, audit-logged |
 | GET | `/billing-periods/{id}/contributions` | Bearer | Contribution list |

@@ -380,7 +380,7 @@ Supported:
 
 Phase 1 landed state (Manual Settlement, implemented):
 
-- `POST /api/v1/subscriptions/{id}/billing-periods` opens a period with explicit start/end dates; monthly, yearly and custom cycles are all explicit intervals; a custom cycle's length is given by `cycle_days` (1–365), and a row-level CHECK enforces "custom ⇔ cycle_days non-empty" (D20); one subscription with the same `start_date` is unique (409);
+- `POST /api/v1/subscriptions/{id}/billing-periods` opens a period with explicit start/end dates; monthly, yearly and custom cycles are all explicit intervals; a custom cycle's length is given by `cycle_days` (1–365), and a row-level CHECK enforces "custom ⇔ cycle_days non-empty" (D20); one subscription with the same `start_date` is unique (409); a period sharing an interior day with an existing period of the same subscription is rejected with 422 — usage windows are half-open `[start, end)`, so back-to-back periods stay legal (service validation in `internal/billing/service.go:64-69`, plus an `EXCLUDE` constraint as backstop, `migrations/0019_billing_periods_no_overlap.up.sql:19`);
 - `POST /api/v1/billing-periods/{id}/contributions/generate` generates contributions in one shot, with `mode` being:
   - `equal` (the default) splits the subscription price evenly, and indivisible remainders are distributed by unit with "an earlier joiner gets one more"; the total is exactly conserved;
   - `per_seat` splits by occupied seats, and members without a seat produce no contribution records;

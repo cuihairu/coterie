@@ -85,7 +85,7 @@
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/subscriptions/{subID}/billing-periods` | Bearer | 账期列表 |
-| POST | `/subscriptions/{subID}/billing-periods` | Owner | 建账期 |
+| POST | `/subscriptions/{subID}/billing-periods` | Owner | 建账期（与既有账期重叠时 422） |
 | GET | `/billing-periods/{id}` | Bearer | 账期详情 |
 | POST | `/billing-periods/{id}/close` | Owner | 关闭账期，审计留痕 |
 | GET | `/billing-periods/{id}/contributions` | Bearer | 分摊列表 |

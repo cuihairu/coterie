@@ -83,3 +83,11 @@ All 10 steps are completable through Web + API, covered end to end by scripts/sm
 ### Conclusion
 
 Phase 1/2 have no unimplemented items outside the project plan. Every FR/NFR/journey entry has a corresponding code implementation, and is tracked in the project-plan Phase 1/2 sections.
+
+## Wave-4 re-audit (2026-11-05, baseline HEAD 4877610)
+
+Spec: Documentation–Source Consistency Audit Spec, six steps re-run. Since the 2026-11-02 table, one source batch landed: 3b3c806 (reject overlapping billing periods). Counts: ahead 0 / code-ahead 1 (W4-1, fixed) / mismatch 0. P0: 0.
+
+| ID | Page | Claim | Source evidence | Bucket | Severity | Fix |
+|---|---|---|---|---|---|---|
+| W4-1 | docs/design.md:383 / docs/api.md:88 | Period creation documented "same start_date unique (409)" only; new overlap rejection missing | internal/billing/service.go:64-69 (422), store.go:43-52, migrations/0019_billing_periods_no_overlap.up.sql:19 (EXCLUDE), http_test.go:132-181 | code ahead | P1 | Added 422 overlap rule + half-open windows to design.md (en+zh); api.md POST rows annotated (en+zh) |
