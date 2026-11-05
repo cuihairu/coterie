@@ -29,7 +29,7 @@
 - [x] apps/server 组合根补测：spaHandler 嵌入客户端回落、apiOnly 分流、channels/adapters 装配（含 stripe 缺 key 跳过）— e175ad0，go test 全绿 9 用例 27 子用例 0 skip
 - [x] internal/database 纯函数层补测：Date/JSONB/IsUniqueViolation 等分支 — e1dff49，go test 全绿 12 用例 20 子用例 0 skip
 - [x] internal/reputation fold 派生层补测：状态分桶、多币种合计、payment_ratio 分母 — eb4e528，go test 全绿 9 用例 3 子用例 0 skip
-- [x] 依赖与安全告警按需处理：dependabot 0 待处理、npm audit 双树 0、govulncheck 0 可达；陈旧 docs/pnpm-lock.yaml 已删 — d352bb2
+- [x] 依赖与安全告警按需处理：dependabot 0 待处理、npm audit 双树 0、govulncheck 0 可达；陈旧 docs/pnpm-lock.yaml 已删 — d352bb2；go 直接+间接依赖刷新（pgx v5.12.0、x/crypto 伪版本、toolchain go1.27.3 等，误入的 docs/pnpm-lock.yaml 再删）— 本提交，go build ./... 绿 + go test ./... 全包绿
 - [x] 每批合并后 README/文档站同步：PR #36 后审计一致；d3da44b 引入漂移已修 b628d4d
 - [x] 冒烟覆盖缺口：6 个端点无 smoke 覆盖 — b59f6e9，smoke 全绿 61/63 路径（2 webhook 端点需异步渠道）
 - [x] README 徽章/链接审计修复（A1-A6：双斜杠、空锚点、状态徽章冲突、围栏游离块、zh 深链、zh 文档链接语言）— aa58dd3 + 本批，docs build 通过、go test 26 包绿、链接检查 0 死链
