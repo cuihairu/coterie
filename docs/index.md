@@ -68,5 +68,5 @@ Deployment (Docker Compose, configuration, platform-admin bootstrap) is covered 
 | Document | Contents |
 | --- | --- |
 | [Requirements](/requirements) | Target users, user stories, functional requirements (FR), non-functional requirements (NFR), MVP boundaries and the non-goals list |
-| [Technical design](/design) | Domain model, sharing and billing models, payment adapter, technical architecture, module breakdown, API list, and design decision records (ADR) |
+| [Technical design](/design) | Domain model, sharing and billing models, payment adapter, technical architecture, [source-layer glossary](/glossary), module breakdown, API list, and design decision records (ADR) |
 | [Project plan](/project-plan) | Positioning, vision, principles, phased roadmap, and document index |

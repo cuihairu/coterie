@@ -54,6 +54,7 @@ export default withMermaid(defineConfig({
             items: [
               { text: 'Requirements', link: '/requirements' },
               { text: 'Design', link: '/design' },
+              { text: 'Glossary', link: '/glossary' },
               { text: 'Project plan', link: '/project-plan' },
             ],
           },
@@ -97,6 +98,7 @@ export default withMermaid(defineConfig({
             items: [
               { text: '需求规格', link: '/zh/requirements' },
               { text: '技术设计', link: '/zh/design' },
+              { text: '术语表', link: '/zh/glossary' },
               { text: '项目计划', link: '/zh/project-plan' },
             ],
           },

@@ -763,6 +763,75 @@ Web
 
 不要一开始维护三套客户端。
 
+### 7.7 源码分层（2026-11-07）
+
+当前源码按执行职责分层，而不是按目录名机械归组。实现术语见
+[术语表](glossary.md)。
+
+#### L1 进程与环境
+
+`apps/server/main.go` 加载 `config.Config`、把进程固定为 UTC、打开并迁移
+PostgreSQL、引导平台管理员、构建 API 与调度器、在同一端口服务内嵌 SPA，
+并在 SIGINT/SIGTERM 后优雅停机（`apps/server/main.go:189`）。配置 schema 是
+`internal/config/config.go:16`；部署变量文档在
+[部署](deployment.md#配置项)，`.env.example` 是入库示例。内嵌客户端根从
+`apps/server/main.go:39` 开始。
+
+#### L2 交付契约
+
+`internal/app.New` 创建 API mux、判定公共路由、安装限流，并使用共享鉴权
+中间件注册模块路由（`internal/app/app.go:95`）。JSON 编码、标准错误、分页、
+日志、恢复和中间件链位于 `pkg/api`（`pkg/api/errors.go:16`、
+`pkg/api/json.go:10`、`pkg/api/middleware.go:13`）。路由契约记录在
+[API 参考](api.md)；实际 Vite SPA 通过统一 fetch helper 发请求
+（`apps/web/src/lib/api.ts:52`）。
+
+#### L3 领域服务
+
+每个边界化模块拥有校验、权限、不变量和事务边界。代表性接缝包括：建圈时
+创建圈主并在同一事务预置席位（`internal/coterie/service.go:63`）、订阅
+生命周期（`internal/subscription/service.go:65`）、账期与分摊生成
+（`internal/billing/service.go:44`、`internal/billing/service.go:156`）、
+支付结算（`internal/payment/service.go:79`）、市场支付闸门准入
+（`internal/marketplace/service.go:496`、`internal/marketplace/service.go:349`）、用量配额
+（`internal/usage/service.go:50`）、争议（`internal/dispute/service.go:41`）、
+审计（`internal/audit/service.go:13`）与举报（`internal/report/service.go:34`）。
+服务只在跨自有聚合时调用其他服务，并在自身事务提交后发通知；后台调度器
+复用同一账单服务（`internal/automation/scheduler.go:52`）。
+
+#### L4 持久化
+
+所有持久状态都是经 GORM Store 访问的 PostgreSQL。只有当聚合变更、行锁、
+账本和审计记录必须一起提交时，才在服务边界开启事务
+（`internal/billing/service.go:129`、`internal/coterie/service.go:112`、
+`internal/payment/service.go:286`、`internal/marketplace/service.go:531`）。
+schema 的事实源是 `migrations/` 下的手写迁移；`database.Open` 和
+`database.Migrate` 是运行时边界（`internal/database/database.go:37`、
+`internal/database/database.go:88`）。当前源码没有 Redis、MySQL、对象存储
+或缓存表。
+
+#### L5 集成接缝
+
+通知、支付和服务商扩展点彼此独立。通知先落库，再异步扇出到尽力通道
+（`internal/notification/service.go:31`、`internal/notification/service.go:83`）；
+SMTP、签名出站 Webhook 与 Web Push 都实现 `notification.Channel`
+（`internal/notification/email.go:41`、`internal/notification/webhook.go:56`、
+`internal/notification/webpush.go:245`）。支付通过 `Adapter` 与可选
+`AsyncAdapter` 接入（`internal/payment/adapter.go:33`、
+`internal/payment/adapter.go:51`）；服务商行为经插件注册表和可选切面进入
+（`internal/provider/plugin.go:57`），内置样例是
+`providers/claude/plugin.go:46`。二进制在 `apps/server/main.go:98`、
+`apps/server/main.go:121`、`apps/server/main.go:176` 按配置选择实现。
+
+#### L6 表现层
+
+`apps/web/src/main.tsx` 挂载 TanStack Query 与 Router；受保护 UI 先请求
+`/auth/me` 再渲染认证布局（`apps/web/src/routes/_app.tsx:12`）。路由文件
+拥有旅程界面并直接调用共享客户端；最大旅程是共享圈详情页
+（`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`）。中文文案内联在
+路由/组件 JSX 中，审计标签共享于 `apps/web/src/lib/api.ts:318`。当前没有
+独立 UI 文案 schema 或 i18n 资源文件。
+
 ---
 
 ## 8. 模块划分

@@ -762,6 +762,91 @@ Web
 
 Do not maintain three client stacks from the start.
 
+### 7.7 Source Layers (2026-11-07)
+
+The current source separates execution responsibility, not merely
+directories. See [Glossary](glossary.md) for implementation terms.
+
+#### L1 Process and Environment
+
+`apps/server/main.go` loads `config.Config`, pins the process to UTC,
+opens and migrates PostgreSQL, bootstraps admins, builds the API and
+scheduler, serves the embedded SPA on one port, and shuts down after
+SIGINT/SIGTERM (`apps/server/main.go:189`). The configuration schema is
+`internal/config/config.go:16`; deployment-facing variable documentation
+is in [Deployment](deployment.md#configuration), and `.env.example` is
+the checked-in example. The embedded client root starts at
+`apps/server/main.go:39`.
+
+#### L2 Delivery Contract
+
+`internal/app.New` creates the API mux, selects public routes, installs
+rate limiting, and registers module routes with shared auth middleware
+(`internal/app/app.go:95`). JSON encoding, canonical errors, pagination,
+logging, recovery, and middleware chaining live in `pkg/api`
+(`pkg/api/errors.go:16`, `pkg/api/json.go:10`,
+`pkg/api/middleware.go:13`). The route contract is documented in
+[API reference](api.md); the actual Vite SPA client sends requests
+through one fetch helper at `apps/web/src/lib/api.ts:52`.
+
+#### L3 Domain Services
+
+Each bounded module owns validation, permissions, invariants, and
+transaction boundaries. Representative seams are coterie bootstrap with
+owner creation and seat provisioning (`internal/coterie/service.go:63`),
+subscription lifecycle (`internal/subscription/service.go:65`), billing
+and split generation (`internal/billing/service.go:44`,
+`internal/billing/service.go:156`), payment settlement
+(`internal/payment/service.go:79`), marketplace payment-gate admission
+(`internal/marketplace/service.go:496`, `internal/marketplace/service.go:349`),
+usage quotas
+(`internal/usage/service.go:50`), disputes (`internal/dispute/service.go:41`),
+audit (`internal/audit/service.go:13`), and reports
+(`internal/report/service.go:34`). Services call other services only for
+owned aggregates and notify after their own transaction commits; the
+background scheduler reuses the same billing service
+(`internal/automation/scheduler.go:52`).
+
+#### L4 Persistence
+
+All durable state is PostgreSQL through GORM stores. Transactions are
+opened at the service boundary only when aggregate mutations, locks,
+ledgers, and audit records must commit together (`internal/billing/service.go:129`,
+`internal/coterie/service.go:112`, `internal/payment/service.go:286`,
+`internal/marketplace/service.go:531`). The schema source of truth is
+the hand-written migrations under `migrations/`; `database.Open` and
+`database.Migrate` are the runtime boundary (`internal/database/database.go:37`,
+`internal/database/database.go:88`). There is no Redis, MySQL, object
+store, or cache table in the current source.
+
+#### L5 Integration Seams
+
+Notification, payment, and provider extension points are explicitly
+separate. Notifications persist first, then fan out asynchronously to
+best-effort channels (`internal/notification/service.go:31`,
+`internal/notification/service.go:83`); SMTP, signed outbound webhook,
+and Web Push implement `notification.Channel`
+(`internal/notification/email.go:41`, `internal/notification/webhook.go:56`,
+`internal/notification/webpush.go:245`). Payment uses `Adapter` and the
+optional `AsyncAdapter` (`internal/payment/adapter.go:33`,
+`internal/payment/adapter.go:51`), while provider behavior enters
+through the plugin registry and optional facets
+(`internal/provider/plugin.go:57`); the built-in sample is
+`providers/claude/plugin.go:46`. The binary selects configured
+implementations at `apps/server/main.go:98`, `apps/server/main.go:121`,
+and `apps/server/main.go:176`.
+
+#### L6 Presentation
+
+`apps/web/src/main.tsx` mounts TanStack Query and Router; protected UI
+loads `/auth/me` before rendering the authenticated layout
+(`apps/web/src/routes/_app.tsx:12`). Route files own journey screens and
+call the shared client directly; the largest journey is the coterie
+detail page (`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`).
+Chinese copy is inline in route/component JSX, with shared audit labels
+at `apps/web/src/lib/api.ts:318`. There is no separate UI copy schema or
+i18n resource file.
+
 ---
 
 ## 8. Module Breakdown

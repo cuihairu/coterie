@@ -37,3 +37,25 @@
 ## 漏洞扫描遗留（2026-11-03 全舰队扫描，源 scratch/vuln-scan-*.md）
 
 - [ ] VULN-COTERIE-001 [高危·GHSA-mrhx-c7xc-m3w5] zod →≥4.6.6（coterie/apps/web，package-lock.json 仓，终扫 1）【BLOCKED·规范禁 npm 改 lock】npm-lock 仓只审计未改动；验收：迁 pnpm（pnpm import）后 pnpm audit --audit-level=high 该包不再命中（或编排者批准 npm 侧修复后 npm audit 清零）；该仓无 test 脚本，audit-only
+
+## 源码分层分析 2026-11-07
+
+### 抽象层清单
+
+- L1 进程与环境：加载环境配置、连接/迁移 PostgreSQL、引导管理员并管理 HTTP、调度器与停机 —— 代表模块 `apps/server/main.go:189`。
+- L2 交付契约：API mux、鉴权/限流/日志/恢复与标准错误信封约定 HTTP 请求入口 —— 代表模块 `internal/app/app.go:95`。
+- L3 领域服务：各边界模块持有校验、权限、不变量、事务与跨聚合编排 —— 代表模块 `internal/coterie/service.go:63`。
+- L4 持久化：GORM Store 访问 PostgreSQL，手写迁移是 schema 事实源 —— 代表模块 `internal/database/database.go:37`。
+- L5 集成接缝：通知出站通道、支付同步/异步适配器与服务商插件面注入外部能力 —— 代表模块 `internal/payment/adapter.go:33`。
+- L6 表现层：React 路由界面通过统一 API helper 调用后端并承载内联文案 —— 代表模块 `apps/web/src/lib/api.ts:52`。
+
+### 超大文件候选
+
+- [ ] LAY-001 [P1] 拆分 `apps/web/src/routes/_app/coteries.$coterieId.tsx`（2149 行）—— 一个文件同时覆盖圈详情、席位、账单、支付、用量、争议、拉黑、举报、邀请和审计界面状态（`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`）。
+
+### 目录/分类不合理处
+
+- `internal/marketplace/service.go` 既有公开目录与入圈申请，又在同一服务内实现 Stripe 风格入圈费收取、Webhook 确认和跨 `coterie.Service` 原子入圈；收费状态机可独立成边界（`internal/marketplace/service.go:349`、`internal/marketplace/service.go:496`）。
+- `internal/audit` 只提供审计读接口，写入函数却在 `internal/audit/record.go` 中被所有领域模块直接调用；读门面与写入 helper 分属不同调用面（`internal/audit/record.go:32`、`internal/audit/service.go:13`）。
+- `apps/web/src/lib/api.ts` 除 API 传输、会话存储与类型定义外，还保存中文审计标签 UI 字典，传输契约和文案混在一个文件（`apps/web/src/lib/api.ts:52`、`apps/web/src/lib/api.ts:318`）。
+- `apps/web/src/routes/_app/coteries.$coterieId.tsx` 以单路由承载多业务面板，而其他路由按旅程拆分，页面内子域可下沉为组件或 hooks（`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`）。
