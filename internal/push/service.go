@@ -6,6 +6,7 @@ package push
 import (
 	"context"
 	"encoding/base64"
+	"net"
 	"net/url"
 	"strings"
 
@@ -40,6 +41,17 @@ func (s *Service) Register(ctx context.Context, actor *user.User, req RegisterRe
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return nil, api.Validation("invalid push subscription",
 			api.Detail{Field: "endpoint", Message: "must be an https push service URL"})
+	}
+	// SSRF hardening: a push endpoint is by design a third-party browser
+	// push service (FCM, Mozilla, Apple — the browser picks it), so no
+	// domain/port whitelist applies; but the host must not be a literal
+	// address in a private, loopback, link-local, unspecified, or
+	// multicast range. Such an endpoint would make the server POST
+	// payloads into its own network (internal services, cloud metadata).
+	// The send side keeps the https-only scheme guard too.
+	if privateHost(u.Hostname()) {
+		return nil, api.Validation("invalid push subscription",
+			api.Detail{Field: "endpoint", Message: "must be a public push service URL"})
 	}
 	if p256dh, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(req.Keys.P256dh)); err != nil ||
 		len(p256dh) != 65 || p256dh[0] != 4 {
@@ -85,4 +97,20 @@ func (s *Service) Delete(ctx context.Context, actor *user.User, id string) error
 	}
 	_, err = s.store.Delete(ctx, id)
 	return err
+}
+
+// privateHost reports whether host is a literal IP in a range a public
+// server must not send push payloads to: loopback, private (RFC1918 and
+// IPv6 ULA), link-local, unspecified, or multicast. Hostnames (the normal
+// push-service form) are never literals and pass through; the DNS-based
+// rebinding residual is out of scope for the registration gate and the
+// payload is opaque ciphertext with the response discarded.
+func privateHost(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() || ip.IsMulticast()
 }

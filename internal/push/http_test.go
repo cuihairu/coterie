@@ -37,12 +37,20 @@ func TestPushSubscriptionLifecycle(t *testing.T) {
 	tok, _ := testsupport.RegisterAndLogin(t, client, base, "push-life")
 	p256dh, auth := clientKeyMaterial(t)
 
-	// Validation: non-https endpoint, missing keys, bad base64.
+	// Validation: non-https endpoint, missing keys, bad base64, and
+	// private/link-local IP literals (SSRF hardening, code review C2).
 	for _, tc := range []struct{ name, body string }{
 		{"http endpoint", registerBody("http://push.example.com/x", p256dh, auth)},
 		{"no endpoint", registerBody("", p256dh, auth)},
 		{"no p256dh", registerBody("https://push.example.com/x", "", auth)},
 		{"bad base64 auth", registerBody("https://push.example.com/x", p256dh, "!!")},
+		{"private ipv4", registerBody("https://10.0.0.5/x", p256dh, auth)},
+		{"loopback ipv4", registerBody("https://127.0.0.1/x", p256dh, auth)},
+		{"link-local ipv4", registerBody("https://169.254.169.254/latest/meta-data", p256dh, auth)},
+		{"unspecified ipv4", registerBody("https://0.0.0.0/x", p256dh, auth)},
+		{"private ipv6", registerBody("https://[fd00::1]/x", p256dh, auth)},
+		{"loopback ipv6", registerBody("https://[::1]/x", p256dh, auth)},
+		{"link-local ipv6", registerBody("https://[fe80::1]/x", p256dh, auth)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+pushPath, tc.body, tok)
@@ -105,6 +113,28 @@ func TestPushSubscriptionLifecycle(t *testing.T) {
 	code, list = testsupport.DoAuthJSON(t, client, http.MethodGet, base+pushPath, "", tok)
 	if code != http.StatusOK || len(list["items"].([]any)) != 0 {
 		t.Fatalf("post-delete list: %d %v", code, list)
+	}
+}
+
+// TestPushEndpointPublicAccepted: the real push-service form — a public
+// hostname, with a non-default port, or a public IPv6 literal — registers
+// cleanly. Only private/loopback/link-local literals are rejected (C2).
+func TestPushEndpointPublicAccepted(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, _ := testsupport.RegisterAndLogin(t, client, base, "push-public")
+	p256dh, auth := clientKeyMaterial(t)
+	for _, endpoint := range []string{
+		"https://push.example.com/reg/one",
+		"https://push.example.com:8443/reg/one",
+		"https://[2001:db8::1]/reg/one",
+	} {
+		code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+pushPath,
+			registerBody(endpoint, p256dh, auth), tok)
+		if code != http.StatusCreated {
+			t.Fatalf("register %s: status = %d, want 201: %v", endpoint, code, body)
+		}
 	}
 }
 
