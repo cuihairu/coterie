@@ -5,8 +5,8 @@
 ## 待用户操作
 - [ ] Stripe 支付渠道（D24）：等真实凭据（sk_test_*/whsec_*），适配器与分支测试已齐 — 按 docs/review/2026-10-30-decisions.md 暂缓待凭据（2026-10-30）
 - [x] 重叠计费周期防护（代码深审 C1，P2）：CreatePeriod 拒绝重叠（半开窗口 [start,end)，边界日归较晚周期、背靠背合法；同 start 仍 409）+ 库层 EXCLUDE gist 约束（migration 0019）+ 23P01 映射 409 — 3b3c806，go test -race 26 包全绿 0 skip
-- [ ] Web Push 端点 SSRF 面评估（代码深审 C2，P3）：https 约束已缓解，评估是否需域名/端口白名单（internal/push/service.go:38-42）— 依 docs/review/2026-11-01-code-review.md
-- [ ] 本地静态分析工具链刷新（代码深审 C3，P3）：重装 go1.27 版 golangci-lint/staticcheck，恢复本地 lint 门（go.mod:3 toolchain go1.27.3）— 依 docs/review/2026-11-01-code-review.md
+- [x] Web Push 端点 SSRF 面评估（代码深审 C2，P3）：结论=端点本就是第三方推送服务（FCM/Mozilla/Apple，浏览器自选），域名/端口白名单会误伤合法端点，不采纳；落地的兼容加固=注册时拒绝私有/回环/链路本地/未指定/多播 IP 字面量端点（internal/push/service.go privateHost），https 约束与发送侧守卫保留；新增 11 个 422 用例 + 3 个公网放行用例，DNS 重绑定残余记为超范围（载荷为不透明密文、响应丢弃）— 4cbaf10，go test -race 全绿 0 skip
+- [x] 本地静态分析工具链刷新（代码深审 C3，P3）：staticcheck 升至 2026.2.2（支持 go1.27 export data，全仓 0 报错）；golangci-lint 2.15.0 全仓扫描需 --timeout 5m，0 issues — 本地工具链恢复，无代码改动
 
 ## 已交付
 - [x] 逐仓审核：确认 Phase 1/2 无 project-plan 之外的未落地项 — 92007f0，docs build 通过
@@ -51,7 +51,7 @@
 
 ### 超大文件候选
 
-- [ ] LAY-001 [P1] 拆分 `apps/web/src/routes/_app/coteries.$coterieId.tsx`（2149 行）—— 一个文件同时覆盖圈详情、席位、账单、支付、用量、争议、拉黑、举报、邀请和审计界面状态（`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`）。
+- [x] LAY-001 [P1] 拆分 `apps/web/src/routes/_app/coteries.$coterieId.tsx`（2149 行）—— 路由文件瘦身为 166 行（Route+页面骨架+查询），10 个界面块提取为 `apps/web/src/components/coterie/` 下独立组件（ReportBar 63、LifecycleBar 75、RequestsTab 240、UsageTab 166、SubscriptionTab 140、DisputesTab 144、AuditTab 103、MembersTab 248、SeatsTab 352、PeriodsTab 475 行）— 37fe282，tsc -b 绿 + vitest 48/48。
 
 ### 目录/分类不合理处
 
