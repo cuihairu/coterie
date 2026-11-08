@@ -349,8 +349,11 @@ func TestUsageLimit(t *testing.T) {
 	if code, body := post("5000", "GB", ""); code != http.StatusCreated {
 		t.Fatalf("other unit: status = %d: %v", code, body)
 	}
-	// A record outside every period is not capped either.
-	if code, body := post("5000", "credits", "2026-11-15T10:00:00Z"); code != http.StatusCreated {
+	// A record outside every period is not capped either. The probe sits
+	// one day past the covered window's last day, so it stays uncovered
+	// no matter when the test runs (a fixed date would fall inside the
+	// window as real time advances past it).
+	if code, body := post("5000", "credits", now.AddDate(0, 0, 8).Format("2006-01-02")+"T10:00:00Z"); code != http.StatusCreated {
 		t.Fatalf("uncovered window: status = %d: %v", code, body)
 	}
 
@@ -455,9 +458,12 @@ func TestQuotaLimitTotal(t *testing.T) {
 	if code, body := post(m.MemberID, "5000", "GB"); code != http.StatusCreated {
 		t.Fatalf("other unit: status = %d: %v", code, body)
 	}
-	// Neither is a record outside every period.
+	// Neither is a record outside every period. The probe sits one day
+	// past the covered window's last day, so it stays uncovered no matter
+	// when the test runs (a fixed date would fall inside the window as
+	// real time advances past it).
 	if code, body := record(t, client, base, tok, subID,
-		fmt.Sprintf(`{"member_id":%q,"amount":"5000","unit":"credits","recorded_at":"2026-11-15T10:00:00Z"}`, m.MemberID)); code != http.StatusCreated {
+		fmt.Sprintf(`{"member_id":%q,"amount":"5000","unit":"credits","recorded_at":%q}`, m.MemberID, now.AddDate(0, 0, 8).Format("2006-01-02")+"T10:00:00Z")); code != http.StatusCreated {
 		t.Fatalf("uncovered window: status = %d: %v", code, body)
 	}
 }
