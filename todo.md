@@ -27,6 +27,7 @@
 - [x] README 测试口径补 codeql paths-ignore — b628d4d，npm --prefix docs run build 通过
 - [x] 调度器生产入口补测：Run 覆盖 0→81.8%，短间隔 ticker 自转滚期、ctx 取消干净退出 — f143527；PATCH cycle_days=0 对 custom 的 D20 配对拒绝 — 82677c4；两包全绿 37 用例 0 skip
 - [x] apps/server 组合根补测：spaHandler 嵌入客户端回落、apiOnly 分流、channels/adapters 装配（含 stripe 缺 key 跳过）— e175ad0，go test 全绿 9 用例 27 子用例 0 skip
+- [x] 覆盖率基线推进（2026-10-20 巡检单）：coterie 77.13%→82.09%（marketplace accept 入圈路径 AdmitMember/AdmitUserInTx 0%落地、claude 插件 guard 咨询 pro/max 双臂、max_members 核心上限、404/403 读路径）— 1f0acbd；marketplace 73.41%→76.32%（未上架 404/成员 409/拉黑 403/重复申请 409/超长留言 422/未知请求 404/外人 decline 403/webhook 1MiB 上限 422/未知支付方式 422 带 Methods 清单）— 39d148a；总覆盖率 76.53%→77.53%（语句加权），go test 26 包全绿 0 skip、go vet 0 错、golangci-lint 0 issues；automation 包防御分支（custom 无 cycle_days/未知 cycle/owner 消失）经核被迁移 0012 CHECK 约束与 users FK 挡死，schema 层不可达不硬凑，standalone 稳定 75.0%（全量并行跑时其他包 fixture 恰好满足 Due 会偶发覆盖其 skip 分支，属环境波动）；死代码如实记录：coterie store CreateCoterie/CreateMember/UpdateCoterie 与 marketplace store CreateCharge/ChargeByID 无调用方（生产代码不动）；不可达上限：handler 层防御性 401（requireUser 中间件保证）、checkAdmissionGuard 非 api 错误包装分支（仓内插件只返回 api 错误）
 - [x] internal/database 纯函数层补测：Date/JSONB/IsUniqueViolation 等分支 — e1dff49，go test 全绿 12 用例 20 子用例 0 skip
 - [x] internal/reputation fold 派生层补测：状态分桶、多币种合计、payment_ratio 分母 — eb4e528，go test 全绿 9 用例 3 子用例 0 skip
 - [x] 依赖与安全告警按需处理：dependabot 0 待处理、npm audit 双树 0、govulncheck 0 可达；陈旧 docs/pnpm-lock.yaml 已删 — d352bb2；go 直接+间接依赖刷新（pgx v5.12.0、x/crypto 伪版本、toolchain go1.27.3 等，误入的 docs/pnpm-lock.yaml 再删）— 本提交，go build ./... 绿 + go test ./... 全包绿
