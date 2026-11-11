@@ -253,6 +253,20 @@ func TestPaymentAdaptersFollowConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("stripe without a webhook secret is skipped", func(t *testing.T) {
+		log, buf := captureLog()
+		got := paymentAdapters(config.Config{
+			PaymentMethods:  []string{"stripe"},
+			StripeSecretKey: "sk_test_1",
+		}, log)
+		if len(got) != 0 {
+			t.Fatalf("adapters = %v, want none: an empty webhook secret makes signatures forgeable", adapterNames(got))
+		}
+		if !strings.Contains(buf.String(), "STRIPE_WEBHOOK_SECRET") {
+			t.Fatalf("warning missing, got %q", buf.String())
+		}
+	})
+
 	t.Run("stripe carries its configuration", func(t *testing.T) {
 		log, _ := captureLog()
 		got := paymentAdapters(config.Config{
@@ -340,6 +354,20 @@ func TestMarketplaceAdaptersGateOnStripe(t *testing.T) {
 			t.Fatalf("adapters = %v, want none", adapterNames(got))
 		}
 		if !strings.Contains(buf.String(), "STRIPE_SECRET_KEY") {
+			t.Fatalf("warning missing, got %q", buf.String())
+		}
+	})
+
+	t.Run("stripe with no webhook secret anywhere is skipped", func(t *testing.T) {
+		log, buf := captureLog()
+		got := marketplaceAdapters(config.Config{
+			PaymentMethods:  []string{"stripe"},
+			StripeSecretKey: "sk_test_1",
+		}, log)
+		if len(got) != 0 {
+			t.Fatalf("adapters = %v, want none: neither the gate nor the payments secret is set", adapterNames(got))
+		}
+		if !strings.Contains(buf.String(), "STRIPE_WEBHOOK_SECRET") {
 			t.Fatalf("warning missing, got %q", buf.String())
 		}
 	})

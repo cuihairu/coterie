@@ -191,6 +191,13 @@ const maxWebhookBody = 1 << 20
 // WebhookEvent. Any other event kind is ok=false with a nil error — the
 // caller answers 200 and ignores it.
 func (s Stripe) ParseWebhook(header http.Header, payload []byte) (WebhookEvent, bool, error) {
+	// Fail closed on a missing secret: HMAC over an empty key would let
+	// anyone forge a valid signature. Registration gates (main.go) keep
+	// this from happening at startup; this guard covers adapters built
+	// programmatically.
+	if s.WebhookSecret == "" {
+		return WebhookEvent{}, false, api.Internal()
+	}
 	sig := header.Get("Stripe-Signature")
 	t, digest, err := parseStripeSignature(sig)
 	if err != nil {

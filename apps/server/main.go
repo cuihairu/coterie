@@ -125,8 +125,16 @@ func paymentAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter {
 		case payment.Sandbox{}.Name():
 			out = append(out, payment.Sandbox{})
 		case payment.Stripe{}.Name():
+			// Stripe settles asynchronously: the webhook signature is the
+			// only thing standing between the settle endpoint and anyone
+			// with the URL, so an empty secret would make every signature
+			// forgeable. Without it the adapter must not register.
 			if cfg.StripeSecretKey == "" {
 				log.Warn("PAYMENT_METHODS lists stripe without STRIPE_SECRET_KEY, skipping", "method", name)
+				continue
+			}
+			if cfg.StripeWebhookSecret == "" {
+				log.Warn("PAYMENT_METHODS lists stripe without STRIPE_WEBHOOK_SECRET, skipping", "method", name)
 				continue
 			}
 			out = append(out, payment.Stripe{
@@ -159,6 +167,12 @@ func marketplaceAdapters(cfg config.Config, log *slog.Logger) []payment.Adapter 
 		whsec := cfg.StripeMarketplaceWebhookSecret
 		if whsec == "" {
 			whsec = cfg.StripeWebhookSecret
+		}
+		// Same rule as paymentAdapters: no webhook secret, no adapter —
+		// the gate's webhook is the only path that settles admissions.
+		if whsec == "" {
+			log.Warn("PAYMENT_METHODS lists stripe without STRIPE_WEBHOOK_SECRET, skipping", "method", name)
+			continue
 		}
 		out = append(out, payment.Stripe{
 			SecretKey:     cfg.StripeSecretKey,

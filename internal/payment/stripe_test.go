@@ -188,6 +188,14 @@ func TestStripeParseWebhook(t *testing.T) {
 	if _, _, err := adapter.ParseWebhook(http.Header{"Stripe-Signature": {signStripe(t, testWebhookSecret, time.Now(), []byte("nope"))}}, []byte("nope")); err == nil {
 		t.Fatal("non-JSON payload accepted")
 	}
+
+	// An adapter without a webhook secret fails closed: the empty-key
+	// HMAC is public knowledge, so accepting it would let anyone forge
+	// a payment_intent.succeeded (audit P0).
+	noSecret := payment.Stripe{SecretKey: "sk_test_x"}
+	if _, _, err := noSecret.ParseWebhook(http.Header{"Stripe-Signature": {signStripe(t, "", time.Now(), succeeded)}}, succeeded); err == nil {
+		t.Fatal("empty-secret adapter accepted a forged signature")
+	}
 }
 
 // The envelope decode only needs the fields we read; a full Stripe
