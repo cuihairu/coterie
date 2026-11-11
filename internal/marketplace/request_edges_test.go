@@ -3,9 +3,12 @@ package marketplace_test
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/cuihairu/coterie/internal/app"
+	"github.com/cuihairu/coterie/internal/payment"
 	"github.com/cuihairu/coterie/internal/testsupport"
 )
 
@@ -98,6 +101,69 @@ func TestJoinRequestFilingGuards(t *testing.T) {
 	}
 	if msg := detailMessage(body); !strings.Contains(msg, "at most 500 characters") {
 		t.Fatalf("overlong message wording = %q, want the 500-character cap", msg)
+	}
+}
+
+// TestGateQuoteExcludesDepartedMembers pins the gate quote's membership
+// base (audit P1): leaving is a soft end (left_at stamped, status kept),
+// so a departed member must not spread the share — 12.00 over owner only
+// quotes 6.00, not 4.00.
+func TestGateQuoteExcludesDepartedMembers(t *testing.T) {
+	var intents int
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		intents++
+		_, _ = fmt.Fprintf(w, `{"id":"pi_depart_%d","client_secret":"pi_depart_%d_secret"}`, intents, intents)
+	}))
+	t.Cleanup(fake.Close)
+	gateStripe := payment.Stripe{SecretKey: "sk_test_x", WebhookSecret: "whsec_gate", APIBase: fake.URL}
+
+	srv := testsupport.NewServer(t, testsupport.NewDB(t),
+		app.WithMarketplaceAdapters(gateStripe))
+	client, base := srv.Client(), srv.URL
+
+	ownerTok, _, _, coterieID, joined := testsupport.SeedCircle(t, client, base, "mkt-quote", "12.00", 4, 4, 1)
+
+	// The joined member leaves; the member row stays with left_at set.
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/coteries/"+coterieID+"/leave", `{}`, joined[0].Token)
+	if code != http.StatusNoContent {
+		t.Fatalf("member leave: status = %d: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, "", ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("coterie read: %d: %v", code, body)
+	}
+	if n, _ := body["member_count"].(float64); n != 1 {
+		t.Fatalf("member_count = %v after leave, want 1", body["member_count"])
+	}
+
+	publish(t, client, base, ownerTok, coterieID, "public")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+"/api/v1/coteries/"+coterieID, `{"payment_gate":true}`, ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("enable gate: status = %d: %v", code, body)
+	}
+	reqTok, _ := testsupport.RegisterAndLogin(t, client, base, "mkt-quote-req")
+	code, body = createRequest(t, client, base, reqTok, coterieID, `{}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create join request: status = %d: %v", code, body)
+	}
+	requestID, _ := body["id"].(string)
+	code, body = decide(t, client, base, ownerTok, "accept", requestID)
+	if code != http.StatusOK || body["status"] != "awaiting_payment" {
+		t.Fatalf("gated accept: status = %d: %v", code, body)
+	}
+
+	// The quote splits over the members after admission: owner + the
+	// requester = 2 → 6.00. The departed member must not count.
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/join-requests/"+requestID+"/payments", `{"method":"stripe"}`, reqTok)
+	if code != http.StatusCreated {
+		t.Fatalf("start charge: status = %d: %v", code, body)
+	}
+	if body["amount"] != "6.00" {
+		t.Fatalf("charge amount = %v, want 6.00 (12.00 over 2, departed member excluded)", body["amount"])
 	}
 }
 

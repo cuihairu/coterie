@@ -235,6 +235,11 @@ func (s *Store) SetStatusFromAwaiting(ctx context.Context, id, status string) (b
 // GateQuote returns the subscription's price/currency plus the
 // coterie's active member count — the inputs of the gate's share
 // estimate. Unknown coteries return ok=false.
+//
+// Leaving is a soft end: retireMember only stamps left_at and leaves
+// status untouched, so a departed member still reads 'active'. Counting
+// on status alone would spread the share over people who are gone and
+// under-charge the newcomer.
 func (s *Store) GateQuote(ctx context.Context, coterieID string) (price, currency string, members int, ok bool, err error) {
 	var row struct {
 		Price    string
@@ -244,7 +249,7 @@ func (s *Store) GateQuote(ctx context.Context, coterieID string) (price, currenc
 	err = s.db.WithContext(ctx).
 		Table("coteries c").
 		Select(`s.price, s.currency,
-			(SELECT count(*) FROM members m WHERE m.coterie_id = c.id AND m.status = 'active') AS members`).
+			(SELECT count(*) FROM members m WHERE m.coterie_id = c.id AND m.status = 'active' AND m.left_at IS NULL) AS members`).
 		Joins("JOIN subscriptions s ON s.id = c.subscription_id").
 		Where("c.id = ?", coterieID).
 		Scan(&row).Error
