@@ -289,7 +289,10 @@ GACC=$(api POST "/api/v1/join-requests/$JRID3/accept" "$TOK" "")
 expect "$(jget "['status']" "$GACC")" awaiting_payment "gated accept holds for payment"
 expect "$(code_of -X POST -H "Authorization: Bearer $TOK3" -H 'Content-Type: application/json' -d '{"method":"manual"}' "$BASE/api/v1/join-requests/$JRID3/payments")" 403 "requester cannot self-certify a manual charge"
 CHARGE=$(api POST "/api/v1/join-requests/$JRID3/payments" "$TOK" "{\"method\":\"manual\",\"external_ref\":\"admission smoke-$TAG\"}")
-expect "$(jget "['amount']" "$CHARGE")" 3.00 "admission amount is the share estimate"
+# 12.00 over the members after admission: owner + the seated member = 2, so
+# 12/3 = 4.00. The requester who left earlier is a soft end (left_at set,
+# status still active) and must not spread the share (bb53430).
+expect "$(jget "['amount']" "$CHARGE")" 4.00 "admission amount is the share estimate"
 expect "$(jget "['status']" "$CHARGE")" succeeded "manual admission charge settled"
 expect "$(python3 -c "import sys,json;print(json.load(sys.stdin)['items'][0]['status'])" <<<"$(api GET /api/v1/me/join-requests "$TOK3")")" accepted "charge admitted the requester"
 expect "$(jget "['member_count']" "$(api GET "/api/v1/coteries/$CID" "$TOK")")" 3 "gated member joined"
