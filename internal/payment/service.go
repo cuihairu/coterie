@@ -350,23 +350,38 @@ func (s *Service) Methods() []string {
 
 // List returns the contribution's payments (any authenticated user,
 // matching the billing read baseline).
-func (s *Service) List(ctx context.Context, contributionID string, page api.Page) ([]Payment, int64, error) {
-	if c, err := s.store.ContributionForPayment(ctx, contributionID); err != nil {
+func (s *Service) List(ctx context.Context, actor *user.User, contributionID string, page api.Page) ([]Payment, int64, error) {
+	c, err := s.store.ContributionForPayment(ctx, contributionID)
+	if err != nil {
 		return nil, 0, err
-	} else if c == nil {
+	}
+	if c == nil {
 		return nil, 0, api.NotFound("contribution %s not found", contributionID)
+	}
+	if actor.ID != c.OwnerUserID && actor.ID != c.MemberUserID {
+		return nil, 0, api.Forbidden("only the subscription owner or the paying member may view payments")
 	}
 	return s.store.ListByContribution(ctx, contributionID, page)
 }
 
-// Get returns one payment.
-func (s *Service) Get(ctx context.Context, id string) (*Payment, error) {
+// Get returns one payment to the subscription owner or the payer.
+func (s *Service) Get(ctx context.Context, actor *user.User, id string) (*Payment, error) {
 	p, err := s.store.PaymentByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if p == nil {
 		return nil, api.NotFound("payment %s not found", id)
+	}
+	sub, err := s.store.SubscriptionByID(ctx, p.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, api.NotFound("subscription %s not found", p.SubscriptionID)
+	}
+	if actor.ID != sub.OwnerUserID && actor.ID != p.PayerUserID {
+		return nil, api.Forbidden("only the subscription owner or the paying member may view payments")
 	}
 	return p, nil
 }

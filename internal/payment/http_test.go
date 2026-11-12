@@ -164,11 +164,17 @@ func TestPaymentPermissions(t *testing.T) {
 		t.Fatalf("payer = %v, want member %s", body["payer_user_id"], joined[0].UserID)
 	}
 
-	// Reads stay on the billing baseline: any authenticated user.
+	// Reads are owner-scoped (audit P1): the stranger gets 403, the
+	// owner still lists the payment.
 	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		base+"/api/v1/contributions/"+cid+"/payments", "", strangerTok)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger payments read: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/contributions/"+cid+"/payments", "", tok)
 	if code != http.StatusOK {
-		t.Fatalf("stranger payments read: status = %d: %v", code, body)
+		t.Fatalf("owner payments read: status = %d: %v", code, body)
 	}
 	if n, _ := body["meta"].(map[string]any)["total"].(float64); n != 1 {
 		t.Fatalf("payments total = %v", body["meta"])
@@ -507,4 +513,43 @@ func postWebhook(t *testing.T, client *http.Client, base, method, secret, payloa
 	var out map[string]any
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	return res.StatusCode, out
+}
+
+// TestPaymentReadsOwnerScoped pins the read-side ownership baseline
+// (audit P1): a payment is the subscription owner's record (the payer
+// sees their own receipt), so a stranger reads it as 403.
+func TestPaymentReadsOwnerScoped(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, _, _, joined, contributions := seedDebt(t, client, base, "pay-read", "12.00", 1)
+	c := contributionOf(t, contributions, joined[0].MemberID)
+	cid, _ := c["id"].(string)
+
+	code, body := pay(t, client, base, joined[0].Token, cid, `{"method":"manual","external_ref":"cash"}`)
+	if code != http.StatusCreated {
+		t.Fatalf("record payment: status = %d: %v", code, body)
+	}
+	paymentID, _ := body["id"].(string)
+
+	stranger, _ := testsupport.RegisterAndLogin(t, client, base, "pay-read-stranger")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/payments/"+paymentID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger reads payment: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/contributions/"+cid+"/payments", "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger lists payments: status = %d, want 403: %v", code, body)
+	}
+
+	// The payer may read their own receipt; the owner may too.
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/payments/"+paymentID, "", joined[0].Token); code != http.StatusOK {
+		t.Fatalf("payer reads payment: status = %d: %v", code, body)
+	}
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/payments/"+paymentID, "", tok); code != http.StatusOK {
+		t.Fatalf("owner reads payment: status = %d: %v", code, body)
+	}
 }

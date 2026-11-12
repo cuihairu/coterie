@@ -671,3 +671,36 @@ func TestUsageLimitWindowHalfOpen(t *testing.T) {
 		t.Fatalf("in-window over-cap: status = %d, want 409: %v", code, body)
 	}
 }
+
+// TestUsageReadsOwnerScoped pins the read-side ownership baseline
+// (audit P1): usage records are the subscription owner's ledger, so a
+// stranger reads them as 403.
+func TestUsageReadsOwnerScoped(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, base, "use-read", "10.00", 2, 1, 1)
+
+	code, body := record(t, client, base, tok, subID,
+		fmt.Sprintf(`{"member_id":%q,"amount":"1","unit":"GB"}`, joined[0].MemberID))
+	if code != http.StatusCreated {
+		t.Fatalf("record usage: status = %d: %v", code, body)
+	}
+	recordID, _ := body["id"].(string)
+
+	stranger, _ := testsupport.RegisterAndLogin(t, client, base, "use-read-stranger")
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/usage-records/"+recordID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger reads record: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+recordsPath+"/"+subID+"/usage-records", "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger lists records: status = %d, want 403: %v", code, body)
+	}
+
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/usage-records/"+recordID, "", tok); code != http.StatusOK {
+		t.Fatalf("owner reads record: status = %d: %v", code, body)
+	}
+}

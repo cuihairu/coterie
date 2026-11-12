@@ -46,6 +46,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	q := r.URL.Query()
 	filters, err := ParseFilters(q.Get("member_id"), q.Get("unit"), q.Get("from"), q.Get("to"))
 	if err != nil {
@@ -53,7 +58,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := api.ParsePage(r)
-	records, total, err := h.svc.List(r.Context(), r.PathValue("subID"), filters, page)
+	records, total, err := h.svc.List(r.Context(), u, r.PathValue("subID"), filters, page)
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -66,7 +71,12 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	record, err := h.svc.Get(r.Context(), r.PathValue("id"))
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	record, err := h.svc.Get(r.Context(), u, r.PathValue("id"))
 	if err != nil {
 		api.WriteError(w, err)
 		return

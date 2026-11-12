@@ -50,8 +50,13 @@ func (h *Handler) createPeriod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listPeriods(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	page := api.ParsePage(r)
-	periods, total, err := h.svc.ListPeriods(r.Context(), r.PathValue("subID"), page)
+	periods, total, err := h.svc.ListPeriods(r.Context(), u, r.PathValue("subID"), page)
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -64,7 +69,12 @@ func (h *Handler) listPeriods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPeriod(w http.ResponseWriter, r *http.Request) {
-	period, err := h.svc.GetPeriod(r.Context(), r.PathValue("id"))
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	period, err := h.svc.GetPeriod(r.Context(), u, r.PathValue("id"))
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -110,8 +120,13 @@ func (h *Handler) generate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listContributions(w http.ResponseWriter, r *http.Request) {
+	u, ok := actor(r)
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	page := api.ParsePage(r)
-	items, total, err := h.svc.ListContributions(r.Context(), r.PathValue("id"), page)
+	items, total, err := h.svc.ListContributions(r.Context(), u, r.PathValue("id"), page)
 	if err != nil {
 		api.WriteError(w, err)
 		return

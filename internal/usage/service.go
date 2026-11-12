@@ -401,7 +401,7 @@ func (s *Service) validateUsageWithPlugin(ctx context.Context, st *Store, subscr
 }
 
 // Get returns the record, mapping absence to 404.
-func (s *Service) Get(ctx context.Context, id string) (*UsageRecord, error) {
+func (s *Service) Get(ctx context.Context, actor *user.User, id string) (*UsageRecord, error) {
 	r, err := s.store.RecordByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -409,17 +409,17 @@ func (s *Service) Get(ctx context.Context, id string) (*UsageRecord, error) {
 	if r == nil {
 		return nil, api.NotFound("usage record %s not found", id)
 	}
+	if _, err := s.loadSubscriptionForOwner(ctx, actor, r.SubscriptionID); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
-// List returns the subscription's records under the filters.
-func (s *Service) List(ctx context.Context, subscriptionID string, f ListFilters, page api.Page) ([]UsageRecord, int64, error) {
-	sub, err := s.store.SubscriptionByID(ctx, subscriptionID)
-	if err != nil {
+// List returns the subscription's records under the filters to its
+// owner.
+func (s *Service) List(ctx context.Context, actor *user.User, subscriptionID string, f ListFilters, page api.Page) ([]UsageRecord, int64, error) {
+	if _, err := s.loadSubscriptionForOwner(ctx, actor, subscriptionID); err != nil {
 		return nil, 0, err
-	}
-	if sub == nil {
-		return nil, 0, api.NotFound("subscription %s not found", subscriptionID)
 	}
 	return s.store.ListBySubscription(ctx, subscriptionID, f, page)
 }

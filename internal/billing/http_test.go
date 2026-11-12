@@ -582,3 +582,36 @@ func TestProratedSplit(t *testing.T) {
 		t.Fatalf("full-window amounts = %v, want [15.00 15.00]", got)
 	}
 }
+
+// TestBillingReadsOwnerScoped pins the read-side ownership baseline
+// (audit P1): periods and contributions are the subscription owner's
+// records, so a non-owner reads them as 403.
+func TestBillingReadsOwnerScoped(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, _, subID := testsupport.SeedChain(t, client, base, "bill-read", "30.00", 4)
+	period := openPeriod(t, client, base, tok, subID, "2026-10-01", "2026-11-01")
+	periodID, _ := period["id"].(string)
+
+	stranger, _ := testsupport.RegisterAndLogin(t, client, base, "bill-read-stranger")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger reads period: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+periodsPath+"/"+subID+"/billing-periods", "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger lists periods: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID+"/contributions", "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger lists contributions: status = %d, want 403: %v", code, body)
+	}
+
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/billing-periods/"+periodID, "", tok); code != http.StatusOK {
+		t.Fatalf("owner reads period: status = %d: %v", code, body)
+	}
+}

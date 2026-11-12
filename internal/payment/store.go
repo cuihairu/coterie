@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/cuihairu/coterie/internal/billing"
+	"github.com/cuihairu/coterie/internal/subscription"
 	"github.com/cuihairu/coterie/pkg/api"
 )
 
@@ -36,6 +37,20 @@ type contributionSettled struct {
 	SubscriptionID  string
 	OwnerUserID     string
 	MemberUserID    string
+}
+
+// SubscriptionByID returns the subscription, or nil when absent — the
+// owner anchor for read-side checks.
+func (s *Store) SubscriptionByID(ctx context.Context, id string) (*subscription.Subscription, error) {
+	var sub subscription.Subscription
+	err := s.db.WithContext(ctx).First(&sub, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &sub, nil
 }
 
 // ContributionForPayment resolves a contribution with its subscription

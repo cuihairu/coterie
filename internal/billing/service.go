@@ -93,7 +93,7 @@ func (s *Service) CreatePeriod(ctx context.Context, actor *user.User, subscripti
 }
 
 // GetPeriod returns the period, mapping absence to 404.
-func (s *Service) GetPeriod(ctx context.Context, id string) (*BillingPeriod, error) {
+func (s *Service) GetPeriod(ctx context.Context, actor *user.User, id string) (*BillingPeriod, error) {
 	p, err := s.store.PeriodByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -101,17 +101,16 @@ func (s *Service) GetPeriod(ctx context.Context, id string) (*BillingPeriod, err
 	if p == nil {
 		return nil, api.NotFound("billing period %s not found", id)
 	}
+	if _, err := s.loadSubscriptionForOwner(ctx, actor, p.SubscriptionID); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
-// ListPeriods returns the subscription's periods.
-func (s *Service) ListPeriods(ctx context.Context, subscriptionID string, page api.Page) ([]BillingPeriod, int64, error) {
-	sub, err := s.store.SubscriptionByID(ctx, subscriptionID)
-	if err != nil {
+// ListPeriods returns the subscription's periods to its owner.
+func (s *Service) ListPeriods(ctx context.Context, actor *user.User, subscriptionID string, page api.Page) ([]BillingPeriod, int64, error) {
+	if _, err := s.loadSubscriptionForOwner(ctx, actor, subscriptionID); err != nil {
 		return nil, 0, err
-	}
-	if sub == nil {
-		return nil, 0, api.NotFound("subscription %s not found", subscriptionID)
 	}
 	return s.store.ListPeriods(ctx, subscriptionID, page)
 }
@@ -119,7 +118,7 @@ func (s *Service) ListPeriods(ctx context.Context, subscriptionID string, page a
 // Close freezes a period: no further generation or amount edits. The
 // period must be open; closing is one-way.
 func (s *Service) Close(ctx context.Context, actor *user.User, periodID string) (*BillingPeriod, error) {
-	p, err := s.GetPeriod(ctx, periodID)
+	p, err := s.GetPeriod(ctx, actor, periodID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,14 +146,14 @@ func (s *Service) Close(ctx context.Context, actor *user.User, periodID string) 
 	if err != nil {
 		return nil, err
 	}
-	return s.GetPeriod(ctx, p.ID)
+	return s.GetPeriod(ctx, actor, p.ID)
 }
 
 // Generate composes the period's contributions in one go. The split
 // distributes the subscription price exactly — rounding remainders
 // (single cents) go to the earliest-joined members.
 func (s *Service) Generate(ctx context.Context, actor *user.User, periodID string, req GenerateRequest) ([]Contribution, error) {
-	p, err := s.GetPeriod(ctx, periodID)
+	p, err := s.GetPeriod(ctx, actor, periodID)
 	if err != nil {
 		return nil, err
 	}
@@ -361,8 +360,8 @@ func (s *Service) UpdateContribution(ctx context.Context, actor *user.User, id s
 }
 
 // ListContributions returns the period's contributions.
-func (s *Service) ListContributions(ctx context.Context, periodID string, page api.Page) ([]Contribution, int64, error) {
-	if _, err := s.GetPeriod(ctx, periodID); err != nil {
+func (s *Service) ListContributions(ctx context.Context, actor *user.User, periodID string, page api.Page) ([]Contribution, int64, error) {
+	if _, err := s.GetPeriod(ctx, actor, periodID); err != nil {
 		return nil, 0, err
 	}
 	return s.store.ListContributions(ctx, periodID, page)

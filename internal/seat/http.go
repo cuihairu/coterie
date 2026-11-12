@@ -49,8 +49,13 @@ func (h *Handler) provision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	actor, ok := auth.UserFrom(r.Context())
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
 	page := api.ParsePage(r)
-	seats, total, err := h.svc.List(r.Context(), r.PathValue("subID"), page)
+	seats, total, err := h.svc.List(r.Context(), actor, r.PathValue("subID"), page)
 	if err != nil {
 		api.WriteError(w, err)
 		return
@@ -63,7 +68,12 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	seat, err := h.svc.Get(r.Context(), r.PathValue("id"))
+	actor, ok := auth.UserFrom(r.Context())
+	if !ok {
+		api.WriteError(w, api.Unauthorized("missing bearer token"))
+		return
+	}
+	seat, err := h.svc.Get(r.Context(), actor, r.PathValue("id"))
 	if err != nil {
 		api.WriteError(w, err)
 		return

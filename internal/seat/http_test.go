@@ -278,7 +278,43 @@ func TestSeatOwnerOnlyMutations(t *testing.T) {
 	// Reads stay open to authenticated users.
 	code, _ = testsupport.DoAuthJSON(t, client, http.MethodGet,
 		srv.URL+"/api/v1/subscriptions/"+subID+"/seats", "", other)
-	if code != http.StatusOK {
-		t.Fatalf("non-owner read status = %d, want 200", code)
+	if code != http.StatusForbidden {
+		t.Fatalf("non-owner read status = %d, want 403 (audit P1: reads are owner-scoped)", code)
+	}
+}
+
+// TestSeatReadsOwnerScoped pins the read-side ownership baseline (audit
+// P1): a seat is the subscription owner's resource, so a stranger reads
+// it as 403.
+func TestSeatReadsOwnerScoped(t *testing.T) {
+	db := testsupport.NewDB(t)
+	srv := testsupport.NewServer(t, db)
+	client, base := srv.Client(), srv.URL
+	tok, ownerID := testsupport.RegisterAndLogin(t, client, base, "seat-read")
+	subID := seedSubscription(t, client, base, "read", tok, ownerID, 2)
+
+	code, seats := testsupport.DoAuthJSON(t, client, http.MethodPost,
+		base+"/api/v1/subscriptions/"+subID+"/seats", `{"count":1}`, tok)
+	if code != http.StatusCreated {
+		t.Fatalf("provision seat: status = %d: %v", code, seats)
+	}
+	items, _ := seats["items"].([]any)
+	seatID, _ := items[0].(map[string]any)["id"].(string)
+
+	stranger, _ := testsupport.RegisterAndLogin(t, client, base, "seat-read-stranger")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/seats/"+seatID, "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger reads seat: status = %d, want 403: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/subscriptions/"+subID+"/seats", "", stranger)
+	if code != http.StatusForbidden {
+		t.Fatalf("stranger lists seats: status = %d, want 403: %v", code, body)
+	}
+
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/seats/"+seatID, "", tok); code != http.StatusOK {
+		t.Fatalf("owner reads seat: status = %d: %v", code, body)
 	}
 }

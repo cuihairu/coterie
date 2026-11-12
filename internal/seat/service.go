@@ -101,7 +101,7 @@ func (s *Service) ReleaseMemberSeatsOn(ctx context.Context, db *gorm.DB, memberI
 }
 
 // Get returns the seat, mapping absence to 404.
-func (s *Service) Get(ctx context.Context, id string) (*Seat, error) {
+func (s *Service) Get(ctx context.Context, actor *user.User, id string) (*Seat, error) {
 	seat, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -109,13 +109,23 @@ func (s *Service) Get(ctx context.Context, id string) (*Seat, error) {
 	if seat == nil {
 		return nil, api.NotFound("seat %s not found", id)
 	}
+	sub, err := s.loadSubscription(ctx, seat.SubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireOwner(sub, actor); err != nil {
+		return nil, err
+	}
 	return seat, nil
 }
 
-// List returns the subscription's seats.
-func (s *Service) List(ctx context.Context, subscriptionID string, page api.Page) ([]Seat, int64, error) {
+// List returns the subscription's seats to its owner.
+func (s *Service) List(ctx context.Context, actor *user.User, subscriptionID string, page api.Page) ([]Seat, int64, error) {
 	sub, err := s.loadSubscription(ctx, subscriptionID)
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := requireOwner(sub, actor); err != nil {
 		return nil, 0, err
 	}
 	return s.store.ListBySubscription(ctx, sub.ID, page)
@@ -124,7 +134,7 @@ func (s *Service) List(ctx context.Context, subscriptionID string, page api.Page
 // Assign gives a free seat to an active member of the subscription's
 // coterie. Occupying an occupied or disabled seat is a 409.
 func (s *Service) Assign(ctx context.Context, actor *user.User, seatID string, req AssignRequest) (*Seat, error) {
-	seat, err := s.Get(ctx, seatID)
+	seat, err := s.Get(ctx, actor, seatID)
 	if err != nil {
 		return nil, err
 	}
@@ -186,13 +196,13 @@ func (s *Service) Assign(ctx context.Context, actor *user.User, seatID string, r
 				"seat", seat.ID)
 		}
 	}
-	return s.Get(ctx, seat.ID)
+	return s.Get(ctx, actor, seat.ID)
 }
 
 // Release frees an occupied seat. Releasing a free seat is a no-op;
 // disabled seats must be re-enabled first.
 func (s *Service) Release(ctx context.Context, actor *user.User, seatID string) (*Seat, error) {
-	seat, err := s.Get(ctx, seatID)
+	seat, err := s.Get(ctx, actor, seatID)
 	if err != nil {
 		return nil, err
 	}
@@ -232,13 +242,13 @@ func (s *Service) Release(ctx context.Context, actor *user.User, seatID string) 
 	if err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, seat.ID)
+	return s.Get(ctx, actor, seat.ID)
 }
 
 // Update patches label, metadata, and the free⇄disabled toggle. The
 // occupied status is owned by assign/release, not by PATCH.
 func (s *Service) Update(ctx context.Context, actor *user.User, seatID string, req UpdateSeatRequest) (*Seat, error) {
-	seat, err := s.Get(ctx, seatID)
+	seat, err := s.Get(ctx, actor, seatID)
 	if err != nil {
 		return nil, err
 	}
