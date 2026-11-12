@@ -624,3 +624,50 @@ func TestRecordUsageProjectsResourceUsed(t *testing.T) {
 		t.Fatalf("explicit seat record: %d %v", code, body)
 	}
 }
+
+// TestUsageLimitWindowHalfOpen pins the period window's half-open
+// convention (audit P1): billing reads [start_date, end_date) — splitUsage
+// sums recorded_at >= start AND < end raw — so the quota's covered window
+// must match, or a record stamped on the end_date day would be capped by
+// one period while billed in the next. quota_limit rides the same window.
+func TestUsageLimitWindowHalfOpen(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+	tok, _, subID, _, joined := testsupport.SeedCircle(t, client, base, "use-halfopen", "10.00", 2, 1, 1)
+	m := joined[0]
+
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+recordsPath+"/"+subID,
+		`{"sharing_policy":{"mode":"quota","usage_limit":{"unit":"credits","per_period":"100"}}}`, tok)
+	if code != http.StatusOK {
+		t.Fatalf("set policy: status = %d: %v", code, body)
+	}
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	openPeriodForUsage(t, client, base, tok, subID,
+		now.AddDate(0, 0, -2).Format("2006-01-02"),
+		now.AddDate(0, 0, 1).Format("2006-01-02"))
+	boundary := now.AddDate(0, 0, 1).Format("2006-01-02") + "T10:00:00Z"
+	inside := now.Format("2006-01-02") + "T10:00:00Z"
+
+	post := func(amount, at string) (int, map[string]any) {
+		return record(t, client, base, tok, subID,
+			fmt.Sprintf(`{"member_id":%q,"amount":%q,"unit":"credits","recorded_at":%q}`, m.MemberID, amount, at))
+	}
+
+	// Records on the end_date day sit past the window, so they never
+	// engage the cap — however much the member posts there.
+	if code, body := post("100", boundary); code != http.StatusCreated {
+		t.Fatalf("boundary record: status = %d: %v", code, body)
+	}
+	if code, body := post("100", boundary); code != http.StatusCreated {
+		t.Fatalf("boundary record past the window was capped: status = %d: %v (end_date must stay excluded)", code, body)
+	}
+
+	// Inside the window the cap still engages at the same totals.
+	if code, body := post("100", inside); code != http.StatusCreated {
+		t.Fatalf("in-window record: status = %d: %v", code, body)
+	}
+	if code, body := post("0.01", inside); code != http.StatusConflict {
+		t.Fatalf("in-window over-cap: status = %d, want 409: %v", code, body)
+	}
+}

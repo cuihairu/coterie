@@ -181,11 +181,14 @@ func (s *Store) SetSeatMetadata(ctx context.Context, seatID string, metadata dat
 		Update("metadata", metadata).Error
 }
 
-// PeriodCovering returns the billing period whose [start_date,
-// end_date] window contains the record's date, or nil when none does
-// (the ledger precedes periods; settlement needs the window, not the
-// record). Overlapping windows cannot exist per billing invariants,
-// but the earliest window wins deterministically regardless.
+// PeriodCovering returns the billing period whose half-open
+// [start_date, end_date) window contains the record's date, or nil when
+// none does (the ledger precedes periods; settlement needs the window,
+// not the record). The end_date stays excluded — billing's convention
+// (splitUsage sums recorded_at < end_date raw, rollover = next start on
+// end_date) — so quota and share never disagree about a boundary-day
+// record. Overlapping windows cannot exist per billing invariants, but
+// the earliest window wins deterministically regardless.
 func (s *Store) PeriodCovering(ctx context.Context, subscriptionID string, at time.Time) (*billingPeriodWindow, error) {
 	day := at.UTC().Format("2006-01-02")
 	var rows []struct {
@@ -195,7 +198,7 @@ func (s *Store) PeriodCovering(ctx context.Context, subscriptionID string, at ti
 	err := s.db.WithContext(ctx).
 		Table("billing_periods").
 		Select("start_date::text AS start, end_date::text AS end").
-		Where("subscription_id = ? AND start_date <= ? AND end_date >= ?", subscriptionID, day, day).
+		Where("subscription_id = ? AND start_date <= ? AND end_date > ?", subscriptionID, day, day).
 		Order("start_date ASC").
 		Limit(1).
 		Scan(&rows).Error
@@ -216,21 +219,21 @@ func (s *Store) PeriodCovering(ctx context.Context, subscriptionID string, at ti
 	return &billingPeriodWindow{Start: start, End: end}, nil
 }
 
-// billingPeriodWindow is a period's inclusive date bounds.
+// billingPeriodWindow is a period's half-open usage window [Start, End).
 type billingPeriodWindow struct {
 	Start database.Date
 	End   database.Date
 }
 
 // SumMemberUsage totals one member's ledger rows for a unit across the
-// period window: recorded_at in [start 00:00, end+1d 00:00).
+// period window: recorded_at in [start 00:00, end 00:00).
 func (s *Store) SumMemberUsage(ctx context.Context, subscriptionID, memberID, unit string, w *billingPeriodWindow) (string, error) {
 	var total *string
 	err := s.db.WithContext(ctx).
 		Table("usage_records").
 		Select("SUM(amount)").
 		Where("subscription_id = ? AND member_id = ? AND unit = ? AND recorded_at >= ? AND recorded_at < ?",
-			subscriptionID, memberID, unit, w.Start.Time, w.End.Time.AddDate(0, 0, 1)).
+			subscriptionID, memberID, unit, w.Start.Time, w.End.Time).
 		Scan(&total).Error
 	if err != nil {
 		return "", err
@@ -250,7 +253,7 @@ func (s *Store) SumSubscriptionUsage(ctx context.Context, subscriptionID, unit s
 		Table("usage_records").
 		Select("SUM(amount)").
 		Where("subscription_id = ? AND unit = ? AND recorded_at >= ? AND recorded_at < ?",
-			subscriptionID, unit, w.Start.Time, w.End.Time.AddDate(0, 0, 1)).
+			subscriptionID, unit, w.Start.Time, w.End.Time).
 		Scan(&total).Error
 	if err != nil {
 		return "", err
