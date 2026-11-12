@@ -1,6 +1,7 @@
 package coterie_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,11 +11,13 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cuihairu/coterie/internal/app"
 	"github.com/cuihairu/coterie/internal/payment"
+	"github.com/cuihairu/coterie/internal/provider"
 	"github.com/cuihairu/coterie/internal/testsupport"
 	"github.com/cuihairu/coterie/providers/claude"
 )
@@ -111,6 +114,135 @@ func TestMarketplaceAcceptAdmitsMember(t *testing.T) {
 	}
 	if !memberUserIDs(t, client, base, ownerTok, coterieID)[reqID] {
 		t.Fatalf("requester %s not admitted after accept", reqID)
+	}
+}
+
+// parkingGuard implements provider.AdmissionGuard: the FIRST consult
+// parks until released — parking that admission deterministically
+// between the capacity checks and the member insert, so the second
+// admission's outcome pins whether check and insert are serialized.
+type parkingGuard struct {
+	consults atomic.Int32
+	started  chan struct{} // closed when the first consult parks
+	release  chan struct{} // the parked consult returns when closed
+}
+
+func (p *parkingGuard) Slug() string { return "ts-cot-toctou" }
+
+func (p *parkingGuard) CheckAdmission(ctx context.Context, _ provider.GuardInput) error {
+	if p.consults.Add(1) == 1 {
+		close(p.started)
+		select {
+		case <-p.release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+// TestConcurrentAdmissionsRespectMemberCap pins the admission TOCTOU fix
+// (audit P1): while the first admission sits between its capacity check
+// and its member insert, a second admission for the last slot must read
+// the fresh count — under the coterie row lock it queues behind the
+// parked transaction and 409s; without the lock it sails through and
+// both admit.
+func TestConcurrentAdmissionsRespectMemberCap(t *testing.T) {
+	guard := &parkingGuard{started: make(chan struct{}), release: make(chan struct{})}
+	srv := testsupport.NewServer(t, testsupport.NewDB(t), app.WithProviderPlugins(guard))
+	client, base := srv.Client(), srv.URL
+
+	// Custom provider → product → subscription → coterie, then cap
+	// max_members at 2 (owner + exactly one more slot).
+	ownerTok, ownerID := testsupport.RegisterAndLogin(t, client, base, "cot-toctou")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/providers",
+		`{"slug":"ts-cot-toctou","name":"Toctou Provider","category":"video"}`, ownerTok)
+	if code != http.StatusCreated {
+		t.Fatalf("seed provider: status = %d: %v", code, body)
+	}
+	providerID, _ := body["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/products",
+		fmt.Sprintf(`{"provider_id":%q,"name":"Toctou Product"}`, providerID), ownerTok)
+	if code != http.StatusCreated {
+		t.Fatalf("seed product: status = %d: %v", code, body)
+	}
+	productID, _ := body["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/subscriptions",
+		fmt.Sprintf(`{"product_id":%q,"owner_user_id":%q,"billing_cycle":"monthly","price":"19.99","currency":"USD","start_date":"2026-10-01","max_seats":4}`, productID, ownerID), ownerTok)
+	if code != http.StatusCreated {
+		t.Fatalf("seed subscription: status = %d: %v", code, body)
+	}
+	subID, _ := body["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPost, base+"/api/v1/coteries",
+		fmt.Sprintf(`{"subscription_id":%q,"name":"Toctou Circle","capacity":4}`, subID), ownerTok)
+	if code != http.StatusCreated {
+		t.Fatalf("create coterie: status = %d: %v", code, body)
+	}
+	coterieID, _ := body["id"].(string)
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+"/api/v1/coteries/"+coterieID, `{"status":"open","listing":"public"}`, ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("open coterie: status = %d: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodPatch,
+		base+"/api/v1/subscriptions/"+subID, `{"max_members":2}`, ownerTok)
+	if code != http.StatusOK {
+		t.Fatalf("cap members: status = %d: %v", code, body)
+	}
+
+	// Two pending join requests, both eligible while a seat shows free.
+	requestIDs := make([]string, 2)
+	for i := range requestIDs {
+		reqTok, _ := testsupport.RegisterAndLogin(t, client, base, fmt.Sprintf("cot-toctou-r%d", i))
+		code, body := fileJoinRequest(t, client, base, reqTok, coterieID)
+		if code != http.StatusCreated {
+			t.Fatalf("file join request %d: status = %d: %v", i, code, body)
+		}
+		requestIDs[i], _ = body["id"].(string)
+	}
+
+	// Admission #1 parks at the guard, capacity checks already passed.
+	// Admission #2 starts while it sits there: under the fix #2 queues on
+	// the coterie row lock and cannot settle until the parked one
+	// commits; without the lock it reads the stale count and settles
+	// immediately. The wait below turns that difference into a verdict.
+	results := make(chan int, 2)
+	go func() {
+		code, _ := acceptJoinRequest(t, client, base, ownerTok, requestIDs[0])
+		results <- code
+	}()
+	<-guard.started
+	go func() {
+		code, _ := acceptJoinRequest(t, client, base, ownerTok, requestIDs[1])
+		results <- code
+	}()
+	var early int
+	select {
+	case early = <-results:
+	case <-time.After(3 * time.Second):
+	}
+	close(guard.release)
+	codes := []int{}
+	if early != 0 {
+		codes = append(codes, early)
+	}
+	for len(codes) < 2 {
+		codes = append(codes, <-results)
+	}
+
+	admitted := 0
+	for _, c := range codes {
+		if c == http.StatusOK {
+			admitted++
+		} else if c != http.StatusConflict {
+			t.Errorf("accept: status = %d, want 200 or 409: %v", c, codes)
+		}
+	}
+	if admitted != 1 {
+		t.Fatalf("admissions straddling the parked check admitted %d, want exactly 1 (codes %v)", admitted, codes)
+	}
+	if ids := memberUserIDs(t, client, base, ownerTok, coterieID); len(ids) != 2 {
+		t.Fatalf("active members = %d, want exactly 2 (owner + winner): %v", len(ids), ids)
 	}
 }
 

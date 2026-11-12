@@ -301,13 +301,17 @@ func (s *Service) Join(ctx context.Context, actor *user.User, req AcceptInvitati
 	if c == nil {
 		return nil, api.NotFound("coterie %s not found", inv.CoterieID)
 	}
-	m, err := s.admitUser(ctx, s.store.DB().WithContext(ctx), c, actor.ID, inv.Role)
-	if err != nil {
-		return nil, err
-	}
+	// Admission and the invitation flip share one transaction: the
+	// member insert and accepted_at either both land or neither does.
+	var m *Member
 	accepted := false
 	err = s.store.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		ok, err := s.store.MarkInvitationAccepted(ctx, inv.ID, now)
+		var err error
+		m, err = s.admitUserInTx(ctx, tx, c, actor.ID, inv.Role)
+		if err != nil {
+			return err
+		}
+		ok, err := NewStore(tx).MarkInvitationAccepted(ctx, inv.ID, now)
 		accepted = ok
 		return err
 	})
@@ -343,16 +347,43 @@ func (s *Service) AdmitMember(ctx context.Context, operator *user.User, coterieI
 // atomically. The user must already be authorized to admit (the owner's
 // accept is recorded on the join request).
 func (s *Service) AdmitUserInTx(ctx context.Context, db *gorm.DB, c *Coterie, userID, role string) (*Member, error) {
-	return s.admitUser(ctx, db, c, userID, role)
+	return s.admitUserInTx(ctx, db, c, userID, role)
 }
 
 // admitUser runs the shared admission checks and inserts the active
-// member. db allows callers to keep larger transactions around it.
+// member in its own transaction.
 func (s *Service) admitUser(ctx context.Context, db *gorm.DB, c *Coterie, userID, role string) (*Member, error) {
-	if c.Status != StatusOpen && c.Status != StatusActive {
-		return nil, api.Conflict("coterie is not accepting members while %s", c.Status)
+	var m *Member
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		m, err = s.admitUserInTx(ctx, tx, c, userID, role)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
+	return m, nil
+}
+
+// admitUserInTx runs the shared admission checks and inserts the active
+// member inside the caller's transaction. The coterie row lock is the
+// serialization point: capacity and member-count checks read the same
+// locked row every admission path queues on, so concurrent admissions
+// cannot both see room and oversell the circle (audit P1).
+func (s *Service) admitUserInTx(ctx context.Context, db *gorm.DB, c *Coterie, userID, role string) (*Member, error) {
 	st := NewStore(db)
+	// Reload under the lock: the caller's c is a pre-transaction read —
+	// status may have flipped to closed meanwhile.
+	locked, err := st.CoterieForUpdate(ctx, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	if locked == nil {
+		return nil, api.NotFound("coterie %s not found", c.ID)
+	}
+	if locked.Status != StatusOpen && locked.Status != StatusActive {
+		return nil, api.Conflict("coterie is not accepting members while %s", locked.Status)
+	}
 	// The owner's block list (design D26) gates every admission path —
 	// invitation acceptance, marketplace accept, and payment-gate
 	// confirmation all funnel through here.

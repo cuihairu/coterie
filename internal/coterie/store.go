@@ -242,6 +242,24 @@ func (s *Store) MarkInvitationAccepted(ctx context.Context, id string, now time.
 	return res.RowsAffected > 0, res.Error
 }
 
+// CoterieForUpdate loads the coterie holding the row lock — the
+// serialization point for admission: capacity checks and the member
+// insert take turns on this lock instead of racing past each other.
+// The receiver must be inside a transaction.
+func (s *Store) CoterieForUpdate(ctx context.Context, id string) (*Coterie, error) {
+	var c Coterie
+	err := s.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&c, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 // SoftLeftMember sets left_at on the member.
 func SoftLeftMember(tx *gorm.DB, memberID string, now time.Time) error {
 	return tx.Model(&Member{}).
