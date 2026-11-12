@@ -60,3 +60,14 @@
 - `internal/audit` 只提供审计读接口，写入函数却在 `internal/audit/record.go` 中被所有领域模块直接调用；读门面与写入 helper 分属不同调用面（`internal/audit/record.go:32`、`internal/audit/service.go:13`）。
 - `apps/web/src/lib/api.ts` 除 API 传输、会话存储与类型定义外，还保存中文审计标签 UI 字典，传输契约和文案混在一个文件（`apps/web/src/lib/api.ts:52`、`apps/web/src/lib/api.ts:318`）。
 - `apps/web/src/routes/_app/coteries.$coterieId.tsx` 以单路由承载多业务面板，而其他路由按旅程拆分，页面内子域可下沉为组件或 hooks（`apps/web/src/routes/_app/coteries.$coterieId.tsx:57`）。
+
+## 审核修复批（巡检单 2026-10-20，2026-11-12 执行）
+
+- [x] P0#1 Stripe webhook secret 缺失时签名形同虚设：启动期强校验 + 适配器 fail-closed（无 whsec 拒签）— 1ba7a0f，apps/server main_test 双子用例 + internal/payment/stripe_test.go noSecret；internal/payment/stripe.go ParseWebhook 空密钥守卫、apps/server/main.go whsec 缺省跳过
+- [x] P1#2 入圈费报价把已退出成员算入少收：GateQuote 补 left_at IS NULL — bb53430，TestGateQuoteExcludesDepartedMembers（12.00 过 2 人报 6.00，红 4.00→绿 6.00）；internal/marketplace/store.go:243
+- [x] P1#3 入圈容量 TOCTOU 并发超卖：admitUserInTx 持 coterie 行锁（CoterieForUpdate）串行化检查与插入 — 83ccb2c，TestConcurrentAdmissionsRespectMemberCap（parkingGuard 编排：旧码 [200 200] 超卖→红，新码 200+409 恰一成一败→绿）；internal/coterie/store.go:249、internal/coterie/service.go admitUserInTx
+- [x] P1#7 邀请接受两段事务不一致：Join 单事务收口（admit + MarkInvitationAccepted 同 tx，标记失败即回滚）— 83ccb2c（与 #3 同批，代码同重构）
+- [x] P1#4 用量限额窗口与分摊窗口口径冲突：usage 对齐 billing 半开 [start_date, end_date)——PeriodCovering 改 end_date > day、Sum 改 < end（去掉 end+1d）— ae71527，TestUsageLimitWindowHalfOpen（末日记录旧码计入超限 409→红，新码不计入→绿）；internal/usage/store.go:189/227/247
+- [x] P1#5 私有圈子存在性泄露：Get/ListMembers 补 requireVisible（非公开圈外人 404，与未上架申请同语义；admin 放行）— dd3c1d8，TestPrivateCoterieHiddenFromOutsiders（外人读私有圈旧码 200 泄露 listing/member_count→红，新码 404→绿）；internal/coterie/service.go requireVisible
+- [x] P1#6 跨租户财务读基线过宽：billing/payments/usage/seats 读接口收 actor 验属主（payment 另放行 payer 本人）— b331549，TestBillingReadsOwnerScoped/TestPaymentReadsOwnerScoped/TestUsageReadsOwnerScoped/TestSeatReadsOwnerScoped（各旧码 200→红，新码 403→绿）+ 更新 TestPaymentPermissions/TestSeatOwnerOnlyMutations 旧基线（越权读 200→403）；internal/billing/service.go GetPeriod/ListPeriods/ListContributions、internal/payment/service.go List/Get、internal/usage/service.go Get/List、internal/seat/service.go Get/List
+- [x] 批次收口：go test ./... 26 包全绿 0 skip、go vet 0 错、golangci-lint 0 issues；提交 1ba7a0f..b331549 全部推送 origin main（P2 简列 9 项不在本批指令范围，未推进）
