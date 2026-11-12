@@ -141,7 +141,7 @@ func (s *Service) Create(ctx context.Context, actor *user.User, req CreateCoteri
 }
 
 // Get returns the coterie with its derived display state.
-func (s *Service) Get(ctx context.Context, id string) (*CoterieView, error) {
+func (s *Service) Get(ctx context.Context, actor *user.User, id string) (*CoterieView, error) {
 	c, err := s.store.GetCoterie(ctx, id)
 	if err != nil {
 		return nil, err
@@ -149,7 +149,30 @@ func (s *Service) Get(ctx context.Context, id string) (*CoterieView, error) {
 	if c == nil {
 		return nil, api.NotFound("coterie %s not found", id)
 	}
+	if err := s.requireVisible(ctx, actor, c); err != nil {
+		return nil, err
+	}
 	return s.view(ctx, c)
+}
+
+// requireVisible hides unlisted circles from non-members (design D10:
+// circles stay invisible until the owner lists them). Outsiders get the
+// same 404 an absent coterie returns, so the read cannot be used to
+// probe for private circles by id.
+func (s *Service) requireVisible(ctx context.Context, actor *user.User, c *Coterie) error {
+	if c.Listing == ListingPublic || (actor != nil && actor.Role == user.RoleAdmin) {
+		return nil
+	}
+	if actor != nil {
+		m, err := s.store.ActiveMemberByUser(ctx, c.ID, actor.ID)
+		if err != nil {
+			return err
+		}
+		if m != nil {
+			return nil
+		}
+	}
+	return api.NotFound("coterie %s not found", c.ID)
 }
 
 // List returns coteries, optionally filtered by subscription.
@@ -264,8 +287,8 @@ func (s *Service) Update(ctx context.Context, actor *user.User, id string, req U
 }
 
 // ListMembers returns the active members of the coterie.
-func (s *Service) ListMembers(ctx context.Context, coterieID string, page api.Page) ([]Member, int64, error) {
-	if _, err := s.Get(ctx, coterieID); err != nil {
+func (s *Service) ListMembers(ctx context.Context, actor *user.User, coterieID string, page api.Page) ([]Member, int64, error) {
+	if _, err := s.Get(ctx, actor, coterieID); err != nil {
 		return nil, 0, err
 	}
 	return s.store.ListMembers(ctx, coterieID, page)

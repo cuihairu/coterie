@@ -486,3 +486,45 @@ func TestCoterieReadsNotFound(t *testing.T) {
 		t.Fatalf("invitations as plain member: status = %d, want 403: %v", code, body)
 	}
 }
+
+// TestPrivateCoterieHiddenFromOutsiders pins the read-side visibility
+// rule (audit P1, design D10): an unlisted circle reads as 404 to
+// anyone who is not an active member — the same existence-hiding the
+// marketplace applies to join requests — while members read freely and
+// listing public reopens the read to outsiders.
+func TestPrivateCoterieHiddenFromOutsiders(t *testing.T) {
+	srv := testsupport.NewServer(t, testsupport.NewDB(t))
+	client, base := srv.Client(), srv.URL
+
+	// SeedCircle leaves the circle unlisted (D10 default).
+	ownerTok, _, _, coterieID, joined := testsupport.SeedCircle(t, client, base, "cot-hidden", "9.99", 4, 2, 1)
+
+	outsider, _ := testsupport.RegisterAndLogin(t, client, base, "cot-hidden-out")
+	code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, ``, outsider)
+	if code != http.StatusNotFound {
+		t.Fatalf("outsider reads private coterie: status = %d, want 404: %v", code, body)
+	}
+	code, body = testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID+"/members", ``, outsider)
+	if code != http.StatusNotFound {
+		t.Fatalf("outsider lists private members: status = %d, want 404: %v", code, body)
+	}
+
+	// Members (owner included) keep reading their own circle.
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, ``, joined[0].Token); code != http.StatusOK {
+		t.Fatalf("member reads coterie: status = %d: %v", code, body)
+	}
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, ``, ownerTok); code != http.StatusOK {
+		t.Fatalf("owner reads coterie: status = %d: %v", code, body)
+	}
+
+	// Listing public reopens the read (the directory exposes the entry).
+	publishListing(t, client, base, ownerTok, coterieID)
+	if code, body := testsupport.DoAuthJSON(t, client, http.MethodGet,
+		base+"/api/v1/coteries/"+coterieID, ``, outsider); code != http.StatusOK {
+		t.Fatalf("outsider reads public coterie: status = %d: %v", code, body)
+	}
+}
