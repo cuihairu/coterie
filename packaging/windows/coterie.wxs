@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Coterie nightly MSI. Built with WiX v3: candle/light receive the exe and
-  license paths via -d defines, so this file stays independent of the build
-  directory. Installs the server exe under Program Files. The server is a
-  console program configured through environment variables, so the package
-  intentionally ships no shortcuts or services.
+  Coterie nightly MSI, built with WiX v3. The exe and license are named by
+  bare filename: candle resolves a File Source against the directory holding
+  the .wxs, so the build step copies this file next to dist/coterie.exe and
+  LICENSE and compiles it there. No -d preprocessor defines are used — a
+  define value arrives at candle truncated to ".exe" (CNDL0103). Installs
+  the server exe under Program Files. The server is a console program
+  configured through environment variables, so the package ships no
+  shortcuts or services.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="Coterie" Language="1033" Version="0.0.0.0"
@@ -31,10 +34,10 @@
   <Fragment>
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="MainExecutable" Guid="*">
-        <File Id="CoterieExe" Source="$(var.CoterieExe)" KeyPath="yes" />
+        <File Id="CoterieExe" Source="coterie.exe" KeyPath="yes" />
       </Component>
       <Component Id="License" Guid="*">
-        <File Id="LicenseFile" Source="$(var.LicenseFile)" />
+        <File Id="LicenseFile" Source="LICENSE" />
       </Component>
     </ComponentGroup>
   </Fragment>

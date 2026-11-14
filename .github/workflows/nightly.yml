@@ -162,13 +162,21 @@ jobs:
       - name: Build MSI installer
         shell: pwsh
         run: |
-          # Forward slashes for the -d define values: candle treats a
-          # backslash in a define as an escape sequence, which truncates
-          # "dist\coterie.exe" to ".exe" (error CNDL0103). WiX normalises
-          # the slashes to the OS separator when it resolves the source.
-          candle -arch x64 -dCoterieExe=dist/coterie.exe -dLicenseFile=LICENSE `
-            -out dist\coterie.wixobj packaging\windows\coterie.wxs
-          light -out dist\coterie-nightly-windows-x86_64.msi dist\coterie.wixobj
+          # Stage the .wxs next to its payload and compile from inside
+          # dist/, so both ways candle may resolve a relative File Source
+          # (against the .wxs directory or against the working directory)
+          # land in dist. -d preprocessor defines are not used: a define
+          # value arrives at candle truncated to ".exe" (CNDL0103).
+          Copy-Item packaging\windows\coterie.wxs dist\coterie.wxs
+          Copy-Item LICENSE dist\LICENSE
+          Push-Location dist
+          try {
+            candle -arch x64 -out coterie.wixobj coterie.wxs
+            light -out coterie-nightly-windows-x86_64.msi coterie.wixobj
+            Remove-Item coterie.wxs, coterie.wixobj, LICENSE
+          } finally {
+            Pop-Location
+          }
           Get-Item dist\coterie-nightly-windows-x86_64.msi | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v7.0.2
