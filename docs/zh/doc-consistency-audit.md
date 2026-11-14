@@ -26,7 +26,7 @@
 - 渠道启用条件：docs/deployment.md:54-62 ↔ internal/notification/email.go:38（Host 且 From 非空）、webhook.go:41（URL 非空）、webpush.go:229（store 且 keys 非空）、apps/server/main.go:128,155（StripeSecretKey 非空）
 - 配置变量 25 个全对齐：.env.example ↔ internal/config/config.go（envOr/envList/envInt/envBool/envLevel/envDuration 六 helper 提取，零差集）
 - API 面 84 条：docs/api.md 84 行 ↔ internal/** mux 注册（含 6 条 PATCH + 根 /healthz），由 internal/app/routes_consistency_test.go 门禁保证
-- nightly 双 tag：docs/deployment.md:22 ↔ .github/workflows/nightly.yml:29,51（nightly + nightly-YYYYMMDD）
+- nightly tag：docs/deployment.md:22 ↔ .github/workflows/nightly.yml:29,51（769380b 起仅 `nightly`，已去掉 `nightly-YYYYMMDD` 日期 tag）
 - 仓库 About/topics：gh repo view 描述与 14 个 topic 与实现面一致，无旧词汇
 - 角色三档：docs/index.md:24 ↔ internal/user 模型（owner/admin/member）
 

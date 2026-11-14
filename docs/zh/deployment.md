@@ -19,7 +19,7 @@ go run ./apps/server
 
 ## Docker Compose
 
-仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像由 nightly 构建并发布到 `ghcr.io/cuihairu/coterie:nightly`（另附当天日期的版本 tag）。
+仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像由 nightly 构建并发布到 `ghcr.io/cuihairu/coterie:nightly`——单一滚动 tag，始终指向最新构建。nightly 任务另发一个名为 `nightly` 的预发布，附四个平台源码二进制（`linux/amd64`、`linux/arm64`、`darwin/amd64`、`darwin/arm64`）。
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d

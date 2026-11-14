@@ -26,7 +26,7 @@
 - Channel enable conditions: docs/deployment.md:54-62 ↔ internal/notification/email.go:38 (Host and From non-empty), webhook.go:41 (URL non-empty), webpush.go:229 (store and keys non-empty), apps/server/main.go:128,155 (StripeSecretKey non-empty)
 - All 25 config variables aligned: .env.example ↔ internal/config/config.go (extracted via six helpers envOr/envList/envInt/envBool/envLevel/envDuration, zero diff)
 - 84 API surface entries: 84 rows in docs/api.md ↔ internal/** mux registrations (including 6 PATCH + root /healthz), enforced by the internal/app/routes_consistency_test.go gate
-- nightly double tag: docs/deployment.md:22 ↔ .github/workflows/nightly.yml:29,51 (nightly + nightly-YYYYMMDD)
+- nightly tag: docs/deployment.md:22 ↔ .github/workflows/nightly.yml:29,51 (`nightly` only since 769380b; the `nightly-YYYYMMDD` date tag was dropped)
 - Repo About/topics: the gh repo view description and 14 topics match the implementation surface, no stale wording
 - Three role tiers: docs/index.md:24 ↔ internal/user model (owner/admin/member)
 

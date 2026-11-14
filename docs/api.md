@@ -117,9 +117,9 @@ Reads are public; writes are limited to catalog maintainers (Owner or creator).
 |---|---|---|---|
 | POST | `/coteries` | Bearer | Create a coterie around a subscription; seats are placed per capacity |
 | GET | `/coteries` | Bearer | Coteries you take part in |
-| GET | `/coteries/{id}` | Bearer | Coterie detail (non-members only get a restricted view) |
+| GET | `/coteries/{id}` | Bearer | Coterie detail (unlisted circles 404 for non-members, as if absent) |
 | PATCH | `/coteries/{id}` | Owner | Name/status transitions/listing, audit-logged |
-| GET | `/coteries/{id}/members` | Bearer | Member list |
+| GET | `/coteries/{id}/members` | Bearer | Member list (same visibility rule as the detail read) |
 | DELETE | `/members/{id}` | Owner | Remove a member and release the seat |
 | POST | `/coteries/{id}/leave` | Bearer | A member leaves on their own (the Owner cannot) |
 | POST | `/coteries/{id}/invitations` | Owner | Send an invitation (one-time token) |

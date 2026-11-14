@@ -117,9 +117,9 @@
 |---|---|---|---|
 | POST | `/coteries` | Bearer | 围绕订阅建圈，席位按 capacity 落位 |
 | GET | `/coteries` | Bearer | 自己参与的圈 |
-| GET | `/coteries/{id}` | Bearer | 圈详情（非成员只回受限于视图） |
+| GET | `/coteries/{id}` | Bearer | 圈详情（未上架圈对非成员按不存在返回 404） |
 | PATCH | `/coteries/{id}` | Owner | 名称/状态流转/listing，审计留痕 |
-| GET | `/coteries/{id}/members` | Bearer | 成员列表 |
+| GET | `/coteries/{id}/members` | Bearer | 成员列表（可见性与详情读取一致） |
 | DELETE | `/members/{id}` | Owner | 移除成员并释放席位 |
 | POST | `/coteries/{id}/leave` | Bearer | 成员自行退出（Owner 不可） |
 | POST | `/coteries/{id}/invitations` | Owner | 发邀请（一次性 token） |

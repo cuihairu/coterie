@@ -74,5 +74,11 @@
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/1M/1m，待修）
 
-- [ ] [M] 更新 Coteries API 契约描述（docs/api.md:120）——契约仍写 non-members restricted view，实现已改为非成员 404（internal/coterie/service.go:158-175），文档与行为漂移
+- [x] [M] 更新 Coteries API 契约描述（docs/api.md:120）——契约仍写 non-members restricted view，实现已改为非成员 404（internal/coterie/service.go:158-175），文档与行为漂移 — G2 审计，docs/api.md + docs/zh/api.md 改「未上架圈按不存在返回 404」并补 members 同规则（G2-2，P1）
 - [ ] [m] 修正 todo.md:73 验证提交指向（9437787 声称验证 1ba7a0f..b331549 但其父提交即 b331549，范围自引）——台账范围失真
+
+## 舰队文档审计 G2（2026-11-14）
+
+- [x] G2-1 产物清单漂移（P1）：deployment.md 仍写镜像「另附当天日期 tag」，769380b 起 nightly.yml 仅发滚动 `nightly` tag + 4 平台二进制预发布 — en+zh 已改，docs build 8.14s 通过、21 文件 0 死链
+- [x] G2-3 台账旧锚点（P2）：doc-consistency-audit.md 仍记「nightly 双 tag」，已改为「仅 nightly，769380b 起去日期 tag」
+- [ ] [P2] 浏览器语言自动识别切换（fleet-docs-audit-G2 2026-11-14）：文档站现为 VitePress 官方 locale 路由（config.mts:14-20，英文在根、中文 `/zh/`），仅手动切换（下拉 + README 顶栏互链），无 `navigator.language` 探测/根路径重定向。基线=手动切换+显式链接，保持现状；自动识别为增强项（需在 config.mts `head` 注入探测脚本），待拍板是否做

@@ -19,7 +19,7 @@ go run ./apps/server
 
 ## Docker Compose
 
-The repo ships with `deployments/docker-compose.yml`, containing only two services: postgres and coterie. The image is built by the nightly job and published to `ghcr.io/cuihairu/coterie:nightly` (plus a same-day date tag).
+The repo ships with `deployments/docker-compose.yml`, containing only two services: postgres and coterie. The image is built by the nightly job and published to `ghcr.io/cuihairu/coterie:nightly` — a single rolling tag, so the image always tracks the latest build. The nightly job also publishes one prerelease named `nightly` with four source binaries (`linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`).
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
