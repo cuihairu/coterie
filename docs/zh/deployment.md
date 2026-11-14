@@ -19,7 +19,17 @@ go run ./apps/server
 
 ## Docker Compose
 
-仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像由 nightly 构建并发布到 `ghcr.io/cuihairu/coterie:nightly`——单一滚动 tag，始终指向最新构建。nightly 任务另发一个名为 `nightly` 的预发布，附四个平台源码二进制（`linux/amd64`、`linux/arm64`、`darwin/amd64`、`darwin/arm64`）。
+仓库自带 `deployments/docker-compose.yml`，只有两个服务：postgres 和 coterie。镜像由 nightly 构建并发布到 `ghcr.io/cuihairu/coterie:nightly`——单一滚动 tag，始终指向最新构建。nightly 任务另发一个名为 `nightly` 的预发布，资产如下：
+
+| 资产 | 安装 |
+| --- | --- |
+| `coterie-nightly-linux-amd64.deb` / `coterie-nightly-linux-arm64.deb` | `sudo dpkg -i <file>` |
+| `coterie-nightly-linux-x86_64.rpm` / `coterie-nightly-linux-aarch64.rpm` | `sudo rpm -i <file>` |
+| `coterie-nightly-windows-x86_64.zip` | 解压后运行 `coterie.exe` |
+| `coterie-nightly-windows-x86_64.msi` | `msiexec /i <file>` |
+| `coterie-nightly-{linux,darwin}-{amd64,arm64}.tar.gz` | 源码二进制归档，不带安装包 |
+
+`.deb` 名字用 Go arch，`.rpm` 名字用 rpm arch（`amd64` → `x86_64`、`arm64` → `aarch64`）。全部资产由 `SHA256SUMS` 收口。这些是滚动预发布，不是版本号发布。
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d

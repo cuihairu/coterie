@@ -19,7 +19,17 @@ go run ./apps/server
 
 ## Docker Compose
 
-The repo ships with `deployments/docker-compose.yml`, containing only two services: postgres and coterie. The image is built by the nightly job and published to `ghcr.io/cuihairu/coterie:nightly` — a single rolling tag, so the image always tracks the latest build. The nightly job also publishes one prerelease named `nightly` with four source binaries (`linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`).
+The repo ships with `deployments/docker-compose.yml`, containing only two services: postgres and coterie. The image is built by the nightly job and published to `ghcr.io/cuihairu/coterie:nightly` — a single rolling tag, so the image always tracks the latest build. The nightly job also publishes one prerelease named `nightly` with these assets:
+
+| Asset | Install |
+| --- | --- |
+| `coterie-nightly-linux-amd64.deb` / `coterie-nightly-linux-arm64.deb` | `sudo dpkg -i <file>` |
+| `coterie-nightly-linux-x86_64.rpm` / `coterie-nightly-linux-aarch64.rpm` | `sudo rpm -i <file>` |
+| `coterie-nightly-windows-x86_64.zip` | unzip and run `coterie.exe` |
+| `coterie-nightly-windows-x86_64.msi` | `msiexec /i <file>` |
+| `coterie-nightly-{linux,darwin}-{amd64,arm64}.tar.gz` | source binary archives, no installer |
+
+The `.deb` names carry the Go arch, the `.rpm` names carry the rpm arch (`amd64` → `x86_64`, `arm64` → `aarch64`). Every asset is covered by `SHA256SUMS`. These are rolling prereleases, not versioned releases.
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
