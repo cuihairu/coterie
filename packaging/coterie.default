@@ -1,0 +1,6 @@
+# Coterie server configuration, sourced by coterie.service.
+# The server needs a PostgreSQL 15+ database; at minimum uncomment and set:
+#DATABASE_URL=postgres://coterie:coterie@localhost:5432/coterie?sslmode=disable
+#PORT=8080
+#MIGRATE_ON_START=true
+#LOG_LEVEL=info

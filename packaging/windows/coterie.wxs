@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Coterie nightly MSI. Built with WiX v3: candle/light receive the exe and
+  license paths via -d defines, so this file stays independent of the build
+  directory. Installs the server exe under Program Files. The server is a
+  console program configured through environment variables, so the package
+  intentionally ships no shortcuts or services.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Coterie" Language="1033" Version="0.0.0.0"
+           Manufacturer="cuihairu"
+           UpgradeCode="d1563411-222b-4269-af95-6dde2b6e1729">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+             Comments="Nightly build - not for production use." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="Product" Title="Coterie" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="coterie" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="CoterieExe" Source="$(var.CoterieExe)" KeyPath="yes" />
+      </Component>
+      <Component Id="License" Guid="*">
+        <File Id="LicenseFile" Source="$(var.LicenseFile)" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

@@ -1,0 +1,20 @@
+[Unit]
+Description=Coterie server
+Documentation=https://github.com/cuihairu/coterie
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/coterie
+Environment=MIGRATIONS_DIR=/usr/share/coterie/migrations
+EnvironmentFile=-/etc/default/coterie
+DynamicUser=yes
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

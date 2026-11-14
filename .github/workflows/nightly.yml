@@ -1,8 +1,8 @@
 name: nightly
 
-# Daily build: test, cross-compile the server binary, and publish a
-# prerelease tagged nightly-YYYYMMDD. Runs off the hour to avoid the
-# GitHub Actions scheduled-job rush.
+# Daily build: test, cross-compile the server binary plus native packages
+# (linux deb/rpm, windows zip/msi), and publish a rolling prerelease tagged
+# nightly. Runs off the hour to avoid the GitHub Actions scheduled-job rush.
 on:
   schedule:
     - cron: "41 18 * * *"
@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  nightly:
+  build:
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -29,8 +29,7 @@ jobs:
         run: echo "VERSION=nightly" >> "$GITHUB_ENV"
 
       # Image publish comes after the test run so a red build never
-      # ships. The rolling "nightly" tag is what deployments reference;
-      # the versioned tag pins a day (docs/design.md §11.2).
+      # ships. The rolling "nightly" tag is what deployments reference.
       - name: Log in to GHCR
         uses: docker/login-action@v4.6.0
         with:
@@ -64,14 +63,135 @@ jobs:
             rm "$output"
           done
 
+      # The server binary has no flag surface (environment-variable
+      # configuration only), so --help/--version cannot smoke it. Instead
+      # run the native binary and expect the clean fast-fail on an
+      # unreachable database: non-zero exit, "server exited" in the log.
+      # DATABASE_URL points at 127.0.0.1:1 so the dial refuses instantly.
+      - name: Smoke linux binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags "-s -w" -o dist/smoke-coterie ./apps/server
+          set +e
+          out="$(DATABASE_URL='postgres://smoke:smoke@127.0.0.1:1/smoke?sslmode=disable' \
+            ./dist/smoke-coterie 2>&1)"
+          code=$?
+          set -e
+          echo "$out" | head -5
+          rm -f dist/smoke-coterie
+          if [ "$code" -eq 0 ]; then
+            echo "smoke: server ran without a database" >&2
+            exit 1
+          fi
+          echo "$out" | grep -qi "server exited"
+
+      - name: Build deb and rpm packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y rpm
+          scripts/package-deb-rpm.sh dist amd64 x86_64
+          scripts/package-deb-rpm.sh dist arm64 aarch64
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: nightly-linux
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: "1.27"
+
+      - name: Build windows exe
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags "-s -w" -o dist\coterie.exe .\apps\server
+          Get-Item dist\coterie.exe | Select-Object Name, Length
+
+      # Same smoke contract as the linux leg: the native exe must exit
+      # non-zero with "server exited" when the database is unreachable.
+      - name: Smoke windows exe
+        shell: pwsh
+        run: |
+          $env:DATABASE_URL = 'postgres://smoke:smoke@127.0.0.1:1/smoke?sslmode=disable'
+          $out = & .\dist\coterie.exe 2>&1 | Out-String
+          Write-Output ($out.Split("`n") | Select-Object -First 5)
+          if ($LASTEXITCODE -eq 0) {
+            throw "smoke: exe ran without a database"
+          }
+          if ($out -notmatch "server exited") {
+            throw "smoke: unexpected failure output"
+          }
+
+      - name: Package windows zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\coterie.exe `
+            -DestinationPath dist\coterie-nightly-windows-x86_64.zip -Force
+          Get-Item dist\coterie-nightly-windows-x86_64.zip | Select-Object Name, Length
+
+      # MSI leg (WiX v3). choco ships wixtoolset on hosted windows
+      # runners; candle and light land on PATH after a machine-level
+      # install and a path refresh.
+      - name: Install WiX v3
+        shell: pwsh
+        run: |
+          $wix = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          if (-not (Test-Path $wix)) {
+            Write-Error "WiX path not found: $wix"
+            exit 1
+          }
+          Add-Content $env:GITHUB_PATH $wix
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          candle -arch x64 -dCoterieExe=dist\coterie.exe -dLicenseFile=LICENSE `
+            -out dist\coterie.wixobj packaging\windows\coterie.wxs
+          light -out dist\coterie-nightly-windows-x86_64.msi dist\coterie.wixobj
+          Get-Item dist\coterie-nightly-windows-x86_64.msi | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: nightly-windows
+          path: |
+            dist/coterie-nightly-windows-x86_64.zip
+            dist/coterie-nightly-windows-x86_64.msi
+
+  release:
+    needs: [build, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: nightly-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Sum assets
+        run: |
+          cd dist
+          sha256sum coterie-* > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Publish nightly release
         uses: softprops/action-gh-release@v3.0.3
         with:
-          tag_name: ${{ env.VERSION }}
-          name: ${{ env.VERSION }}
+          tag_name: nightly
+          name: nightly
           body: |
             Automated nightly build from `main`.
             Not for production use.
+            Linux and macOS tar.gz archives, Linux deb/rpm packages, a Windows zip and MSI installer are included; SHA256SUMS verifies every asset.
           prerelease: true
           fail_on_unmatched_files: true
-          files: dist/*.tar.gz
+          files: dist/*
