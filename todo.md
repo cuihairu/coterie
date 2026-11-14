@@ -82,3 +82,12 @@
 - [x] G2-1 产物清单漂移（P1）：deployment.md 仍写镜像「另附当天日期 tag」，769380b 起 nightly.yml 仅发滚动 `nightly` tag + 4 平台二进制预发布 — en+zh 已改，docs build 8.14s 通过、21 文件 0 死链
 - [x] G2-3 台账旧锚点（P2）：doc-consistency-audit.md 仍记「nightly 双 tag」，已改为「仅 nightly，769380b 起去日期 tag」
 - [ ] [P2] 浏览器语言自动识别切换（fleet-docs-audit-G2 2026-11-14）：文档站现为 VitePress 官方 locale 路由（config.mts:14-20，英文在根、中文 `/zh/`），仅手动切换（下拉 + README 顶栏互链），无 `navigator.language` 探测/根路径重定向。基线=手动切换+显式链接，保持现状；自动识别为增强项（需在 config.mts `head` 注入探测脚本），待拍板是否做
+
+## 原生打包四件套（巡检单 native-packaging-daily，2026-11-14）
+
+- [x] coterie 四件套并入滚动 nightly：linux deb+rpm、windows exe zip+msi，命名 `coterie-nightly-<os>-<arch>.<ext>`，随 4 平台 tar.gz 一起由 `SHA256SUMS` 收口 — 首跑 run 43625799232（`gh workflow run .github/workflows/nightly.yml`）全绿：build / windows / release 三 job success，滚动 `nightly` 预发布 prerelease=true、draft=false
+  - 资产清单（字节）：`linux-amd64.tar.gz` 5,989,202 · `linux-arm64.tar.gz` 5,358,377 · `linux-amd64.deb` 4,951,028 · `linux-arm64.deb` 4,387,354 · `linux-x86_64.rpm` 5,960,972 · `linux-aarch64.rpm` 5,345,311 · `darwin-amd64.tar.gz` 6,101,844 · `darwin-arm64.tar.gz` 5,592,570 · `windows-x86_64.zip` 6,276,041 · `windows-x86_64.msi` 6,156,288；另 `SHA256SUMS` 1,003（10 条，覆盖上述全部 10 项；它自身生成时尚不存在故不列）
+  - 提交：a0bba45 四件套 + 打包脚本/systemd 单元/default 模板/WiX 源 · 4aabe3f 保留 linux 原始二进制与 windows smoke 退出码 · 3f42969 candle define 正斜杠 · 9f9143b WiX 源与其载荷同目录编译
+  - 验收：`sha256sum -c SHA256SUMS` 对已下载的 msi/zip 全 OK；msi File 表含 `coterie.exe` 16,690,176 + `LICENSE` 11,558，装的是与 zip 里**同一个** exe（PE32+ console x86-64）；msi Subject=Coterie、Comments 明示 not for production use；本地解压 shipped tarball 实跑 smoke：exit 1 + `server exited` + `dial tcp 127.0.0.1:1: connection refused`（服务器仅环境变量配置、无 flag 面，故 smoke 契约=原生执行 + 干净快速失败，`--help/--version` 不适用）
+  - 首轮两次红均已定位并修掉：①打包步骤前原始 linux 二进制被误删（package 脚本要求 `dist/coterie-linux-<arch>` 仍在）②windows smoke 断言其实通过，失败源于 exe 的 `$LASTEXITCODE=1` 泄漏到 GH Actions 隐式 `exit $LASTEXITCODE`
+- [ ] [P2] MSI 只装 exe+LICENSE，不含 SQL 迁移与 systemd 单元（deb/rpm 才带）——WiX 源 `packaging/windows/coterie.wxs` 有意为之：Windows 侧无 systemd，迁移由服务器首启自执行。是否给 MSI 也塞迁移目录待拍板

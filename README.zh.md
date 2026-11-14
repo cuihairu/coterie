@@ -80,6 +80,22 @@ scripts/smoke.sh http://localhost:8080
 `ADMIN_EMAILS` 提升过的用户。连续运行可能在第三次注册时触发鉴权
 限速——两次运行之间等待一分钟。
 
+## 下载
+
+滚动 nightly 构建发布在[releases 页面](https://github.com/cuihairu/coterie/releases/tag/nightly);
+`SHA256SUMS` 覆盖全部资产。nightly 是预发布——不要用于生产。
+
+- **Linux tar.gz**:`tar -xzf coterie-nightly-linux-amd64.tar.gz &&
+  ./coterie-linux-amd64`——需要一个 `DATABASE_URL` 可达的 PostgreSQL 15+ 实例
+- **Linux deb/rpm**:`sudo dpkg -i coterie-nightly-linux-amd64.deb` 或
+  `sudo rpm -i coterie-nightly-linux-x86_64.rpm`——安装 `/usr/bin/coterie`、
+  SQL 迁移脚本和 `coterie.service` 单元;先在 `/etc/default/coterie` 配置
+  `DATABASE_URL`,再 `systemctl enable --now coterie`
+- **Windows exe**:解压 `coterie-nightly-windows-x86_64.zip` 后运行
+  `coterie.exe`
+- **Windows MSI**:运行 `coterie-nightly-windows-x86_64.msi` 把
+  coterie.exe 安装到 Program Files
+
 ## API 概览(v1)
 
 完整端点参考见[文档站](https://cuihairu.github.io/coterie/zh/api)。

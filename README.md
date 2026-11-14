@@ -94,6 +94,25 @@ account must be one the server promoted via `ADMIN_EMAILS`. Back-to-back
 runs can trip the auth rate limiter on the third registration — wait a
 minute between runs.
 
+## Download
+
+Rolling nightly builds are published on the
+[releases page](https://github.com/cuihairu/coterie/releases/tag/nightly);
+`SHA256SUMS` covers every asset. Nightly builds are prereleases — not for
+production use.
+
+- **Linux tar.gz**: `tar -xzf coterie-nightly-linux-amd64.tar.gz &&
+  ./coterie-linux-amd64` — needs a PostgreSQL 15+ instance reachable at
+  `DATABASE_URL`
+- **Linux deb/rpm**: `sudo dpkg -i coterie-nightly-linux-amd64.deb` or
+  `sudo rpm -i coterie-nightly-linux-x86_64.rpm` — installs `/usr/bin/coterie`,
+  the SQL migrations, and a `coterie.service` unit; set `DATABASE_URL` in
+  `/etc/default/coterie`, then `systemctl enable --now coterie`
+- **Windows exe**: unzip `coterie-nightly-windows-x86_64.zip` and run
+  `coterie.exe`
+- **Windows MSI**: run `coterie-nightly-windows-x86_64.msi` to install
+  coterie.exe under Program Files
+
 ## Testing scope
 
 Keep local checks proportional to the change:
