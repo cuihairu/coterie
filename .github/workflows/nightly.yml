@@ -26,7 +26,7 @@ jobs:
         run: go test ./...
 
       - name: Set version
-        run: echo "VERSION=nightly-$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
+        run: echo "VERSION=nightly" >> "$GITHUB_ENV"
 
       # Image publish comes after the test run so a red build never
       # ships. The rolling "nightly" tag is what deployments reference;
