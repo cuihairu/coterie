@@ -60,7 +60,10 @@ jobs:
             CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
               go build -trimpath -ldflags "-s -w" -o "$output" ./apps/server
             tar -czf "dist/coterie-${VERSION}-${GOOS}-${GOARCH}.tar.gz" -C dist "coterie-${GOOS}-${GOARCH}"
-            rm "$output"
+            # linux binaries stay in dist/ — the deb/rpm step wraps them
+            if [ "$GOOS" != "linux" ]; then
+              rm "$output"
+            fi
           done
 
       # The server binary has no flag surface (environment-variable
@@ -124,13 +127,17 @@ jobs:
         run: |
           $env:DATABASE_URL = 'postgres://smoke:smoke@127.0.0.1:1/smoke?sslmode=disable'
           $out = & .\dist\coterie.exe 2>&1 | Out-String
+          # capture the exit code before anything else runs — the exe is
+          # expected to fail, and a stale $LASTEXITCODE would fail the step
+          $code = $LASTEXITCODE
           Write-Output ($out.Split("`n") | Select-Object -First 5)
-          if ($LASTEXITCODE -eq 0) {
+          if ($code -eq 0) {
             throw "smoke: exe ran without a database"
           }
           if ($out -notmatch "server exited") {
             throw "smoke: unexpected failure output"
           }
+          exit 0
 
       - name: Package windows zip
         shell: pwsh
