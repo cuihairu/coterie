@@ -70,7 +70,7 @@
 - [x] P1#4 用量限额窗口与分摊窗口口径冲突：usage 对齐 billing 半开 [start_date, end_date)——PeriodCovering 改 end_date > day、Sum 改 < end（去掉 end+1d）— ae71527，TestUsageLimitWindowHalfOpen（末日记录旧码计入超限 409→红，新码不计入→绿）；internal/usage/store.go:189/227/247
 - [x] P1#5 私有圈子存在性泄露：Get/ListMembers 补 requireVisible（非公开圈外人 404，与未上架申请同语义；admin 放行）— dd3c1d8，TestPrivateCoterieHiddenFromOutsiders（外人读私有圈旧码 200 泄露 listing/member_count→红，新码 404→绿）；internal/coterie/service.go requireVisible
 - [x] P1#6 跨租户财务读基线过宽：billing/payments/usage/seats 读接口收 actor 验属主（payment 另放行 payer 本人）— b331549，TestBillingReadsOwnerScoped/TestPaymentReadsOwnerScoped/TestUsageReadsOwnerScoped/TestSeatReadsOwnerScoped（各旧码 200→红，新码 403→绿）+ 更新 TestPaymentPermissions/TestSeatOwnerOnlyMutations 旧基线（越权读 200→403）；internal/billing/service.go GetPeriod/ListPeriods/ListContributions、internal/payment/service.go List/Get、internal/usage/service.go Get/List、internal/seat/service.go Get/List
-- [x] 批次收口：go test ./... 26 包全绿 0 skip、go vet 0 错、golangci-lint 0 issues；提交 1ba7a0f..b331549 全部推送 origin main（P2 简列 9 项不在本批指令范围，未推进）
+- [x] 批次收口：go test ./... 26 包全绿 0 skip、go vet 0 错、golangci-lint 0 issues；提交 8bb67bd..b331549 全部推送 origin main（P2 简列 9 项不在本批指令范围，未推进）。本批 6 个 `fix:` 提交，含 P0 的 `1ba7a0f`；区间写 `1ba7a0f..b331549` 会按 git 语义丢掉该端点、只数到 5 个，故下界取它的父提交 `8bb67bd`
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/1M/1m，待修）
 
