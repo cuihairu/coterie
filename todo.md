@@ -75,7 +75,7 @@
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/1M/1m，待修）
 
 - [x] [M] 更新 Coteries API 契约描述（docs/api.md:120）——契约仍写 non-members restricted view，实现已改为非成员 404（internal/coterie/service.go:158-175），文档与行为漂移 — G2 审计，docs/api.md + docs/zh/api.md 改「未上架圈按不存在返回 404」并补 members 同规则（G2-2，P1）
-- [ ] [m] 修正 todo.md:73 验证提交指向（9437787 声称验证 1ba7a0f..b331549 但其父提交即 b331549，范围自引）——台账范围失真
+- [x] [m] 修正 todo.md:73 验证提交指向（9437787 声称验证 1ba7a0f..b331549 但其父提交即 b331549，范围自引）——台账范围失真 — 412281d。真实缺陷比原描述更具体：本批 6 个 `fix:` 提交（1ba7a0f 起），`1ba7a0f..b331549` 按 git 语义丢掉下界端点只数到 5 个，P0 的 `1ba7a0f` 被自己的账本漏掉；已改下界为其父提交 `8bb67bd`，`git rev-list --count 8bb67bd..b331549` = 6，6 个提交经 `git merge-base --is-ancestor` 逐一确认均在 origin/main
 
 ## 舰队文档审计 G2（2026-11-14）
 
