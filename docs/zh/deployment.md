@@ -31,6 +31,8 @@ go run ./apps/server
 
 `.deb` 名字用 Go arch，`.rpm` 名字用 rpm arch（`amd64` → `x86_64`、`arm64` → `aarch64`）。全部资产由 `SHA256SUMS` 收口。这些是滚动预发布，不是版本号发布。
 
+只有 `.deb` 和 `.rpm` 包自带 SQL 迁移，装在 `/usr/share/coterie/migrations`。`.tar.gz`、`.zip` 和 `.msi` 里只有二进制本身——没有内嵌回退，服务器启动时读不到迁移目录会直接退出。用这三种格式时，请把仓库的 `migrations/` 目录放到目标位置并用 `MIGRATIONS_DIR` 指过去：`MIGRATIONS_DIR` 默认是相对路径 `migrations`，`MIGRATE_ON_START` 默认 `true`。
+
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
 ```

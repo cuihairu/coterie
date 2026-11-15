@@ -31,6 +31,8 @@ The repo ships with `deployments/docker-compose.yml`, containing only two servic
 
 The `.deb` names carry the Go arch, the `.rpm` names carry the rpm arch (`amd64` → `x86_64`, `arm64` → `aarch64`). Every asset is covered by `SHA256SUMS`. These are rolling prereleases, not versioned releases.
 
+Only the `.deb` and `.rpm` packages ship the SQL migrations, under `/usr/share/coterie/migrations`. The `.tar.gz`, `.zip`, and `.msi` archives contain the binary and nothing else — there is no embedded fallback, and the server exits at startup if it cannot read the migration directory. For those three formats copy the repository's `migrations/` directory into place and point `MIGRATIONS_DIR` at it: `MIGRATIONS_DIR` defaults to the relative path `migrations`, and `MIGRATE_ON_START` defaults to `true`.
+
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
 ```

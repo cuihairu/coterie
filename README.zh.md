@@ -86,15 +86,19 @@ scripts/smoke.sh http://localhost:8080
 `SHA256SUMS` 覆盖全部资产。nightly 是预发布——不要用于生产。
 
 - **Linux tar.gz**:`tar -xzf coterie-nightly-linux-amd64.tar.gz &&
-  ./coterie-linux-amd64`——需要一个 `DATABASE_URL` 可达的 PostgreSQL 15+ 实例
+  ./coterie-linux-amd64`——需要一个 `DATABASE_URL` 可达的 PostgreSQL 15+ 实例,
+  并把仓库的 `migrations/` 目录放到二进制旁(或用 `MIGRATIONS_DIR` 指过去);
+  只有 deb/rpm 包自带迁移
 - **Linux deb/rpm**:`sudo dpkg -i coterie-nightly-linux-amd64.deb` 或
   `sudo rpm -i coterie-nightly-linux-x86_64.rpm`——安装 `/usr/bin/coterie`、
   SQL 迁移脚本和 `coterie.service` 单元;先在 `/etc/default/coterie` 配置
   `DATABASE_URL`,再 `systemctl enable --now coterie`
 - **Windows exe**:解压 `coterie-nightly-windows-x86_64.zip` 后运行
-  `coterie.exe`
+  `coterie.exe`——归档里只有 exe;把仓库的 `migrations/` 目录放到它旁边
+  (否则服务器启动即退出)
 - **Windows MSI**:运行 `coterie-nightly-windows-x86_64.msi` 把
-  coterie.exe 安装到 Program Files
+  coterie.exe 安装到 Program Files——MSI 同样只装 exe;
+  把 `MIGRATIONS_DIR` 指到装有仓库 `migrations/` 的目录
 
 ## API 概览(v1)
 

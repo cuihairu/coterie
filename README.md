@@ -103,15 +103,18 @@ production use.
 
 - **Linux tar.gz**: `tar -xzf coterie-nightly-linux-amd64.tar.gz &&
   ./coterie-linux-amd64` — needs a PostgreSQL 15+ instance reachable at
-  `DATABASE_URL`
+  `DATABASE_URL`, and the repo's `migrations/` directory next to the binary
+  (or `MIGRATIONS_DIR` pointed at it); only the deb/rpm packages ship it
 - **Linux deb/rpm**: `sudo dpkg -i coterie-nightly-linux-amd64.deb` or
   `sudo rpm -i coterie-nightly-linux-x86_64.rpm` — installs `/usr/bin/coterie`,
   the SQL migrations, and a `coterie.service` unit; set `DATABASE_URL` in
   `/etc/default/coterie`, then `systemctl enable --now coterie`
 - **Windows exe**: unzip `coterie-nightly-windows-x86_64.zip` and run
-  `coterie.exe`
+  `coterie.exe` — the archive holds the exe only; copy the repo's
+  `migrations/` directory next to it (the server exits without it)
 - **Windows MSI**: run `coterie-nightly-windows-x86_64.msi` to install
-  coterie.exe under Program Files
+  coterie.exe under Program Files — the MSI also ships the exe only;
+  set `MIGRATIONS_DIR` to a directory holding the repo's `migrations/`
 
 ## Testing scope
 
