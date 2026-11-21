@@ -37,7 +37,7 @@
 
 ## 漏洞扫描遗留（2026-11-03 全舰队扫描，源 scratch/vuln-scan-*.md）
 
-- [ ] VULN-COTERIE-001 [高危·GHSA-mrhx-c7xc-m3w5] zod →≥4.6.6（coterie/apps/web，package-lock.json 仓，终扫 1）【BLOCKED·规范禁 npm 改 lock】npm-lock 仓只审计未改动；验收：迁 pnpm（pnpm import）后 pnpm audit --audit-level=high 该包不再命中（或编排者批准 npm 侧修复后 npm audit 清零）；该仓无 test 脚本，audit-only
+- [ ] VULN-COTERIE-001 [高危·GHSA-mrhx-c7xc-m3w5] zod →≥4.6.6（coterie/apps/web，package-lock.json 仓，终扫 1）【BLOCKED·待审批「npm audit fix 只改 lock」】npm-lock 仓只审计未改动；验收：迁 pnpm（pnpm import）后 pnpm audit --audit-level=high 该包不再命中（或编排者批准 npm 侧修复后 npm audit 清零）；该仓无 test 脚本，audit-only。**审批范围已钉死（2026-11-21 复核）**：`cd apps/web && npm audit fix`，仅重写 `package-lock.json`——`npm audit fix --dry-run` 后 `git diff package.json` 为空，两条 fix 都在现有 semver 区间内（zod 4.6.5→4.6.7、门槛 ≥4.6.6；seroval 1.6.9→1.8.2、门槛 >1.6.10）。zod 非直接依赖（`npm why zod`：仅经 devDependency `@tanstack/router-plugin` 的路由代码生成插件进入，不进产物），故无 package.json 改动可绕开锁文件
 
 ## 源码分层分析 2026-11-07
 
